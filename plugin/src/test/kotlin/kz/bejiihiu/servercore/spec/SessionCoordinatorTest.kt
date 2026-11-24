@@ -30,25 +30,67 @@ internal class RecordingEffects : SpecEffects {
     }
 }
 
+/** every lifecycle callback the coordinator fires, in order */
+internal class RecordingListener : SpecSessionListener {
+
+    val claimed = mutableListOf<SpecSession>()
+    val started = mutableListOf<SpecSession>()
+    val aborted = mutableListOf<SpecSession>()
+    val ended = mutableListOf<Pair<SpecSession, ExitReason>>()
+
+    override fun onClaimed(session: SpecSession) {
+        claimed.add(session)
+    }
+
+    override fun onStarted(session: SpecSession) {
+        started.add(session)
+    }
+
+    override fun onAborted(session: SpecSession) {
+        aborted.add(session)
+    }
+
+    override fun onEnded(session: SpecSession, reason: ExitReason) {
+        ended.add(session to reason)
+    }
+}
+
 class SessionCoordinatorTest {
 
     @TempDir
     lateinit var dir: Path
 
-    private fun audit(): SpecAuditWriter = SpecAuditWriter(
-        baseFile = dir.resolve("audit.jsonl"),
-        maxFileBytes = 1_000_000,
-        maxKept = 5,
-        io = Runnable::run,
-    )
-
     private fun target(name: String = "steve") = ObservationTarget(UUID.randomUUID(), name, levelIndex = null)
+
+    private fun reportingTrail(): Pair<SpecSessionRegistry, Path> {
+        val file = dir.resolve("trail")
+        val registry = SpecSessionRegistry(
+            sender = object : SpecEventSender {
+                override fun sendSpecStarted(payload: kz.bejiihiu.servercore.websocket.Payload.SpecStarted) = Unit
+                override fun sendSpecEnded(payload: kz.bejiihiu.servercore.websocket.Payload.SpecEnded) = Unit
+            },
+            audit = SpecAuditTrail(file, Runnable::run),
+        )
+        return registry to file
+    }
+
+    private fun trailEvents(file: Path): List<String> {
+        // the trail was built with a synchronous io executor, so every record
+        // already drained; a directory that was never created means no events
+        if (!Files.exists(file)) return emptyList()
+        return Files.list(file).use { stream ->
+            stream.flatMap { Files.readAllLines(it).stream() }
+                .filter { it.isNotBlank() }
+                .map { line -> Regex("\"event\":\"([A-Z_]+)\"").find(line)?.groupValues?.get(1) ?: "" }
+                .toList()
+        }
+    }
 
     @Test
     fun `start claims the registry and activation flips the phase`() {
         val effects = RecordingEffects()
-        val auditFile = dir.resolve("audit.jsonl")
-        val coordinator = SessionCoordinator(effects, audit())
+        val (registry, _) = reportingTrail()
+        val coordinator = SessionCoordinator(effects, registry)
 
         val admin = UUID.randomUUID()
         val outcome = coordinator.start(admin, "admin", target("steve"))
@@ -60,17 +102,34 @@ class SessionCoordinatorTest {
         effects.complete(session, ok = true)
         assertEquals(SessionPhase.ACTIVE, session.phase)
         assertEquals(admin, coordinator.adminObserving(session.targetId))
-
-        val lines = Files.readAllLines(auditFile)
-        assertEquals(1, lines.size)
-        assertTrue(lines[0].contains("SPEC_STARTED"))
+        assertEquals(1, coordinator.activeCount())
     }
 
     @Test
-    fun `failed world start rolls the claim back`() {
+    fun `a settled start reports upstream and to the listeners`() {
         val effects = RecordingEffects()
-        val auditFile = dir.resolve("audit.jsonl")
-        val coordinator = SessionCoordinator(effects, audit())
+        val listener = RecordingListener()
+        val (registry, trail) = reportingTrail()
+        val coordinator = SessionCoordinator(effects, registry, listOf(listener))
+
+        val admin = UUID.randomUUID()
+        coordinator.start(admin, "admin", target("steve"))
+        val session = coordinator.activeSession(admin)!!
+        effects.complete(session, ok = true)
+
+        assertEquals(listOf(session), listener.claimed)
+        assertEquals(listOf(session), listener.started)
+        assertTrue(listener.aborted.isEmpty())
+        assertEquals(1, registry.activeCount())
+        assertEquals(listOf(SpecAuditEvents.START), trailEvents(trail))
+    }
+
+    @Test
+    fun `failed world start rolls the claim back and denies`() {
+        val effects = RecordingEffects()
+        val listener = RecordingListener()
+        val (registry, trail) = reportingTrail()
+        val coordinator = SessionCoordinator(effects, registry, listOf(listener))
 
         val admin = UUID.randomUUID()
         coordinator.start(admin, "admin", target("steve"))
@@ -78,9 +137,11 @@ class SessionCoordinatorTest {
         effects.complete(claimed, ok = false)
 
         assertNull(coordinator.activeSession(admin))
-        val lines = Files.readAllLines(auditFile)
-        assertEquals(1, lines.size)
-        assertTrue(lines[0].contains("SPEC_DENIED"))
+        assertEquals(0, coordinator.activeCount())
+        assertEquals(listOf(claimed), listener.aborted)
+        assertTrue(listener.started.isEmpty())
+        assertEquals(0, registry.activeCount())
+        assertEquals(listOf(SpecAuditEvents.DENIED), trailEvents(trail))
     }
 
     @Test
@@ -104,10 +165,11 @@ class SessionCoordinatorTest {
     }
 
     @Test
-    fun `exit ends the session and frees both slots`() {
+    fun `exit ends the session, frees both slots and reports the end`() {
         val effects = RecordingEffects()
-        val auditFile = dir.resolve("audit.jsonl")
-        val coordinator = SessionCoordinator(effects, audit())
+        val listener = RecordingListener()
+        val (registry, trail) = reportingTrail()
+        val coordinator = SessionCoordinator(effects, registry, listOf(listener))
 
         val admin = UUID.randomUUID()
         coordinator.start(admin, "admin", target("steve"))
@@ -119,11 +181,9 @@ class SessionCoordinatorTest {
         assertNull(coordinator.adminObserving(session.targetId))
         assertEquals(1, effects.ended.size)
         assertEquals(ExitReason.COMMAND, effects.ended[0].second)
-
-        val lines = Files.readAllLines(auditFile)
-        assertEquals(2, lines.size)
-        assertTrue(lines[1].contains("SPEC_ENDED"))
-        assertTrue(lines[1].contains("COMMAND"))
+        assertEquals(session to ExitReason.COMMAND, listener.ended.single())
+        assertEquals(0, registry.activeCount())
+        assertEquals(listOf(SpecAuditEvents.START, SpecAuditEvents.END), trailEvents(trail))
     }
 
     @Test
@@ -175,8 +235,9 @@ class SessionCoordinatorTest {
     @Test
     fun `a session exited mid-start cannot be resurrected by a late activation`() {
         val effects = RecordingEffects()
-        val auditFile = dir.resolve("audit.jsonl")
-        val coordinator = SessionCoordinator(effects, audit())
+        val listener = RecordingListener()
+        val (registry, trail) = reportingTrail()
+        val coordinator = SessionCoordinator(effects, registry, listOf(listener))
 
         val admin = UUID.randomUUID()
         coordinator.start(admin, "admin", target("steve"))
@@ -188,10 +249,12 @@ class SessionCoordinatorTest {
 
         assertNull(coordinator.activeSession(admin))
         assertEquals(SessionPhase.ENDING, session.phase)
-        val lines = Files.readAllLines(auditFile)
-        // only the SPEC_ENDED line from the exit, no SPEC_STARTED resurrection
-        assertEquals(1, lines.size)
-        assertTrue(lines[0].contains("SPEC_ENDED"))
+        // the session was never reported as started, so no end report either:
+        // nothing upstream ever heard of it
+        assertTrue(trailEvents(trail).isEmpty())
+        assertTrue(registry.activeCount() == 0)
+        assertEquals(1, listener.ended.size)
+        assertTrue(listener.started.isEmpty())
     }
 
     @Test
