@@ -617,8 +617,8 @@ class ServerCorePlugin : JavaPlugin() {
         // demo surface for the ui toolkit until real flows consume it everywhere
         server.pluginManager.registerEvents(JoinFlowListener(ui), this)
 
-        // heartbeat keeps the backend's liveness picture fresh
-        presenceService.startHeartbeat()
+        // heartbeat keeps the backend's liveness picture fresh, cadence from config
+        presenceService.startHeartbeat(pluginConfig.gateway.heartbeatIntervalMs / 1000)
         client.start()
 
         registerPlaceholderExpansion()
