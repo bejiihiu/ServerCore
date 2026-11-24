@@ -16,6 +16,11 @@ import kz.bejiihiu.servercore.guest.LocalAccountResolver
 import kz.bejiihiu.servercore.guest.SnapshotStore
 import kz.bejiihiu.servercore.guest.WsAccountResolver
 import kz.bejiihiu.servercore.locale.LocaleService
+import kz.bejiihiu.servercore.packet.CachedViewStateStore
+import kz.bejiihiu.servercore.packet.PacketConfig
+import kz.bejiihiu.servercore.packet.PacketService
+import kz.bejiihiu.servercore.packet.PacketThreads
+import kz.bejiihiu.servercore.packet.WsSyncedViewStateStore
 import kz.bejiihiu.servercore.ops.GithubReleaseClient
 import kz.bejiihiu.servercore.ops.GracefulRestarter
 import kz.bejiihiu.servercore.ops.OpsConfig
@@ -67,6 +72,18 @@ class ServerCorePlugin : JavaPlugin() {
     private var updater: UpdaterService? = null
     private var restartSchedule: RestartScheduleTask? = null
     private lateinit var opsBus: OpsEventBus
+    private var packetService: PacketService? = null
+
+    override fun onLoad() {
+        // packetevents is a server-installed plugin we attach to, not one we
+        // bundle — pre-flight just checks it is on the server, the shared
+        // instance boots with its own plugin lifecycle
+        saveDefaultConfig()
+        val packetConfig = PacketConfig.load(config, logger)
+        if (packetConfig.enabled && server.pluginManager.getPlugin("PacketEvents") == null) {
+            logger.warning("packetevents plugin not found on this server, packet layer will idle")
+        }
+    }
 
     override fun onEnable() {
         saveDefaultConfig()
@@ -225,6 +242,24 @@ class ServerCorePlugin : JavaPlugin() {
         // demo surface for the ui toolkit until real flows consume it everywhere
         server.pluginManager.registerEvents(JoinFlowListener(ui), this)
 
+        // packet layer: personal entity view foundation. attaches listeners only
+        // when packetevents is reachable, otherwise idles without breaking boot
+        val packetConfig = PacketConfig.load(config, logger)
+        val packets = PacketService(
+            plugin = this,
+            config = packetConfig,
+            store = WsSyncedViewStateStore(
+                CachedViewStateStore(
+                    ttlMillis = packetConfig.cacheTtlMillis,
+                    maxViewers = 1024,
+                    maxTargetsPerViewer = 512,
+                ),
+            ),
+            threads = PacketThreads(this),
+        )
+        packets.start()
+        packetService = packets
+
         // heartbeat keeps the backend's liveness picture fresh
         presenceService.startHeartbeat()
         client.start()
@@ -254,6 +289,8 @@ class ServerCorePlugin : JavaPlugin() {
     }
 
     override fun onDisable() {
+        // detach our listener first, the shared packetevents instance must outlive us
+        packetService?.stop()
         wsGateway?.stop()
         updater?.stop()
         restartSchedule?.stop()
