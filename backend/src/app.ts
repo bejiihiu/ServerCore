@@ -86,11 +86,17 @@ async function main(): Promise<void> {
   const logger: Logger = createLogger(config)
   const startedAt = Date.now()
 
+  // a fatal error during boot must exit: the graceful path below dereferences
+  // bindings that do not exist yet, so before this flips there is nothing to
+  // close and the only correct move is a clean nonzero exit
+  let booted = false
+
   process.on("unhandledRejection", (reason) => {
     logger.error({ err: reason }, "unhandled rejection")
   })
   process.on("uncaughtException", (err) => {
     logger.fatal({ err }, "uncaught exception")
+    if (!booted) process.exit(1)
     void shutdown("uncaughtException", 1)
   })
 
@@ -428,6 +434,7 @@ async function main(): Promise<void> {
   sweeper.unref()
 
   logger.info({ env: config.env }, "servercore backend started")
+  booted = true
 
   let shuttingDown = false
   async function shutdown(signal: string, exitCode = 0): Promise<void> {
