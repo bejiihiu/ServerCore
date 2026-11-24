@@ -15,6 +15,7 @@ import kz.bejiihiu.servercore.guest.LocalAccountCache
 import kz.bejiihiu.servercore.guest.LocalAccountResolver
 import kz.bejiihiu.servercore.guest.SnapshotStore
 import kz.bejiihiu.servercore.guest.WsAccountResolver
+import kz.bejiihiu.servercore.disguise.DisguiseStack
 import kz.bejiihiu.servercore.locale.LocaleService
 import kz.bejiihiu.servercore.ops.GithubReleaseClient
 import kz.bejiihiu.servercore.ops.GracefulRestarter
@@ -67,6 +68,7 @@ class ServerCorePlugin : JavaPlugin() {
     private var updater: UpdaterService? = null
     private var restartSchedule: RestartScheduleTask? = null
     private lateinit var opsBus: OpsEventBus
+    private var disguiseStack: DisguiseStack? = null
 
     override fun onEnable() {
         saveDefaultConfig()
@@ -225,6 +227,10 @@ class ServerCorePlugin : JavaPlugin() {
         // demo surface for the ui toolkit until real flows consume it everywhere
         server.pluginManager.registerEvents(JoinFlowListener(ui), this)
 
+        // packet disguise layer: client-only entities for the anti-esp
+        // visibility engine (the engine itself drives disguiseStack.applier)
+        disguiseStack = DisguiseStack.create(this, config, logger)
+
         // heartbeat keeps the backend's liveness picture fresh
         presenceService.startHeartbeat()
         client.start()
@@ -257,6 +263,7 @@ class ServerCorePlugin : JavaPlugin() {
         wsGateway?.stop()
         updater?.stop()
         restartSchedule?.stop()
+        disguiseStack?.shutdown()
         // belt and braces: async snapshot writes may still be in flight
         snapshots.shutdown()
         counter.shutdown()
