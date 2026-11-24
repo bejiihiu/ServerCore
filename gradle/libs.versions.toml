@@ -1,16 +1,35 @@
+# verified against upstream registries on 2026-11-24
 [versions]
-kotlin = "2.5.0-RC"
-
-folia-api = "26.3.build.+"
+# kotlin 2.5.0 stable is planned for dec 2026 — bump when it lands
+kotlin = "2.4.21"
+folia-api = "26.3.build.27-stable"
 minecraft = "26.3"
 
 shadow = "9.6.1"
 run-task = "3.1.0"
+foojay-resolver = "1.0.0"
+
+kotlinx-coroutines = "1.11.0"
+kotlinx-serialization = "1.13.0"
+packetevents = "2.14.0"
+luckperms = "5.5"
+placeholderapi = "2.12.3"
+flectonepulse = "1.15.2"
 
 [libraries]
 folia-api = { module = "dev.folia:folia-api", version.ref = "folia-api" }
-kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib-jdk8", version.ref = "kotlin" }
+kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
+
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+
+packetevents-spigot = { module = "com.github.retrooper:packetevents-spigot", version.ref = "packetevents" }
+luckperms-api = { module = "net.luckperms:api", version.ref = "luckperms" }
+placeholderapi = { module = "me.clip:placeholderapi", version.ref = "placeholderapi" }
+flectonepulse-api = { module = "net.flectone.pulse:api", version.ref = "flectonepulse" }
 
 [plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
 run-paper = { id = "xyz.jpenilla.run-paper", version.ref = "run-task" }
