@@ -29,7 +29,7 @@ type SentPrompt = { chatId: string; messageId: number; locale: Locale }
  * for the server info) and rewrites the prompt after a decision so the
  * buttons cannot be pressed twice.
  */
-export class TelegramAuthUi implements PromptSender {
+export class TelegramAuthUi {
   private api: Api | null
   private readonly logger: Logger
   private readonly defaultLocale: Locale
@@ -59,8 +59,8 @@ export class TelegramAuthUi implements PromptSender {
     if (api === null) this.sent.clear()
   }
 
-  /** PromptSender impl: false/throw means telegram was unreachable */
-  async send(request: PromptRequest): Promise<boolean> {
+  /** bound PromptSender: false/throw means telegram was unreachable */
+  readonly send: PromptSender = async (request) => {
     const api = this.api
     if (api === null) return false
 
@@ -92,7 +92,7 @@ export class TelegramAuthUi implements PromptSender {
    * telegram errors here are logged, never thrown — the decision itself is
    * already final at this point.
    */
-  async conclude(requestId: string, telegramId: string, outcomeKey: AuthOutcomeKey, player: string): Promise<void> {
+  async conclude(requestId: string, outcomeKey: AuthOutcomeKey, player: string): Promise<void> {
     const where = this.sent.get(requestId)
     this.sent.delete(requestId)
     const api = this.api

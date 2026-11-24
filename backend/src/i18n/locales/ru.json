@@ -1,0 +1,69 @@
+{
+  "common": {
+    "back": "Назад",
+    "cancel": "Отмена",
+    "confirm": "Подтвердить",
+    "refresh": "Обновить",
+    "loading": "Загрузка…",
+    "page": "{{current}} / {{total}}",
+    "empty": "Здесь пока ничего нет"
+  },
+  "menu": {
+    "title": "ServerCore",
+    "subtitle": "доступ на сервер",
+    "statusNotLinked": "Аккаунт не привязан",
+    "statusLinked": "Аккаунт привязан: {{nickname}}",
+    "hint": "Привязка идёт через персональную ссылку из игры: зайди на сервер — ссылка появится в игровом чате.",
+    "action": {
+      "status": "Статус сервера",
+      "account": "Мой аккаунт",
+      "help": "Помощь",
+      "refresh": "Обновить"
+    }
+  },
+  "start": {
+    "tokenAccepted": "Код привязки принят",
+    "tokenChecking": "Проверяю, что код выдан именно вам. Продолжение привязки появится в следующем шаге.",
+    "tokenInvalidTitle": "Ссылка недействительна",
+    "tokenInvalidHint": "Код привязки повреждён или устарел. Зайди на сервер заново — в игровом чате появится свежая персональная ссылка."
+  },
+  "status": {
+    "title": "Статус",
+    "state": {
+      "active": "Активен",
+      "pending": "Ожидает",
+      "attention": "Внимание",
+      "neutral": "Без статуса"
+    },
+    "unknown": "нет данных",
+    "account": "Аккаунт",
+    "accountNotLinked": "не привязан",
+    "accountLinked": "привязан: {{nickname}}",
+    "server": "Сервер",
+    "serverOnline": "онлайн",
+    "playersLabel": "Игроки",
+    "players": {
+      "one": "{{count}} игрок",
+      "few": "{{count}} игрока",
+      "many": "{{count}} игроков",
+      "other": "{{count}} игроков"
+    }
+  },
+  "account": {
+    "title": "Мой аккаунт",
+    "notLinkedTitle": "Аккаунт не привязан",
+    "notLinkedHint": "Чтобы играть на сервере, привяжи аккаунт: зайди на сервер — персональная ссылка появится в игровом чате.",
+    "fieldNickname": "Ник",
+    "fieldLinked": "Дата привязки",
+    "fieldRole": "Роль",
+    "noRole": "не указана",
+    "action": {
+      "refresh": "Обновить",
+      "status": "Статус"
+    }
+  },
+  "confirm": {
+    "defaultTitle": "Подтверждение",
+    "defaultBody": "Действие нельзя будет отменить."
+  }
+}

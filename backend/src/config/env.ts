@@ -58,6 +58,10 @@ const envSchema = z.object({
 
   // how often pending auth requests are swept for expiry and delivery retries
   AUTH_SWEEP_INTERVAL_MS: z.coerce.number().int().min(250).max(60_000).default(1_000),
+
+  // custom emoji entities need telegram premium on the bot owner (bot api 9.4);
+  // off by default, everything degrades to unicode fallbacks
+  BOT_CUSTOM_EMOJI: z.enum(["true", "false"]).default("false"),
 })
 
 export type AppConfig = {
@@ -88,6 +92,7 @@ export type AppConfig = {
   authRateLimitApprovalsPerTelegram: number
   authMessageEffectId?: string
   authSweepIntervalMs: number
+  botCustomEmoji: boolean
 }
 
 export class ConfigError extends Error {
@@ -158,5 +163,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     authRateLimitApprovalsPerTelegram: result.data.AUTH_RATE_LIMIT_APPROVALS_PER_TELEGRAM,
     authMessageEffectId: result.data.AUTH_MESSAGE_EFFECT_ID,
     authSweepIntervalMs: result.data.AUTH_SWEEP_INTERVAL_MS,
+    botCustomEmoji: result.data.BOT_CUSTOM_EMOJI === "true",
   }
 }

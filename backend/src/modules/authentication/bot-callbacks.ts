@@ -39,18 +39,12 @@ export function registerAuthCallbacks(
         ? await deps.auth.approve(parsed.token, telegramId, now)
         : await deps.auth.reject(parsed.token, telegramId, now)
 
-    const now = Date.now()
-    const outcome =
-      parsed.kind === "APPROVE"
-        ? await deps.auth.approve(parsed.token, telegramId, now)
-        : await deps.auth.reject(parsed.token, telegramId, now)
-
     await answer(ctx, outcomeKey(outcome), localeFor(ctx, deps.defaultLocale))
 
     const located = await deps.auth.locate(parsed.token, telegramId)
     if (located !== null) {
       const player = (await deps.auth.usernameForToken(parsed.token)) ?? "player"
-      await deps.ui.conclude(located.id, telegramId, outcomeKey(outcome), player)
+      await deps.ui.conclude(located.id, outcomeKey(outcome), player)
     }
   })
 }

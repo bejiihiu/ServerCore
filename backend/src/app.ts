@@ -23,9 +23,6 @@ import { RetentionService, mongoCollectionSizes } from "./modules/authentication
 import { AuthRequestModel } from "./database/models/auth-request.js"
 import { PlayerSessionModel } from "./database/models/session.js"
 
-/** how long a queued backend->plugin push waits for the link to come back */
-const OUTBOX_GIVE_UP_MS = 10 * 60_000
-
 async function main(): Promise<void> {
   let config: AppConfig
   try {
@@ -81,9 +78,9 @@ async function main(): Promise<void> {
       maxApprovalsPerTelegram: config.authRateLimitApprovalsPerTelegram,
     },
     logger,
-    push: async (serverId, type, payload, correlationId) => {
+    push: async (serverId, type, payload) => {
       try {
-        await gateway.sendTo(serverId, type, payload, { correlationId, awaitAck: true })
+        await gateway.sendTo(serverId, type, payload, { awaitAck: true })
         return true
       } catch (error) {
         logger.debug({ err: error, serverId, type }, "auth push not delivered, staying in outbox")
@@ -116,7 +113,7 @@ async function main(): Promise<void> {
       })
     },
     onGuestEnded: (event) => {
-      void authService.handleGuestEnded(event, Date.now()).catch((error) => {
+      void authService.handleGuestEnded(event).catch((error) => {
         logger.error({ err: error, uuid: event.minecraftUuid }, "guest end handling failed")
       })
     },

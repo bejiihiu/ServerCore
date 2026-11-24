@@ -1,11 +1,5 @@
-import {
-  ACTIVE_USER_STATUS,
-  type AuthRequestRecord,
-  type AuthenticationStore,
-  type SessionRecord,
-  type TerminalAuthStatus,
-  type UserRecord,
-} from "./persistence.js"
+import { ACTIVE_USER_STATUS, type SessionStatus } from "./persistence.js"
+import type { AuthRequestRecord, AuthenticationStore, SessionRecord, TerminalAuthStatus, UserRecord } from "./persistence.js"
 
 /**
  * process-local twin of the mongo store, byte-compatible semantics. serves
@@ -44,11 +38,11 @@ export class InMemoryAuthenticationStore implements AuthenticationStore {
     return { ...session }
   }
 
-  async closeOpenSession(minecraftUuid: string, endedAt: number): Promise<SessionRecord | null> {
+  async closeOpenSession(minecraftUuid: string): Promise<SessionRecord | null> {
     const session = this.sessions.get(minecraftUuid)
     if (!session) return null
     session.status = "DISCONNECTED"
-    session.endedAt = endedAt
+    session.endedAt = Date.now()
     this.sessions.delete(minecraftUuid)
     return { ...session }
   }
@@ -70,7 +64,7 @@ export class InMemoryAuthenticationStore implements AuthenticationStore {
   async claimPendingAuthRequest(
     id: string,
     status: TerminalAuthStatus,
-    now: number,
+    _now: number,
   ): Promise<AuthRequestRecord | null> {
     const request = this.requests.get(id)
     if (!request || request.status !== "PENDING") return null
@@ -83,7 +77,7 @@ export class InMemoryAuthenticationStore implements AuthenticationStore {
     if (request) request.deliveredAt = deliveredAt
   }
 
-  async cancelPendingForPlayer(minecraftUuid: string, now: number): Promise<number> {
+  async cancelPendingForPlayer(minecraftUuid: string, _now: number): Promise<number> {
     let cancelled = 0
     for (const request of this.requests.values()) {
       if (request.minecraftUuid === minecraftUuid && request.status === "PENDING") {
@@ -94,13 +88,14 @@ export class InMemoryAuthenticationStore implements AuthenticationStore {
     return cancelled
   }
 
-  async findPendingExpired(now: number): Promise<AuthRequestRecord[]> {
+  async findPendingExpired(): Promise<AuthRequestRecord[]> {
+    const now = Date.now()
     return [...this.requests.values()].filter(
       (r) => r.status === "PENDING" && r.expiresAt <= now,
     )
   }
 
-  async findPendingUndelivered(now: number): Promise<AuthRequestRecord[]> {
+  async findPendingUndelivered(): Promise<AuthRequestRecord[]> {
     return [...this.requests.values()].filter(
       (r) => r.status === "PENDING" && r.deliveredAt === null,
     )

@@ -1,4 +1,5 @@
-import type { AuthRequestStatus, SessionStatus } from "../../database/models/auth-request.js"
+import type { AuthRequestStatus } from "../../database/models/auth-request.js"
+import type { SessionStatus } from "../../database/models/session.js"
 
 export type { AuthRequestStatus, SessionStatus }
 
@@ -59,7 +60,7 @@ export interface AuthenticationStore {
   updateOpenSessionStatus(minecraftUuid: string, status: SessionStatus): Promise<SessionRecord | null>
 
   /** closes the open session as DISCONNECTED, idempotent, null when already closed */
-  closeOpenSession(minecraftUuid: string, endedAt: number): Promise<SessionRecord | null>
+  closeOpenSession(minecraftUuid: string): Promise<SessionRecord | null>
 
   // ---- auth requests ----
 
@@ -80,10 +81,10 @@ export interface AuthenticationStore {
   cancelPendingForPlayer(minecraftUuid: string, now: number): Promise<number>
 
   /** PENDING requests past their expiry, for the sweeper */
-  findPendingExpired(now: number): Promise<AuthRequestRecord[]>
+  findPendingExpired(): Promise<AuthRequestRecord[]>
 
   /** PENDING requests whose prompt never reached telegram, for retries */
-  findPendingUndelivered(now: number): Promise<AuthRequestRecord[]>
+  findPendingUndelivered(): Promise<AuthRequestRecord[]>
 
   // ---- users ----
 

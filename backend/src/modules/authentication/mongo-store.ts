@@ -58,10 +58,10 @@ export class MongoAuthenticationStore implements AuthenticationStore, RetentionS
     return doc ? toSessionRecord(doc) : null
   }
 
-  async closeOpenSession(minecraftUuid: string, endedAt: number): Promise<SessionRecord | null> {
+  async closeOpenSession(minecraftUuid: string): Promise<SessionRecord | null> {
     const doc = await PlayerSessionModel.findOneAndUpdate(
       { minecraftUuid, endedAt: null },
-      { $set: { status: "DISCONNECTED", endedAt: new Date(endedAt) } },
+      { $set: { status: "DISCONNECTED", endedAt: new Date() } },
       { new: true },
     ).lean()
     return doc ? toSessionRecord(doc) : null
@@ -90,7 +90,7 @@ export class MongoAuthenticationStore implements AuthenticationStore, RetentionS
   async claimPendingAuthRequest(
     id: string,
     status: TerminalAuthStatus,
-    now: number,
+    _now: number,
   ): Promise<AuthRequestRecord | null> {
     // the status filter is the whole one-time guarantee: exactly one caller
     // ever flips PENDING to a terminal state
@@ -109,7 +109,7 @@ export class MongoAuthenticationStore implements AuthenticationStore, RetentionS
     )
   }
 
-  async cancelPendingForPlayer(minecraftUuid: string, now: number): Promise<number> {
+  async cancelPendingForPlayer(minecraftUuid: string, _now: number): Promise<number> {
     const result = await AuthRequestModel.updateMany(
       { minecraftUuid, status: "PENDING" },
       { $set: { status: "CANCELLED" } },
@@ -117,14 +117,14 @@ export class MongoAuthenticationStore implements AuthenticationStore, RetentionS
     return result.modifiedCount
   }
 
-  async findPendingExpired(now: number): Promise<AuthRequestRecord[]> {
-    const docs = await AuthRequestModel.find({ status: "PENDING", expiresAt: { $lte: new Date(now) } })
+  async findPendingExpired(): Promise<AuthRequestRecord[]> {
+    const docs = await AuthRequestModel.find({ status: "PENDING", expiresAt: { $lte: new Date() } })
       .limit(100)
       .lean()
     return docs.map(toAuthRequestRecord)
   }
 
-  async findPendingUndelivered(now: number): Promise<AuthRequestRecord[]> {
+  async findPendingUndelivered(): Promise<AuthRequestRecord[]> {
     const docs = await AuthRequestModel.find({ status: "PENDING", deliveredAt: null }).limit(100).lean()
     return docs.map(toAuthRequestRecord)
   }

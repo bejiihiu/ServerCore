@@ -1,0 +1,6 @@
+{
+  "status.active": { "customEmojiId": "", "fallback": "🟢" },
+  "status.pending": { "customEmojiId": "", "fallback": "🟡" },
+  "status.attention": { "customEmojiId": "", "fallback": "🔴" },
+  "status.neutral": { "customEmojiId": "", "fallback": "⚪" }
+}

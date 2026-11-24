@@ -1,5 +1,6 @@
 import { randomHex, sha256Hex } from "../../utils/crypto.js"
-import { LINK_TOKEN_LENGTH, isValidLinkTokenFormat, randomToken } from "../../services/token-service.js"
+import { LINK_TOKEN_LENGTH, isValidLinkTokenFormat } from "../../services/token-service.js"
+import { randomToken } from "../../utils/crypto.js"
 import type { Logger } from "../../logging/logger.js"
 import { SlidingWindowLimiter } from "./rate-limiter.js"
 import type { AuthRequestRecord, AuthenticationStore, SessionRecord, SessionStatus } from "./persistence.js"
@@ -62,7 +63,11 @@ type QueuedPush = {
   type: BackendAuthType
   payload: PayloadOf<BackendAuthType>
   correlationId: string
+  queuedAt: number
 }
+
+/** how long a queued backend->plugin push waits for the link to come back */
+const OUTBOX_GIVE_UP_MS = 10 * 60_000
 
 export type AuthSessionStats = {
   activeSessions: number
@@ -155,7 +160,7 @@ export class AuthenticationService {
 
     // a join always starts a fresh game session: whatever open session
     // survived (a PLAYER_LEFT lost during a link blip) is stale by definition
-    await this.store.closeOpenSession(event.minecraftUuid, now)
+    await this.store.closeOpenSession(event.minecraftUuid)
     this.openSessions.delete(event.minecraftUuid)
     // cancel-on-new: any pending request from a previous session dies here
     await this.store.cancelPendingForPlayer(event.minecraftUuid, now)
@@ -195,7 +200,7 @@ export class AuthenticationService {
   }
 
   async handlePlayerLeft(minecraftUuid: string, now: number): Promise<void> {
-    await this.store.closeOpenSession(minecraftUuid, now)
+    await this.store.closeOpenSession(minecraftUuid)
     this.openSessions.delete(minecraftUuid)
     const cancelled = await this.store.cancelPendingForPlayer(minecraftUuid, now)
     if (cancelled > 0) {
@@ -225,14 +230,14 @@ export class AuthenticationService {
     this.openSessions.set(event.minecraftUuid, "GUEST")
   }
 
-  async handleGuestEnded(event: { minecraftUuid: string; reason: string }, now: number): Promise<void> {
+  async handleGuestEnded(event: { minecraftUuid: string; reason: string }): Promise<void> {
     if (event.reason === "AUTHENTICATED") {
       // approval already flipped the status; this is the plugin's confirmation
       await this.store.updateOpenSessionStatus(event.minecraftUuid, "AUTHENTICATED")
       this.openSessions.set(event.minecraftUuid, "AUTHENTICATED")
       return
     }
-    await this.store.closeOpenSession(event.minecraftUuid, now)
+    await this.store.closeOpenSession(event.minecraftUuid)
     this.openSessions.delete(event.minecraftUuid)
   }
 
@@ -325,7 +330,7 @@ export class AuthenticationService {
    * called on a timer by the wiring; safe to call at any rate.
    */
   async sweep(now: number): Promise<void> {
-    for (const request of await this.store.findPendingExpired(now)) {
+    for (const request of await this.store.findPendingExpired()) {
       const claimed = await this.store.claimPendingAuthRequest(request.id, "EXPIRED", now)
       if (!claimed) continue
       // the player keeps playing as guest after the window closes
@@ -344,7 +349,7 @@ export class AuthenticationService {
     }
 
     if (this.sendPrompt !== null) {
-      for (const request of await this.store.findPendingUndelivered(now)) {
+      for (const request of await this.store.findPendingUndelivered()) {
         await this.deliver(request)
       }
     }
@@ -473,13 +478,22 @@ export class AuthenticationService {
       type,
       payload,
       correlationId,
+      queuedAt: Date.now(),
     })
     this.logger.info({ serverId, type }, "game server link down, push queued for retry")
   }
 
   private async flushOutbox(): Promise<void> {
     if (this.outbox.size === 0) return
+    const now = Date.now()
     for (const [key, queued] of this.outbox) {
+      // a push older than the give-up window is dead weight: the next player
+      // event re-syncs the state anyway (idempotent join/guest reconciliation)
+      if (now - queued.queuedAt > OUTBOX_GIVE_UP_MS) {
+        this.outbox.delete(key)
+        this.logger.warn({ type: queued.type, serverId: queued.serverId }, "queued push expired unsent")
+        continue
+      }
       const sent = await this.push(queued.serverId, queued.type, queued.payload, queued.correlationId)
       if (sent) this.outbox.delete(key)
     }
