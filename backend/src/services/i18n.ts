@@ -510,6 +510,212 @@ const messages = {
     ru: "🗂 Коллекции: {sizes}",
     en: "🗂 Collections: {sizes}",
   },
+
+  // bot ui: shared bits every screen uses
+  "common.back": {
+    ru: "Назад",
+    en: "Back",
+  },
+  "common.refresh": {
+    ru: "Обновить",
+    en: "Refresh",
+  },
+  "common.loading": {
+    ru: "Загрузка…",
+    en: "Loading…",
+  },
+  "common.empty": {
+    ru: "Здесь пока ничего нет",
+    en: "Nothing here yet",
+  },
+
+  // bot ui: main menu
+  "menu.title": {
+    ru: "ServerCore",
+    en: "ServerCore",
+  },
+  "menu.subtitle": {
+    ru: "доступ на сервер",
+    en: "server access",
+  },
+  "menu.statusNotLinked": {
+    ru: "Аккаунт не привязан",
+    en: "Account not linked",
+  },
+  "menu.statusLinked": {
+    ru: "Аккаунт привязан: {nickname}",
+    en: "Account linked: {nickname}",
+  },
+  "menu.hint": {
+    ru: "Привязка идёт через персональную ссылку из игры: зайди на сервер — ссылка появится в игровом чате.",
+    en: "Linking goes through a personal link from the game: join the server and the link will appear in the game chat.",
+  },
+  "menu.action.status": {
+    ru: "Статус сервера",
+    en: "Server status",
+  },
+  "menu.action.account": {
+    ru: "Мой аккаунт",
+    en: "My account",
+  },
+  "menu.action.help": {
+    ru: "Помощь",
+    en: "Help",
+  },
+
+  // bot ui: status screen
+  "status.title": {
+    ru: "Статус",
+    en: "Status",
+  },
+  "status.unknown": {
+    ru: "нет данных",
+    en: "no data",
+  },
+  "status.account": {
+    ru: "Аккаунт",
+    en: "Account",
+  },
+  "status.accountNotLinked": {
+    ru: "не привязан",
+    en: "not linked",
+  },
+  "status.accountLinked": {
+    ru: "привязан: {nickname}",
+    en: "linked: {nickname}",
+  },
+  "status.server": {
+    ru: "Сервер",
+    en: "Server",
+  },
+  "status.serverOnline": {
+    ru: "онлайн",
+    en: "online",
+  },
+  "status.playersLabel": {
+    ru: "Игроки",
+    en: "Players",
+  },
+  "status.players.one": {
+    ru: "{count} игрок",
+    en: "{count} player",
+  },
+  "status.players.few": {
+    ru: "{count} игрока",
+    en: "{count} players",
+  },
+  "status.players.many": {
+    ru: "{count} игроков",
+    en: "{count} players",
+  },
+  "status.players.other": {
+    ru: "{count} игроков",
+    en: "{count} players",
+  },
+
+  // bot ui: account card
+  "account.title": {
+    ru: "Мой аккаунт",
+    en: "My account",
+  },
+  "account.notLinkedTitle": {
+    ru: "Аккаунт не привязан",
+    en: "Account not linked",
+  },
+  "account.notLinkedHint": {
+    ru: "Чтобы играть на сервере, привяжи аккаунт: зайди на сервер — персональная ссылка появится в игровом чате.",
+    en: "To play on the server, link your account: join the server and a personal link will appear in the game chat.",
+  },
+  "account.fieldNickname": {
+    ru: "Ник",
+    en: "Nickname",
+  },
+  "account.fieldLinked": {
+    ru: "Дата привязки",
+    en: "Linked on",
+  },
+  "account.fieldRole": {
+    ru: "Роль",
+    en: "Role",
+  },
+  "account.action.refresh": {
+    ru: "Обновить",
+    en: "Refresh",
+  },
+  "confirm.defaultTitle": {
+    ru: "Подтверждение",
+    en: "Confirmation",
+  },
+
+  // bot ui: login prompt
+  "auth.title": {
+    ru: "🔐 Авторизация на сервере",
+    en: "🔐 Server login",
+  },
+  "auth.player": {
+    ru: "Игрок: {player}",
+    en: "Player: {player}",
+  },
+  "auth.server": {
+    ru: "Сервер: {server}",
+    en: "Server: {server}",
+  },
+  "auth.detected": {
+    ru: "Обнаружена новая игровая сессия.",
+    en: "A new game session was detected.",
+  },
+  "auth.window": {
+    ru: "Подтверди вход — запрос действителен {seconds} сек.",
+    en: "Confirm the login — the request is valid for {seconds} s.",
+  },
+  "auth.info": {
+    ru: "Запрос привязан к текущей сессии и одноразовый. Если это был не ты — отклони вход: аккаунт останется в гостевом режиме и никто не получит доступ.",
+    en: "The request is bound to the current session and can be used once. If this was not you, reject the login: the account stays in guest mode and nobody gets access.",
+  },
+  "auth.approve": {
+    ru: "✅ Подтвердить вход",
+    en: "✅ Confirm login",
+  },
+  "auth.reject": {
+    ru: "❌ Отклонить",
+    en: "❌ Reject",
+  },
+  "auth.approved": {
+    ru: "✅ Вход подтверждён. Приятной игры, {player}.",
+    en: "✅ Login confirmed. Have a good game, {player}.",
+  },
+  "auth.rejected": {
+    ru: "❌ Вход отклонён. Игрок останется в гостевом режиме.",
+    en: "❌ Login rejected. The player stays in guest mode.",
+  },
+  "auth.alreadyProcessed": {
+    ru: "Этот запрос уже обработан.",
+    en: "This request has already been processed.",
+  },
+  "auth.expired": {
+    ru: "Запрос истёк. Зайди на сервер заново.",
+    en: "The request has expired. Join the server again.",
+  },
+  "auth.notYours": {
+    ru: "Это запрос не для твоего аккаунта.",
+    en: "This request belongs to another account.",
+  },
+  "auth.unknown": {
+    ru: "Запрос не найден или устарел.",
+    en: "The request was not found or is out of date.",
+  },
+  "auth.noActiveSession": {
+    ru: "Активной игровой сессии нет — подтверждать нечего.",
+    en: "There is no active game session to confirm.",
+  },
+  "auth.staleSession": {
+    ru: "Сессия изменилась, запрос устарел. Зайди на сервер заново.",
+    en: "The session has changed and the request is out of date. Join the server again.",
+  },
+  "auth.rateLimited": {
+    ru: "Слишком много попыток, попробуй позже.",
+    en: "Too many attempts, try again later.",
+  },
 } satisfies Record<string, Record<Locale, string>>
 
 export type MessageKey = keyof typeof messages
@@ -529,11 +735,52 @@ export function t(
 ): string {
   const entry = messages[key]
   if (!entry) return key
-  let text: string = entry[locale] ?? entry[DEFAULT_LOCALE]
-  for (const [name, value] of Object.entries(params)) {
-    text = text.replaceAll(`{${name}}`, String(value))
+  return interpolate(entry[locale] ?? entry[DEFAULT_LOCALE], params)
+}
+
+export type PluralForm = "one" | "few" | "many" | "other"
+
+/** plural families: the base key plus a form suffix stored as sibling entries */
+export type PluralKey = "status.players"
+
+/** ru follows the cldr one/few/many split, en only distinguishes one */
+function pluralForm(locale: Locale, count: number): PluralForm {
+  if (locale === "ru") {
+    if (!Number.isInteger(count)) return "other"
+    const mod100 = Math.abs(count) % 100
+    const mod10 = mod100 % 10
+    if (mod10 === 1 && mod100 !== 11) return "one"
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "few"
+    return "many"
   }
-  return text
+  if (!Number.isInteger(count)) return "other"
+  return count === 1 ? "one" : "other"
+}
+
+/**
+ * plural lookup: resolves `<key>.<form>` and injects {count}. falls back to
+ * `.other` so a family missing a form still renders instead of dying.
+ */
+export function tPlural(
+  locale: Locale,
+  key: PluralKey,
+  count: number,
+  params: Record<string, string | number> = {},
+): string {
+  const withCount = { ...params, count }
+  const entry =
+    messages[`${key}.${pluralForm(locale, count)}` as MessageKey] ??
+    messages[`${key}.other` as MessageKey]
+  if (!entry) return key
+  return interpolate(entry[locale] ?? entry[DEFAULT_LOCALE], withCount)
+}
+
+function interpolate(text: string, params: Record<string, string | number>): string {
+  let result = text
+  for (const [name, value] of Object.entries(params)) {
+    result = result.replaceAll(`{${name}}`, String(value))
+  }
+  return result
 }
 
 /** user language with config fallback */

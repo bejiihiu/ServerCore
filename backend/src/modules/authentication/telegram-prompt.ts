@@ -1,6 +1,6 @@
 import type { Api } from "grammy"
 import type { Logger } from "../../logging/logger.js"
-import { i18n } from "../../i18n/instance.js"
+import { i18n } from "../../i18n/index.js"
 import type { Translator } from "../../bot/ui/text/index.js"
 import { bold, expandableQuote, joinLines } from "../../bot/ui/text/index.js"
 import { actionRow, callbackData, type InlineKeyboardMarkup } from "../../bot/ui/keyboards/index.js"

@@ -1,13 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import ruDict from "../src/i18n/locales/ru.json"
-import { createI18n, ruPlural, type LocaleDict } from "../src/i18n/index.js"
+import { providerFor } from "../src/i18n/index.js"
 import { EmojiRegistry, createEmojiRenderer } from "../src/i18n/emoji.js"
 import { createTranslator } from "../src/bot/ui/text/index.js"
 import { mainMenuScreen, MENU_CALLBACK, statusScreen, accountCardScreen, confirmDialogScreen, paginatedListScreen, loadingScreen } from "../src/bot/ui/screens/index.js"
 import { escapeHtml } from "../src/bot/ui/text/index.js"
 
 function ui(): { t: ReturnType<typeof createTranslator>; e: ReturnType<typeof createEmojiRenderer> } {
-  const t = createTranslator(createI18n({ ru: ruDict as LocaleDict }, { defaultLocale: "ru", pluralRules: { ru: ruPlural } }))
+  const t = createTranslator(providerFor("ru"))
   const e = createEmojiRenderer(new EmojiRegistry(false))
   return { t, e }
 }

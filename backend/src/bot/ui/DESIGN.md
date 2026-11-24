@@ -121,13 +121,9 @@ do not render a button, so the menu never shows a dead end.
 
 ## sending layer
 
-`sendScreen` / `editScreen` / `editOrSendScreen` (48h-inaccessible messages
-fall back to a fresh send) / `sendEphemeralScreen` / `editEphemeralScreen` /
-`deleteEphemeralScreen`.
-
-ephemeral messages (bot api 10.2) — a reply visible to one user inside a
-group chat. use for private confirmations inside public flows (e.g. vote
-confirmation to the voter in the group). delivery is best-effort.
+`sendScreen` / `editScreen`. both carry the premium-gate fallback: when
+telegram answers 400 PREMIUM_ACCOUNT_REQUIRED the message is resent once with
+tg-emoji tags stripped and button icons removed.
 
 message effects (`message_effect_id`) are supported on `sendScreen` via
 `effectId` — ids come from the official effects list and belong in flow
@@ -135,27 +131,24 @@ config (celebration on approvals), not hardcoded in screens.
 
 ## i18n
 
-- texts live in `src/i18n/locales/<locale>.json`, keys namespaced
-  `menu.*`, `account.*`, `status.*`, `common.*`, `start.*`, `confirm.*`.
-- ru is the canonical seed; new locales register at runtime via
-  `i18n.addLocale` (github-hosted files later, no call-site changes).
-- placeholders `{{name}}`; missing keys and missing params throw — a broken
-  string must fail loudly in tests, not ship as "{{nickname}}".
-- pluralization per locale rule (`ruPlural`: one/few/many/other, CLDR).
-- the bot consumes only `Translator` (escape-on-typing); raw `I18nProvider`
-  is for non-html consumers (plugin locale push).
-- boundary with `src/services/i18n.ts`: that file is the ops-notification
-  key map (flat `{name}` placeholders, ru/en inline, owned by the ops flows).
-  interactive screens go through `src/i18n/` (structured dictionaries,
-  pluralization, escaping). do not mix the two in one screen; consolidation
-  is tracked in POLISH.md.
+- every bot string lives in the single message store, `src/services/i18n.ts`
+  (flat keys, ru + en inline). keys are namespaced `menu.*`, `account.*`,
+  `status.*`, `common.*`, `auth.*`, `confirm.*`.
+- screens get a locale-pinned `I18nProvider` from `src/i18n/`, never a raw
+  locale, so a screen cannot render the wrong language.
+- placeholders are `{name}`; an unknown key renders as the key itself so a
+  gap is visible instead of shipping an empty message.
+- pluralization is `tPlural` over a sibling family (`status.players.one`,
+  `.few`, `.many`, `.other`), routed by the locale's CLDR rule.
+- the bot consumes `Translator` (escapes every substituted value); the raw
+  `I18nProvider` is for non-html consumers.
 
 ## layering
 
 ```
 flows (commands, conversations, service logic)
   → screens/keyboards (pure data: { text, markup })
-  → sending.ts (sendScreen/editScreen/ephemeral — interactive path)
+  → sending.ts (sendScreen/editScreen — interactive path)
   → NotificationService + GrammySender (broadcast path, plain text via
     renderPlainText, rate-limited)
 ```

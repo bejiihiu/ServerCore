@@ -369,7 +369,7 @@ describe("telegram ui", () => {
   test("prompt screen carries styled buttons and the expandable blockquote", async () => {
     const { promptScreen } = await import("../src/modules/authentication/telegram-prompt.js")
     const { createTranslator } = await import("../src/bot/ui/text/index.js")
-    const { i18n } = await import("../src/i18n/instance.js")
+    const { i18n } = await import("../src/i18n/index.js")
     const t = createTranslator(i18n)
     const screen = promptScreen(
       { id: "r1", minecraftUuid: UUID, telegramId: "1", username: "bejiihiu", token: "AbCdEfGhIjKlMnOp", expiresInSeconds: 75 },
