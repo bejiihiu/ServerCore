@@ -34,6 +34,29 @@ class LocaleServiceTest {
     }
 
     @Test
+    fun `bundled seed resolves every key the ui kit surfaces use`() {
+        val service = LocaleService(temp, logger)
+        val uiKeys = listOf(
+            "tablist.header",
+            "tablist.footer",
+            "guest.welcome.title",
+            "guest.welcome.subtitle",
+            "guest.welcome.card",
+            "auth.window",
+            "auth.prompt.card",
+            "auth.pulse",
+            "auth.expired",
+        )
+        for (key in uiKeys) {
+            // a missing key renders as the key itself, which players would see
+            assertTrue(key != service.text(key), "locale seed is missing ui key: $key")
+        }
+        // regression guard: the auth card lives at auth.prompt.card; a nested
+        // map under auth.prompt would silently render the bare key again
+        assertFalse(service.snapshot().containsKey("auth.prompt"))
+    }
+
+    @Test
     fun `push replaces the store and persists to disk`() {
         val service = LocaleService(temp, logger)
         val pushed = "greeting:\n  line: \"<info>новая волна</info>\"\n"
