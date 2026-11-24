@@ -1,0 +1,49 @@
+# english strings. mini-message tags allowed (<bold>, <gold>, <click>, ...).
+# edit freely in the plugin data folder, missing keys fall back to this file.
+guest:
+  welcome:
+    title: "<gold>You are in guest mode</gold>"
+    subtitle: "<gray>Explore freely, gameplay unlocks after registration</gray>"
+  welcome-back:
+    title: "<gold>Welcome back, guest</gold>"
+    subtitle: "<gray>Your original spot was restored</gray>"
+  link-prompt:
+    - "<gray>To get access to the server you need to</gray>"
+    - "<gray>register through Telegram.</gray>"
+    - ""
+    - "<aqua>Telegram:</aqua> <click:open_url:'{link}'><underlined><gold>{link}</gold></underlined></click>"
+  restriction:
+    actionbar: "<red>Guest mode: interaction is locked. Use <bold>/link</bold> to register</red>"
+  reminder:
+    actionbar: "<gray>Waiting for registration — </gray><gold>{link}</gold>"
+  limit:
+    warning:
+      title: "<red>Guest limit reached</red>"
+      subtitle: "<gray>Register to keep exploring</gray>"
+    chat:
+      - "<red>You have used all {limit} guest sessions.</red>"
+      - "<gray>Register through the bot to play:</gray>"
+      - "<gold>{link}</gold>"
+  kick:
+    limit:
+      - "<red>Guest session limit reached ({limit}).</red>"
+      - "<gray>To play on the server, register via Telegram:</gray>"
+      - "<gold>{link}</gold>"
+    banned:
+      - "<red>Your access to this server is restricted.</red>"
+      - "<gray>If you believe this is a mistake, contact the administration.</gray>"
+    disabled:
+      - "<red>This server requires registration.</red>"
+      - "<gray>Register via Telegram to join:</gray>"
+      - "<gold>{link}</gold>"
+# keys for later phases, kept here so both sides agree on the names early
+auth:
+  waiting:
+    actionbar: "<gray>Waiting for login confirmation in Telegram...</gray>"
+  approved:
+    title: "<green>Welcome!</green>"
+    subtitle: "<gray>Authorization confirmed</gray>"
+  rejected:
+    title: "<red>Authorization denied</red>"
+  expired:
+    actionbar: "<yellow>Login request expired, use <bold>/link</bold> to try again</yellow>"
