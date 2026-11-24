@@ -2,6 +2,8 @@
 
 > Closed-community Survival server infrastructure — Telegram-driven admission, passwordless login, and a hardened, Folia-native runtime.
 
+**Project status:** pre-release. No tagged release has been published yet, so the release-based steps below describe the intended production path once one exists — until then, run the backend and build the plugin from source. Builds are identified as `build-<commitCount>-<shortSha>`, not a semantic version. See [CHANGELOG.md](CHANGELOG.md) for the change history.
+
 ![CI](https://github.com/bejiihiu/ServerCore/actions/workflows/ci.yml/badge.svg)
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.x-7F52FF?logo=kotlin&logoColor=white)
 ![Java](https://img.shields.io/badge/Java-25-007396?logo=openjdk&logoColor=white)
@@ -98,8 +100,10 @@ A detailed, step-by-step walkthrough with real configuration examples lives in [
 | [Admission](docs/admission.md) | Linking, applications, voting, quorum, invites |
 | [Authentication](docs/authentication.md) | Passwordless login flow |
 | [Security](docs/security.md) | Threat model, tokens, command protection |
+| [UI design system](docs/ui-design-system.md) | In-game theme tokens, typography, layout rules |
 | [FAQ](docs/faq.md) | Common questions |
+| [Changelog](CHANGELOG.md) | Unreleased change history and versioning scheme |
 
 ## License
 
-[MIT](LICENSE) — copyright 2026 bejiihiu.
+[Proprietary](LICENSE) — copyright 2026 bejiihiu. All rights reserved.

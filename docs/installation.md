@@ -2,6 +2,8 @@
 
 This guide walks through a full deployment: MongoDB, the backend, the Telegram bot, and the Folia server with the plugin. All commands are examples — adjust paths and names to your environment.
 
+> **Pre-release note.** No tagged `build-*` release has been published yet, so the release-bundle paths below describe what a published release will look like. Until the first one exists, deploy the backend from source and build the plugin jar locally.
+
 ## Prerequisites
 
 - A Linux host (or container) for the backend
