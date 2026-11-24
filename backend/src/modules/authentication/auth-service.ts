@@ -1,8 +1,7 @@
-import { randomHex, sha256Hex } from "../../utils/crypto.js"
+import { randomHex, randomToken, sha256Hex } from "../../utils/crypto.js"
 import { LINK_TOKEN_LENGTH, isValidLinkTokenFormat } from "../../services/token-service.js"
-import { randomToken } from "../../utils/crypto.js"
 import type { Logger } from "../../logging/logger.js"
-import { SlidingWindowLimiter } from "./rate-limiter.js"
+import { RateLimiter } from "../../utils/rate-limiter.js"
 import type { AuthRequestRecord, AuthenticationStore, SessionRecord, SessionStatus } from "./persistence.js"
 import type { PayloadOf } from "../../websocket/protocol/message-types.js"
 
@@ -93,9 +92,9 @@ export class AuthenticationService {
   private readonly push: BackendPush
   private readonly sendPrompt: PromptSender | null
 
-  private readonly joinLimiter: SlidingWindowLimiter
-  private readonly promptLimiter: SlidingWindowLimiter
-  private readonly approvalLimiter: SlidingWindowLimiter
+  private readonly joinLimiter: RateLimiter
+  private readonly promptLimiter: RateLimiter
+  private readonly approvalLimiter: RateLimiter
 
   /** pushes that failed because the game server link was down, retried by sweep */
   private readonly outbox = new Map<string, QueuedPush>()
@@ -123,17 +122,17 @@ export class AuthenticationService {
     this.logger = deps.logger
     this.push = deps.push
     this.sendPrompt = deps.sendPrompt
-    this.joinLimiter = new SlidingWindowLimiter({
+    this.joinLimiter = new RateLimiter({
       windowMs: deps.config.rateLimitWindowMs,
-      maxEvents: deps.config.maxRequestsPerPlayer,
+      limit: deps.config.maxRequestsPerPlayer,
     })
-    this.promptLimiter = new SlidingWindowLimiter({
+    this.promptLimiter = new RateLimiter({
       windowMs: deps.config.rateLimitWindowMs,
-      maxEvents: deps.config.maxRequestsPerTelegram,
+      limit: deps.config.maxRequestsPerTelegram,
     })
-    this.approvalLimiter = new SlidingWindowLimiter({
+    this.approvalLimiter = new RateLimiter({
       windowMs: deps.config.rateLimitWindowMs,
-      maxEvents: deps.config.maxApprovalsPerTelegram,
+      limit: deps.config.maxApprovalsPerTelegram,
     })
   }
 

@@ -17,7 +17,7 @@ import { ApplicationService } from "../src/services/application-service.js"
 import { VotingService } from "../src/services/voting-service.js"
 import { GroupService } from "../src/services/group-service.js"
 import { VotingScheduler } from "../src/services/voting-scheduler.js"
-import { RateLimiter } from "../src/services/rate-limiter.js"
+import { RateLimiter } from "../src/utils/rate-limiter.js"
 import { NotificationService } from "../src/services/notification-service.js"
 import { AdmissionNotifier } from "../src/services/admission-notifier.js"
 import { StaticRecipients } from "../src/services/recipients.js"
@@ -82,7 +82,7 @@ function build(opts: { groupChatId?: number | null; linkedRecipients?: string[];
     audit,
     telegram,
     notifier,
-    rateLimiter: new RateLimiter(10, 60_000, clock),
+    rateLimiter: new RateLimiter({ limit: 10, windowMs: 60_000 }),
     clock,
     cooldownMs: THREE_MONTHS,
     votingDurationMs: VOTING_MS,

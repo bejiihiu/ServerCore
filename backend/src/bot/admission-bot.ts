@@ -5,7 +5,7 @@ import type { AppConfig } from "../config/env.js"
 import type { Logger } from "../logging/logger.js"
 import type { AdmissionRepositories } from "../database/repos.js"
 import { systemClock } from "../services/clock.js"
-import { RateLimiter } from "../services/rate-limiter.js"
+import { RateLimiter } from "../utils/rate-limiter.js"
 import { ApplicationService } from "../services/application-service.js"
 import { VotingService } from "../services/voting-service.js"
 import { GroupService } from "../services/group-service.js"
@@ -66,11 +66,10 @@ export function registerAdmissionFlows(
     audit: repos.audit,
     telegram,
     notifier,
-    rateLimiter: new RateLimiter(
-      config.applicationStartLimit,
-      config.applicationStartWindowMs,
-      systemClock,
-    ),
+    rateLimiter: new RateLimiter({
+      limit: config.applicationStartLimit,
+      windowMs: config.applicationStartWindowMs,
+    }),
     clock: systemClock,
     cooldownMs: 90 * 24 * 3_600_000, // three months, per the re-application rule
     votingDurationMs: config.votingDurationMs,
