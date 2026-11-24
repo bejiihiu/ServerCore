@@ -168,14 +168,27 @@ class SpecAuditTrail(
             drainScheduled = true
         }
         io.execute {
-            drainScheduled = false
-            if (closed) {
-                // close() does the final flush itself
-                return@execute
+            try {
+                // drain until the buffer stays empty: records that land
+                // mid-drain are picked up by the next pass of this same task,
+                // never by a second concurrent one - two overlapping appends
+                // to the same day file can interleave mid-line
+                while (!closed) {
+                    val failed = runCatching { drainBlocking() }.exceptionOrNull()
+                    if (failed != null) {
+                        // entries stay buffered, the next record() retries;
+                        // no hot retry loop against a dead disk
+                        System.err.println("servercore: spec audit drain failed: $failed")
+                        break
+                    }
+                    if (synchronized(drainLock) { buffer.isEmpty() }) break
+                }
+            } finally {
+                drainScheduled = false
             }
-            runCatching { drainBlocking() }.onFailure { error ->
-                System.err.println("servercore: spec audit drain failed: $error")
-            }
+            // a record between the last empty check and the flag reset was
+            // skipped by scheduleDrain; give it one more pass
+            if (!closed && synchronized(drainLock) { buffer.isNotEmpty() }) scheduleDrain()
         }
     }
 

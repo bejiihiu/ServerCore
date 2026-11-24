@@ -92,17 +92,20 @@ class SessionCoordinator(
         effects.beginObservation(adminId, target, session) { succeeded ->
             // the ACTIVE flip must be atomic with the ownership check: exit()
             // flips to ENDING under the same lock, so a session that already
-            // ended can never be resurrected here
+            // ended can never be resurrected here. the started report rides
+            // the same critical section on purpose: ended is sent under that
+            // lock too, so the wire can never see SPEC_ENDED slip in before
+            // SPEC_STARTED when an exit races a settling start.
             val transitioned = lock.withLock {
                 if (succeeded && sessions[adminId] === session && session.phase != SessionPhase.ENDING) {
                     session.phase = SessionPhase.ACTIVE
+                    reports?.started(session)
                     true
                 } else {
                     false
                 }
             }
             if (succeeded && transitioned) {
-                reports?.started(session)
                 listeners.forEach { it.onStarted(session) }
                 onSettled(true)
             } else if (transitioned || lock.withLock { sessions[adminId] === session }) {
@@ -129,7 +132,7 @@ class SessionCoordinator(
      * already-ending session is a NoSession, never a double restore.
      */
     fun exit(adminId: UUID, reason: ExitReason): ExitOutcome {
-        val (session, settled) = lock.withLock {
+        val (session, _) = lock.withLock {
             val active = sessions[adminId] ?: return ExitOutcome.NoSession
             // only sessions the world actually accepted were reported as
             // started; the rest get no end report, nothing was ever announced
@@ -137,6 +140,9 @@ class SessionCoordinator(
             active.phase = SessionPhase.ENDING
             sessions.remove(adminId)
             if (observers[active.targetId] === adminId) observers.remove(active.targetId)
+            // under the same lock that flips the phase: started is also sent
+            // under it, so ended can never overtake started for one session
+            if (wasSettled) reports?.ended(active, reason)
             active to wasSettled
         }
         // listeners first: the packet restore and the viewer close must not
@@ -144,7 +150,6 @@ class SessionCoordinator(
         // sanction grant has to exist before the gamemode event fires
         listeners.forEach { it.onEnded(session, reason) }
         effects.endObservation(session, reason)
-        if (settled) reports?.ended(session, reason)
         return ExitOutcome.Ended
     }
 
