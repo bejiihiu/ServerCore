@@ -260,11 +260,14 @@ describe("auth ↔ ops ↔ spec ↔ stats integration seams", () => {
     expect(snap.counters.pendingAuths).toBe(0)
   })
 
-  test("reconnect after a crash alert announces the all-clear to admins", async () => {
+  test("reconnect after a crash alert announces the all-clear to admins and the recovery line to users", async () => {
     const { notifications, sent } = recordingNotifications()
     const ops = new OpsNotifier({ notifications, adminChatIds: ["777"], locale: "en", logger: logger() })
 
     await ops.serverBack("game-1")
-    expect(sent).toEqual([{ chatId: "777", text: "✅ Server game-1 is back online." }])
+    expect(sent).toEqual([
+      { chatId: "777", text: "✅ Server game-1 is back online." },
+      { chatId: "777", text: "✅ The server is up and running. Have fun!" },
+    ])
   })
 })

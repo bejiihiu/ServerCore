@@ -197,6 +197,7 @@ async function main(): Promise<void> {
       {
         banChatMember: (chatId, userId) => kickApi(sharedApi).banChatMember(chatId, userId),
         unbanChatMember: (chatId, userId, options) => kickApi(sharedApi).unbanChatMember(chatId, userId, options),
+        revokeChatInviteLink: (chatId, link) => kickApi(sharedApi).revokeChatInviteLink(chatId, link),
       },
       config.telegramGroupChatId,
     ),
