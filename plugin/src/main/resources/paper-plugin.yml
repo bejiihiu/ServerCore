@@ -1,12 +1,23 @@
 name: ServerCore
-description: $description
-version: '${version}'
-
-main: kz.bejiihiu.serverCore.Main
-bootstrapper: kz.bejiihiu.serverCore.MainBootstrap
-loader: kz.bejiihiu.serverCore.MainLoader
+version: ${version}
+main: kz.bejiihiu.servercore.ServerCorePlugin
+description: ${description}
 api-version: '26.3'
+folia-supported: true
 load: POSTWORLD
 
+# packetevents must be up before us (its listeners hook the netty pipeline first).
+# flectonepulse is a soft pair — moderation lives there, we only read its api.
+dependencies:
+  server:
+    PacketEvents:
+      load: BEFORE
+      required: true
+      join-classpath: true
+    FlectonePulse:
+      load: BEFORE
+      required: false
+      join-classpath: true
+
 authors: [ bejiihiu.xs ]
-website: https://devfolia.t.me/
+website: https://github.com/bejiihiu/ServerCore
