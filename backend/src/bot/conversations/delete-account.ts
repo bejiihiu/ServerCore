@@ -25,12 +25,12 @@ export async function deleteAccountConversation(
 
   await ctx.reply(t(locale, "bot.delete.confirm"), { reply_markup: deleteConfirmKeyboard((key) => t(locale, key)) })
 
-  const answer = await conversation.waitForCallbackQuery([CALLBACK.linkConfirm, CALLBACK.linkCancel], {
+  const answer = await conversation.waitForCallbackQuery([CALLBACK.deleteConfirm, CALLBACK.deleteCancel], {
     otherwise: (nonAnswer) => nonAnswer.reply(t(locale, "bot.delete.confirm")),
   })
   await answer.answerCallbackQuery()
 
-  if (answer.callbackQuery.data === CALLBACK.linkCancel) {
+  if (answer.callbackQuery.data === CALLBACK.deleteCancel) {
     await ctx.reply(t(locale, "bot.link.cancelled"))
     return
   }

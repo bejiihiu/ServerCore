@@ -72,6 +72,7 @@ function build(opts: { groupChatId?: number | null; linkedRecipients?: string[];
     notifications,
     adminChatIds: ADMIN_IDS,
     locale: "ru",
+    logger: { info() {}, warn() {}, debug() {}, error() {} } as never,
   })
 
   const applications_ = new ApplicationService({

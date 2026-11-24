@@ -98,10 +98,13 @@ export class GrammYTelegramApi implements TelegramApi {
     keyboard?: InlineKeyboard,
     opts?: { effectId?: string },
   ): Promise<VotingMessageInfo | null> {
+    // the effect is decoration: an invalid id (or lost premium) must not take
+    // the whole notification down, so it is retried once without it
+    const effect = opts?.effectId
     try {
       const message = await this.api.sendMessage(Number(telegramId), text, {
         reply_markup: toGrammYMarkup(keyboard),
-        ...(opts?.effectId ? { message_effect_id: opts.effectId } : {}),
+        ...(effect ? { message_effect_id: effect } : {}),
       })
       return {
         applicationId: "",
@@ -110,8 +113,25 @@ export class GrammYTelegramApi implements TelegramApi {
         messageId: message.message_id,
         kind: "group",
       }
-    } catch {
+    } catch (err) {
+      if (effect) {
+        try {
+          const message = await this.api.sendMessage(Number(telegramId), text, {
+            reply_markup: toGrammYMarkup(keyboard),
+          })
+          return {
+            applicationId: "",
+            telegramId,
+            chatId: message.chat.id,
+            messageId: message.message_id,
+            kind: "group",
+          }
+        } catch {
+          return null
+        }
+      }
       // user blocked the bot or the id is stale — nothing to deliver to
+      void err
       return null
     }
   }

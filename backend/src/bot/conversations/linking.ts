@@ -8,6 +8,8 @@ import type { AccountService } from "../../modules/account/account-service.js"
 /** the linking conversation needs the account service and nothing else */
 export type LinkingConversationDeps = {
   accounts: AccountService
+  /** locale for users whose account does not exist yet (ops default) */
+  fallbackLanguage: Locale
 }
 
 const FAILURE_KEYS: Record<LinkFailureReason, "bot.link.fail_token" | "bot.link.fail_frozen" | "bot.link.fail_already_linked" | "bot.link.fail_ownership" | "bot.link.fail_offline" | "bot.link.fail_rate_limited" | "bot.link.fail_not_found"> = {
@@ -39,10 +41,10 @@ export async function linkingConversation(
   })
   if (from.id === undefined) return
 
-  // language preference lives on the account; default until it exists
+  // language preference lives on the account; ops default until it exists
   const locale: Locale = await conversation.external(async () => {
     const existing = await deps.accounts.getByTelegramId(String(from.id))
-    return existing?.language ?? "ru"
+    return existing?.language ?? deps.fallbackLanguage
   })
 
   await ctx.reply(t(locale, "bot.link.prompt", { username }), { reply_markup: linkingKeyboard((key) => t(locale, key)) })

@@ -24,7 +24,13 @@ export function registerBotRoutes(bot: Bot<BotContext>, deps: BotDeps): void {
     createConversation<BotContext, BotContext>(
       (conversation, ctx, token?: string, username?: string) => {
         if (token === undefined || username === undefined) return Promise.resolve()
-        return linkingConversation(conversation, ctx, { accounts: deps.accounts }, token, username)
+        return linkingConversation(
+          conversation,
+          ctx,
+          { accounts: deps.accounts, fallbackLanguage: deps.defaultLanguage },
+          token,
+          username,
+        )
       },
       { id: "linking" },
     ),
@@ -42,7 +48,12 @@ export function registerBotRoutes(bot: Bot<BotContext>, deps: BotDeps): void {
 
   bot.command("start", async (ctx) => handleStartCommand(ctx, deps))
   bot.command("status", async (ctx) => handleStatusCommand(ctx, deps))
-  bot.command("help", async (ctx) => ctx.reply(t(deps.defaultLanguage, "bot.help")))
+  // /help answers in the user's language when the account already exists
+  bot.command("help", async (ctx) => {
+    const telegramId = ctx.from?.id
+    const account = telegramId === undefined ? null : await deps.accounts.getByTelegramId(String(telegramId))
+    await ctx.reply(t(account?.language ?? deps.defaultLanguage, "bot.help"))
+  })
   bot.command("stats", async (ctx) => handleStatsCommand(ctx, deps))
 
   // language toggle button on the account screen
@@ -74,7 +85,12 @@ export function registerBotRoutes(bot: Bot<BotContext>, deps: BotDeps): void {
     const account = await deps.accounts.getByTelegramId(String(telegramId))
     await ctx.answerCallbackQuery()
     if (account === null || !account.telegramLinked) return
-    await ctx.conversation.enter("delete-account", account)
+    try {
+      await ctx.conversation.enter("delete-account", account)
+    } catch {
+      // another conversation already owns this chat — entering throws
+      await ctx.reply(t(deps.defaultLanguage, "bot.conversation.busy"))
+    }
   })
 }
 
@@ -98,7 +114,12 @@ export async function handleStartCommand(ctx: BotContext, deps: BotDeps): Promis
     return
   }
 
-  await ctx.conversation.enter("linking", result.token, preview.username)
+  try {
+    await ctx.conversation.enter("linking", result.token, preview.username)
+  } catch {
+    // another conversation already owns this chat — entering throws
+    await ctx.reply(t(locale, "bot.conversation.busy"))
+  }
 }
 
 /** /status — the account screen */
@@ -126,7 +147,7 @@ async function renderAccountScreen(ctx: BotContext, deps: BotDeps, locale: Local
         account.telegramLinked ? "bot.account.telegram_linked" : "bot.account.telegram_not_linked",
       ),
     }),
-    { reply_markup: accountKeyboard((key) => t(account.language, key)) },
+    { reply_markup: accountKeyboard((key) => t(account.language, key), account.language) },
   )
 }
 
@@ -200,6 +221,12 @@ export async function handleStatsCommand(ctx: BotContext, deps: BotDeps): Promis
     }
   }
 
+  // both sources absent (no gateway wire and no mongo): say so instead of
+  // sending an empty message, which telegram rejects
+  if (lines.length === 0) {
+    await ctx.reply(t(locale, "bot.stats.no_mongo"))
+    return
+  }
   await ctx.reply(lines.join("\n"))
 }
 
@@ -215,7 +242,7 @@ function formatDuration(totalSeconds: number): string {
 }
 
 function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} Б`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }

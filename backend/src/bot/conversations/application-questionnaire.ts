@@ -30,6 +30,48 @@ function submitKeyboard(lang: Lang): InlineKeyboard {
   ]
 }
 
+/** minimal update shape the classifiers look at */
+type RawUpdate = {
+  callbackQuery?: { data?: string }
+  message?: { text?: string }
+}
+
+/**
+ * how an update waiting for a questionnaire answer is treated. commands get
+ * their own kinds: without this, the conversation would swallow /cancel (and
+ * every other command) and store it as the answer text.
+ */
+export type QuestionInput =
+  | { kind: "CANCEL_BUTTON" }
+  | { kind: "CANCEL_COMMAND" }
+  | { kind: "OTHER_COMMAND" }
+  | { kind: "ANSWER"; text: string }
+
+export function classifyQuestionInput(update: RawUpdate): QuestionInput | null {
+  if (update.callbackQuery?.data === CANCEL_DATA) return { kind: "CANCEL_BUTTON" }
+  const text = update.message?.text
+  if (typeof text !== "string") return null // stickers, photos, other buttons
+  const trimmed = text.trim()
+  if (trimmed === "/cancel") return { kind: "CANCEL_COMMAND" }
+  if (trimmed.startsWith("/")) return { kind: "OTHER_COMMAND" }
+  return { kind: "ANSWER", text }
+}
+
+/** same for the summary screen: submit/cancel buttons or a /cancel command */
+export type SummaryInput =
+  | { kind: "SUBMIT_BUTTON" }
+  | { kind: "CANCEL_BUTTON" }
+  | { kind: "CANCEL_COMMAND" }
+  | { kind: "OTHER_TEXT" }
+
+export function classifySummaryInput(update: RawUpdate): SummaryInput | null {
+  if (update.callbackQuery?.data === SUBMIT_DATA) return { kind: "SUBMIT_BUTTON" }
+  if (update.callbackQuery?.data === CANCEL_DATA) return { kind: "CANCEL_BUTTON" }
+  if (typeof update.message?.text !== "string") return null
+  if (update.message.text.trim() === "/cancel") return { kind: "CANCEL_COMMAND" }
+  return { kind: "OTHER_TEXT" }
+}
+
 /**
  * builds the questionnaire conversation builder, closing over the services
  * (conversation args must stay json-serializable, so services travel via
@@ -61,19 +103,32 @@ export function createApplicationConversation(deps: QuestionnaireDeps) {
         reply_markup: toGrammYMarkup(cancelKeyboard(lang)),
       })
 
+      // commands must never be swallowed as an answer text: /cancel cancels,
+      // every other command gets a hint and drops through to its handler
       const update = await conversation.waitUntil(
-        (c) => c.callbackQuery?.data === CANCEL_DATA || typeof c.message?.text === "string",
+        (c) => classifyQuestionInput(c) !== null,
+        { otherwise: (nonAnswer) => void nonAnswer.reply(t(lang, "app.answerNonText")) },
       )
+      const input = classifyQuestionInput(update)
+      if (input === null) continue
 
-      if (update.callbackQuery?.data === CANCEL_DATA) {
+      if (input.kind === "CANCEL_BUTTON") {
         await ctx.answerCallbackQuery()
         await conversation.external(() => deps.applications.cancelDraft(telegramId))
         await ctx.reply(t(lang, "app.cancelled"))
         return
       }
+      if (input.kind === "CANCEL_COMMAND") {
+        await conversation.external(() => deps.applications.cancelDraft(telegramId))
+        await ctx.reply(t(lang, "app.cancelled"))
+        return
+      }
+      if (input.kind === "OTHER_COMMAND") {
+        await ctx.reply(t(lang, "app.commandHint"))
+        continue
+      }
 
-      const raw = update.message?.text ?? ""
-      const saved = await conversation.external(() => deps.applications.saveDraftStep(telegramId, index, raw))
+      const saved = await conversation.external(() => deps.applications.saveDraftStep(telegramId, index, input.text))
       if (!saved.ok) {
         if (saved.reason === "NO_DRAFT") return // draft vanished mid-flow
         await ctx.reply(answerValidationErrorText(saved.reason, lang))
@@ -91,13 +146,23 @@ export function createApplicationConversation(deps: QuestionnaireDeps) {
       reply_markup: toGrammYMarkup(submitKeyboard(lang)),
     })
 
-    const choice = await conversation.waitForCallbackQuery([SUBMIT_DATA, CANCEL_DATA])
-    await ctx.answerCallbackQuery()
-    if (choice.callbackQuery.data === CANCEL_DATA) {
+    // summary wait: buttons or /cancel; anything else gets a nudge instead
+    // of vanishing into a silent swallow
+    const choiceUpdate = await conversation.waitUntil(
+      (c) => classifySummaryInput(c) !== null,
+      { otherwise: (nonAnswer) => void nonAnswer.reply(t(lang, "app.buttonHint")) },
+    )
+    const choice = classifySummaryInput(choiceUpdate)
+    if (choice === null) return
+    if (choice.kind === "SUBMIT_BUTTON" || choice.kind === "CANCEL_BUTTON") {
+      await ctx.answerCallbackQuery()
+    }
+    if (choice.kind === "CANCEL_BUTTON" || choice.kind === "CANCEL_COMMAND") {
       await conversation.external(() => deps.applications.cancelDraft(telegramId))
       await ctx.reply(t(lang, "app.cancelled"))
       return
     }
+    if (choice.kind === "OTHER_TEXT") return
 
     // submit + voting publication in one side-effecting step: the group
     // message and the notifications must not re-run on replays

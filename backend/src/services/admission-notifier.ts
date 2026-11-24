@@ -2,6 +2,7 @@ import type { Locale } from "./i18n.js"
 import { t } from "./i18n.js"
 import type { NotificationService } from "./notification-service.js"
 import { formatResultLine } from "./voting-format.js"
+import type { Logger } from "../logging/logger.js"
 
 /**
  * admission-side facade over the shared NotificationService: key lifecycle
@@ -16,6 +17,7 @@ export class AdmissionNotifier {
       notifications: NotificationService | null
       adminChatIds: string[]
       locale: Locale
+      logger: Logger
     },
   ) {}
 
@@ -85,7 +87,7 @@ export class AdmissionNotifier {
     await this.notifyAdmins(
       t(this.deps.locale, "admission.admin.member_kicked", {
         username: input.username,
-        kicked: input.kicked ? "да" : "нет",
+        kicked: input.kicked ? t(this.deps.locale, "admission.admin.yes") : t(this.deps.locale, "admission.admin.no"),
         revoked: input.revoked,
       }),
     )
@@ -109,12 +111,14 @@ export class AdmissionNotifier {
         // identical copy: the broadcast already includes the admin chats
         await this.deps.notifications.broadcast(userText, this.deps.adminChatIds)
       } else {
-        // distinct wording: users get the dm text, admins their own copy
+        // distinct wording: admins get only their copy, they are linked users
+        // too and the broadcast would deliver the user text a second time
+        await this.deps.notifications.notifyAdmins(adminText, this.deps.adminChatIds)
         await this.deps.notifications.broadcast(userText)
-        await this.notifyAdmins(adminText)
       }
-    } catch {
+    } catch (err) {
       // a failed notification must never break the admission flow itself
+      this.deps.logger.warn({ err }, "admission broadcast failed")
     }
   }
 
@@ -122,8 +126,9 @@ export class AdmissionNotifier {
     if (this.deps.notifications === null) return
     try {
       await this.deps.notifications.notifyAdmins(text, this.deps.adminChatIds)
-    } catch {
+    } catch (err) {
       // best effort by design
+      this.deps.logger.warn({ err }, "admission admin notify failed")
     }
   }
 }
