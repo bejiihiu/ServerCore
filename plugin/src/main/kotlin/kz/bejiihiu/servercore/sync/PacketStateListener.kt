@@ -31,7 +31,14 @@ class PacketStateListener(
 
     @EventHandler(priority = EventPriority.MONITOR)
     fun onJoin(event: PlayerJoinEvent) {
-        sync.onTransition(SyncReason.RECONNECT, event.player.uniqueId)
+        val uuid = event.player.uniqueId
+        // identity registration first: the reuse guard needs the (uuid, entity
+        // id) binding before anything re-applies state against it. a fresh
+        // connection binds a new id (generation bump evicts stale owners), the
+        // join event runs on the thread that owns the player, and an entity id
+        // is a stable int for the life of the connection
+        sync.onIdentityRegistered(identities.register(uuid, event.player.entityId))
+        sync.onTransition(SyncReason.RECONNECT, uuid)
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
