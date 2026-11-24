@@ -1,0 +1,14 @@
+# backend gateway connection. real values go on the game server only,
+# never in the repo.
+backend:
+  # ws:// for local, wss:// in production (tls terminates at the proxy)
+  url: "ws://127.0.0.1:8081/ws"
+  # unique id of this game server, mirrors SERVERCORE_SERVER_CREDENTIALS key
+  server-id: "game-1"
+  # per-server hmac secret, >= 32 chars, same value as on the backend
+  secret: "replace-with-long-random-secret"
+  # reconnect backoff: starts at initial, doubles up to max, with jitter
+  reconnect-initial-seconds: 1
+  reconnect-max-seconds: 60
+  # periodic liveness message cadence
+  heartbeat-interval-seconds: 15

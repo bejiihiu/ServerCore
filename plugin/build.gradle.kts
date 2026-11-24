@@ -29,11 +29,14 @@ dependencies {
     // when used so shadow bundles it (the server has no coroutines at runtime)
     compileOnly(libs.kotlinx.coroutines.core)
 
-    // dto layer will use this later; compileOnly until something actually serializes at runtime
-    compileOnly(libs.kotlinx.serialization.json)
+    // dto layer serializes at runtime: the websocket payloads ride on it
+    implementation(libs.kotlinx.serialization.json)
 
     // folia ships no kotlin at runtime, so the stdlib has to ride inside the fat jar
     implementation(libs.kotlin.stdlib)
+
+    // cross-implementation protocol tests (test source set only)
+    testImplementation(kotlin("test"))
 }
 
 kotlin {
@@ -48,6 +51,13 @@ runPaper {
 tasks {
     build {
         dependsOn(shadowJar)
+    }
+
+    withType<Test> {
+        useJUnitPlatform()
+        testLogging {
+            events("failed", "passed")
+        }
     }
 
     withType<RunServer> {

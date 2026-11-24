@@ -23,10 +23,11 @@ Every message, in both directions, shares one envelope:
   timestamp: number     // epoch millis, sender clock
   correlationId?: string // set when the message answers an earlier one
   payload: <T>          // type-specific body, validated by schema
+  hmac: string          // hmac-sha256 over the canonical json of the frame minus the hmac field
 }
 ```
 
-`correlationId` links a response to the request that caused it — auth approvals answer specific auth requests, command results answer specific commands.
+The `hmac` is computed over the **canonical json** of the envelope without the hmac field: object keys sorted recursively at every level, compact separators, exactly what both implementations hash. `correlationId` links a response to the request that caused it — session-check results answer specific probes.
 
 ## Message types
 
@@ -69,6 +70,9 @@ Every message, in both directions, shares one envelope:
 | `APPLICATION_APPROVED` | backend → plugin | Application accepted; account may become ACTIVE |
 | `APPLICATION_REJECTED` | backend → plugin | Application rejected |
 | `ACCOUNT_DELETED` | backend → plugin | Account removed; any live session must be terminated |
+| `LINK_TOKEN` | backend → plugin | A fresh one-time deep-link token for a joined player; the game chat shows the personal bot link |
+| `SESSION_CHECK` | backend → plugin | Ownership probe: is this UUID in the game right now? |
+| `SESSION_CHECK_RESULT` | plugin → backend | Probe answer carrying the live session state |
 
 ### Administration
 
@@ -82,10 +86,11 @@ Every message, in both directions, shares one envelope:
 ```text
 plugin                              backend
   | --- WS connect (WSS) -----------> |
-  | --- SERVER_STATUS + HMAC ------>  |
-  |                                  verifies signature, timestamp, nonce
-  |                                  checks server identity against registry
-  | <--- SERVER_STATUS ack --------- |
+  |      ?server=<id>&ts=<ms>&nonce=<n>&sig=<hmac>
+  |                                  verifies hmac over server|ts|nonce
+  |                                  BEFORE upgrade (replay-guarded nonce)
+  | --- SERVER_STATUS (hello) -----> |  identity + current load
+  | <--- ACK ----------------------- |
   | --- SERVER_HEARTBEAT (periodic) ->|
 ```
 
