@@ -491,17 +491,17 @@ class ServerCorePlugin : JavaPlugin() {
         // spawns/data + tab removal), and comes back intact on session end.
         // the session side (command, audit, permission ordering) lives in the
         // spec-core module; both meet at the SpecSessionSource seam over this registry
-        val specConfig = SpecObserverConfig.load(config, logger)
-        val specSessions = SpecSessionRegistry()
-        val traceFilter = TraceFilter(specConfig.traceRadius, specConfig.suppressActionBar)
-        val hider = ObserverHider(this, packets, specSessions, traceFilter, syncStates = viewStates)
-        val traceListener = SpecTraceListener(specSessions, packets.registry, hider::poseOf, traceFilter)
+        val observerConfig = SpecObserverConfig.load(config, logger)
+        val observerSessions = SpectatorSpecSessionRegistry()
+        val traceFilter = TraceFilter(observerConfig.traceRadius, observerConfig.suppressActionBar)
+        val hider = ObserverHider(this, packets, observerSessions, traceFilter, syncStates = viewStates)
+        val traceListener = SpecTraceListener(observerSessions, packets.registry, hider::poseOf, traceFilter)
         if (packets.register(traceListener)) {
             specTraceListener = traceListener
         } else {
             logger.warning("packet layer idle, hidden observer suppression inactive")
         }
-        server.pluginManager.registerEvents(SpecResyncListener(hider, specSessions), this)
+        server.pluginManager.registerEvents(SpecResyncListener(hider, observerSessions), this)
         specHider = hider
 
         // anti-esp visibility engine; guests flag flows in so guest-viewing-guest
@@ -513,13 +513,13 @@ class ServerCorePlugin : JavaPlugin() {
                 this,
                 espConfig,
                 guests = sessions::isRestricted,
-                spec = SpecObserverSource { specSessions.isObserver(it) },
+                spec = SpecObserverSource { observerSessions.isObserver(it) },
             ).also { it.start() }
             // the spec applier wraps whatever the engine had (the no-op until
             // the packet writer registers itself): observer pairs are forced
             // hidden, everything else passes straight through
             esp?.let { module ->
-                module.engine.applier = SpecViewStateApplier(specSessions, hider, module.engine.applier)
+                module.engine.applier = SpecViewStateApplier(observerSessions, hider, module.engine.applier)
             }
         }
 
