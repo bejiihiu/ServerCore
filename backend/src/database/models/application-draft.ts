@@ -29,6 +29,8 @@ const applicationDraftSchema = new Schema<ApplicationDraft>(
 )
 
 applicationDraftSchema.index({ telegramId: 1 }, { unique: true })
+// abandoned drafts die on their own: untouched for 30 days = never coming back
+applicationDraftSchema.index({ updatedAt: 1 }, { expireAfterSeconds: 30 * 86_400 })
 
 export const ApplicationDraftModel = model<ApplicationDraft>(
   "ApplicationDraft",

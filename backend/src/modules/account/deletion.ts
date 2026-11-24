@@ -3,6 +3,7 @@ import type { Logger } from "../../logging/logger.js"
 import type { Gateway } from "../../websocket/gateway.js"
 import type { AuditRepository, AuthRequestRepository, SessionRepository, TelegramLinkRepository, UserRepository } from "./repository.js"
 import { AccountError } from "./types.js"
+import { GroupInviteModel } from "../../database/models/group-invite.js"
 import type { NotificationFanout } from "../notification/notification-port.js"
 import { t, type Locale } from "../../services/i18n.js"
 
@@ -58,6 +59,7 @@ export class BotApiTelegramGroupPort implements TelegramGroupPort {
   private readonly api: {
     banChatMember(chatId: string | number, userId: number): Promise<unknown>
     unbanChatMember(chatId: string | number, userId: number, options?: { only_if_banned?: boolean }): Promise<unknown>
+    revokeChatInviteLink(chatId: string | number, link: string): Promise<unknown>
   }
   private readonly chatId: string
 
@@ -65,6 +67,7 @@ export class BotApiTelegramGroupPort implements TelegramGroupPort {
     api: {
       banChatMember(chatId: string | number, userId: number): Promise<unknown>
       unbanChatMember(chatId: string | number, userId: number, options?: { only_if_banned?: boolean }): Promise<unknown>
+      revokeChatInviteLink(chatId: string | number, link: string): Promise<unknown>
     },
     chatId: string,
   ) {
@@ -88,11 +91,22 @@ export class BotApiTelegramGroupPort implements TelegramGroupPort {
   }
 
   async revokeUnusedInvites(telegramId: string): Promise<number> {
-    // one-time invite links (created on approval, see the admission phase)
-    // will be tracked by the telegram-group module; until that module exists
-    // no invite can be outstanding, so the count is honestly zero
-    void telegramId
-    return 0
+    // the one-time invite links issued for this account at approval time:
+    // revoke what is still live through the api, then flip the db status.
+    // an api failure does not stop the flip — the link dies at its expiry
+    // anyway, and the db record must not keep claiming the invite is usable
+    const issued = await GroupInviteModel.find({ telegramId, status: "ISSUED" }).lean()
+    let revoked = 0
+    for (const invite of issued) {
+      try {
+        await this.api.revokeChatInviteLink(invite.chatId, invite.url)
+      } catch {
+        // already gone or already used — the db status flip still happens
+      }
+      await GroupInviteModel.updateOne({ name: invite.name }, { $set: { status: "REVOKED" } })
+      revoked += 1
+    }
+    return revoked
   }
 }
 

@@ -22,6 +22,9 @@ const conversationStateSchema = new Schema<ConversationState>(
 )
 
 conversationStateSchema.index({ key: 1 }, { unique: true })
+// dead conversation state (bot killed mid-flow, chat never returned) expires
+// after 30 days of silence; active flows bump updatedAt on every step
+conversationStateSchema.index({ updatedAt: 1 }, { expireAfterSeconds: 30 * 86_400 })
 
 export const ConversationStateModel = model<ConversationState>(
   "ConversationState",
