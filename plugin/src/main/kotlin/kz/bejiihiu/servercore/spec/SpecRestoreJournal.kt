@@ -58,7 +58,11 @@ class SpecRestoreJournal(path: java.nio.file.Path, io: Executor) {
 
     fun remove(adminId: UUID) {
         if (entries.remove(adminId) != null) {
-            file.write(entries.values.toList())
+            // blocking write on purpose: the remove has to stay sequenced
+            // against the shutdown flush, an async write here can be dropped
+            // by the seq guard (or rejected after the io pool is gone) and
+            // leaves a stale entry that replays on the next join
+            file.writeNow(entries.values.toList())
         }
     }
 

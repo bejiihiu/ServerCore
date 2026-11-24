@@ -62,4 +62,25 @@ class SpecRestoreJournalTest {
         assertNull(reloaded.pending(admin))
         assertTrue(Files.exists(dir.resolve("journal.json")))
     }
+
+    @Test
+    fun `remove after the io pool shut down still cleans the file`() {
+        // regression: the async write of a remove racing the shutdown flush
+        // used to be dropped (seq guard) or rejected (io pool gone), leaving a
+        // stale entry in the file that replayed on the next join and yanked
+        // the admin back to their pre-session position
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val journal = SpecRestoreJournal(dir.resolve("journal-async.json"), executor)
+        val admin = UUID.randomUUID()
+        journal.put(record(admin))
+
+        // like onDisable: pool no longer accepts new work, queued put still runs
+        executor.shutdown()
+        journal.remove(admin)
+
+        assertNull(journal.pending(admin))
+        val reloaded = SpecRestoreJournal(dir.resolve("journal-async.json"), Runnable::run)
+        reloaded.load()
+        assertNull(reloaded.pending(admin))
+    }
 }
