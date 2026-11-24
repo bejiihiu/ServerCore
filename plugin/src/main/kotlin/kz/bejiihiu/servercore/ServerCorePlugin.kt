@@ -370,6 +370,10 @@ class ServerCorePlugin : JavaPlugin() {
 
         snapshots = SnapshotStore(dataFolder.toPath().resolve(guestConfig.snapshotStoragePath), io)
         snapshots.load()
+        // with restore-on-restart off the leftover snapshots of a previous run
+        // are dropped here, otherwise they would still restore on the next
+        // join through the store itself and the flag would do nothing
+        if (!guestConfig.restoreOnRestart) snapshots.clearPending()
 
         counter = GuestSessionCounter(dataFolder.toPath().resolve("guest-session-counts.json"), io)
         counter.load()
