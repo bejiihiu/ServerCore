@@ -121,7 +121,13 @@ class GuestSessionService(
         cancelLoops(uuid)
         lastSweepFix.remove(uuid)
         shownLinks.remove(uuid)
-        registry.remove(uuid)?.let { session ->
+        registry.remove(uuid) {
+            // re-checked under the start mutex: between the cheap identity
+            // check above and this removal a same-uuid rejoin may have
+            // slipped in, and its fresh session must survive
+            val nowLive = runCatching { Bukkit.getPlayer(uuid) }.getOrNull()
+            nowLive == null || nowLive === player
+        }?.let { session ->
             // session ended by leaving, the snapshot stays durable for the next join
             sendEnvelope(
                 messageEnvelope(
@@ -139,7 +145,13 @@ class GuestSessionService(
         // latch + budget reset under the start mutex: approval beats an
         // in-flight session start and no increment can land after the reset
         registry.approve(uuid) { counter.reset(uuid) }
-        val player = Bukkit.getPlayer(uuid) ?: return
+        val player = Bukkit.getPlayer(uuid) ?: run {
+            // the player is already gone: the latch must not outlive the
+            // session, otherwise the next join of the same (nickname-derived)
+            // uuid walks in pre-approved without a fresh backend verdict
+            registry.clearAuthorization(uuid)
+            return
+        }
         onPlayerThread(player) { ungateAuthenticated(player) }
     }
 
@@ -188,6 +200,9 @@ class GuestSessionService(
     private fun requestResolution(player: Player) {
         val uuid = player.uniqueId
         val future = accounts.resolve(uuid, player.name)
+        // registered before the callback: a synchronous resolver (local
+        // fallback) completes the future before whenComplete is attached,
+        // and the map entry must not outlive the resolution
         pendingResolves[uuid] = future
         future.whenComplete { status, _ ->
             pendingResolves.remove(uuid, future)

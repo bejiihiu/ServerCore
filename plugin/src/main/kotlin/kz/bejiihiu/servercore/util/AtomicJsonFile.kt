@@ -17,8 +17,10 @@ import kotlin.io.path.name
  * blocks a region thread. reads are only meant for startup.
  *
  * durability rules: a failed write is retried a few times before it is given
- * up as lost (a quit racing a save must still land), and a corrupt file is
- * quarantined at startup instead of boot-failing the plugin.
+ * up as lost (a quit racing a save must still land), a corrupt file is
+ * quarantined at startup instead of boot-failing the plugin, and every write
+ * carries a sequence number so a stale async flush can never land after a
+ * newer one (a shutdown flush must not be rolled back by a queued write).
  */
 class AtomicJsonFile<T>(
     private val file: Path,
@@ -32,6 +34,10 @@ class AtomicJsonFile<T>(
 ) {
 
     private val writeLock = ReentrantLock()
+    private val sequence = java.util.concurrent.atomic.AtomicLong()
+
+    /** newest sequence whose write was accepted, guarded by writeLock */
+    private var newest = 0L
 
     /**
      * blocking read for startup only, null when the file is missing or
@@ -52,12 +58,25 @@ class AtomicJsonFile<T>(
 
     /** replaces the file content asynchronously with retry, failures are logged not thrown */
     fun write(value: T) {
-        io.execute { writeWithRetry(value) }
+        val seq = sequence.incrementAndGet()
+        io.execute { writeVersioned(value, seq) }
     }
 
     /** blocking variant for shutdown, serializes against in-flight async writes */
     fun writeNow(value: T) {
-        writeWithRetry(value)
+        writeVersioned(value, sequence.incrementAndGet())
+    }
+
+    /** writes unless a newer value already took over, older flushes never win */
+    private fun writeVersioned(value: T, seq: Long) {
+        writeLock.lock()
+        try {
+            if (seq < newest) return
+            newest = seq
+            writeWithRetry(value)
+        } finally {
+            writeLock.unlock()
+        }
     }
 
     private fun writeWithRetry(value: T) {

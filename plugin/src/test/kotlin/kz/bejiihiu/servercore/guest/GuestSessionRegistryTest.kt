@@ -143,4 +143,27 @@ class GuestSessionRegistryTest {
 
         assertEquals("s", registry.start(uuid) { snapshot("s") }?.sessionId)
     }
+
+    @Test
+    fun `a guarded remove never tears down a session started after the check`() {
+        val registry = GuestSessionRegistry()
+        val uuid = UUID.randomUUID()
+        registry.start(uuid) { snapshot("old") }
+
+        // the quit's identity check passed, but a same-uuid rejoin took the
+        // slot over before the removal: the fresh session must survive
+        assertNull(registry.remove(uuid) { false })
+        assertTrue(registry.contains(uuid))
+        assertEquals("old", registry.get(uuid)?.sessionId)
+    }
+
+    @Test
+    fun `a guarded remove still works when the identity check holds`() {
+        val registry = GuestSessionRegistry()
+        val uuid = UUID.randomUUID()
+        registry.start(uuid) { snapshot("old") }
+
+        assertEquals("old", registry.remove(uuid) { true }?.sessionId)
+        assertFalse(registry.contains(uuid))
+    }
 }

@@ -63,6 +63,13 @@ class SnapshotStore(path: Path, io: Executor) {
 
     fun pendingAll(): Map<UUID, StoredSnapshot> = entries.toMap()
 
+    /** restore-on-restart off: snapshots left by a previous run are dropped, not restored */
+    fun clearPending() {
+        if (entries.isEmpty()) return
+        entries.clear()
+        flush()
+    }
+
     /** final synchronous flush for onDisable */
     fun shutdown() {
         file.writeNow(SnapshotFile(snapshots = entries.mapKeys { (uuid, _) -> uuid.toString() }))

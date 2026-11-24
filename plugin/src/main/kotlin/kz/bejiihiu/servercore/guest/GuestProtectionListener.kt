@@ -18,6 +18,7 @@ import org.bukkit.event.player.PlayerDropItemEvent
 import org.bukkit.event.player.PlayerGameModeChangeEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerPortalEvent
+import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.inventory.InventoryHolder
 
 /**
@@ -92,11 +93,24 @@ class GuestProtectionListener(
         }
     }
 
-    /** block interaction and item use both come through here (right/left click) */
+    /**
+     * block interaction and item use both come through here; the two config
+     * toggles split by action: clicks on blocks (and physical triggers like
+     * pressure plates) are block-interaction, clicks into the air are item-use
+     */
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     fun onInteract(event: PlayerInteractEvent) {
-        if (!config.restrictions.blockInteraction) return
-        if (restricted(event.player.uniqueId)) {
+        if (!config.restrictions.blockInteraction && !config.restrictions.itemUse) return
+        if (!restricted(event.player.uniqueId)) return
+        val usesBlock = when (event.action) {
+            org.bukkit.event.block.Action.LEFT_CLICK_BLOCK,
+            org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK,
+            org.bukkit.event.block.Action.PHYSICAL,
+            -> true
+            else -> false
+        }
+        val blocked = if (usesBlock) config.restrictions.blockInteraction else config.restrictions.itemUse
+        if (blocked) {
             event.isCancelled = true
             hint(event.player)
         }
@@ -193,6 +207,12 @@ class GuestProtectionListener(
             event.isCancelled = true
             hint(player)
         }
+    }
+
+    /** the cooldown map must not grow for the whole uptime */
+    @EventHandler(priority = EventPriority.MONITOR)
+    fun onQuit(event: PlayerQuitEvent) {
+        hintCooldown.remove(event.player.uniqueId)
     }
 
     private fun isContainer(holder: InventoryHolder): Boolean =

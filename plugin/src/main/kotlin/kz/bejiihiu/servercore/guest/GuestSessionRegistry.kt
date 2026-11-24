@@ -32,6 +32,15 @@ class GuestSessionRegistry {
 
     fun remove(uuid: UUID): GuestSession? = sessions.remove(uuid)
 
+    /**
+     * removes only while [stillLive] holds, evaluated under the start mutex.
+     * a quit racing a same-uuid rejoin must never tear down the fresh
+     * session the new client just started.
+     */
+    fun remove(uuid: UUID, stillLive: () -> Boolean): GuestSession? = synchronized(lock) {
+        if (stillLive()) sessions.remove(uuid) else null
+    }
+
     fun isAuthorized(uuid: UUID): Boolean = uuid in authorized
 
     /**

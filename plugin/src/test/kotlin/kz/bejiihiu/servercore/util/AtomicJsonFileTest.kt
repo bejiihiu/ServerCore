@@ -99,4 +99,21 @@ class AtomicJsonFileTest {
         newFile("state.json", attempts = 2, delayMs = 1).write(Sample("lost", 1))
         assertFalse(Files.isRegularFile(path), "the write never replaced the obstruction")
     }
+
+    @Test
+    fun `a newer writeNow is never rolled back by a queued async write`() {
+        val path = dir.resolve("state.json")
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val file = AtomicJsonFile(path, Sample.serializer(), pool, json)
+            file.write(Sample("older", 1))
+            file.writeNow(Sample("final", 2))
+            pool.shutdown()
+            assertTrue(pool.awaitTermination(5, TimeUnit.SECONDS))
+
+            assertEquals(Sample("final", 2), newFile("state.json").read())
+        } finally {
+            pool.shutdownNow()
+        }
+    }
 }
