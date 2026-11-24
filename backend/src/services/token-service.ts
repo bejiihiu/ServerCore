@@ -1,4 +1,4 @@
-import { randomToken, safeEqualHex, sha256Hex } from "../utils/crypto.js"
+import { randomToken, sha256Hex } from "../utils/crypto.js"
 
 /** link tokens are 16 chars of [A-Za-z0-9], as the deep-link format requires */
 export const LINK_TOKEN_LENGTH = 16
@@ -118,9 +118,4 @@ export class InMemoryTokenStore implements TokenStore {
   get size(): number {
     return this.tokens.size
   }
-}
-
-/** constant-time token hash comparison for flows that verify without lookup */
-export function compareTokenHash(token: string, tokenHash: string): boolean {
-  return safeEqualHex(sha256Hex(token), tokenHash)
 }

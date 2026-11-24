@@ -228,9 +228,6 @@ async function main(): Promise<void> {
   // spec audit trail: every observation start/end the plugin reports lands in
   // audit_logs (kind "spec"). the collection has no ttl index — the retention
   // job below purges it together with the rest of the audit rows at 90d
-  // spec audit trail: every observation start/end the plugin reports lands in
-  // audit_logs (kind "spec"). the collection has no ttl index — the retention
-  // job below purges it together with the rest of the audit rows at 90d
   const specAudit = new SpecAuditService({ sink: new MongoAuditRepository(), logger })
 
   // one join = one pipeline: the account row first (the auth flow only ever
