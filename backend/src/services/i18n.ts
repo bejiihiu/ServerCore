@@ -86,6 +86,7 @@ const messages = {
     ru: "состояние неизвестно",
     en: "state unknown",
   },
+<<<<<<< HEAD
 
   // admission: questionnaire
   "app.intro": {
@@ -469,6 +470,11 @@ const messages = {
   "account.status.SUSPENDED": { ru: "Заморожен", en: "Suspended" },
   "account.status.BANNED": { ru: "Заблокирован", en: "Banned" },
   "account.status.DELETION_PENDING": { ru: "Ожидает удаления", en: "Pending deletion" },
+
+  "ops.stats.collections": {
+    ru: "🗂 Коллекции: {sizes}",
+    en: "🗂 Collections: {sizes}",
+  },
 } satisfies Record<string, Record<Locale, string>>
 
 export type MessageKey = keyof typeof messages

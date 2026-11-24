@@ -43,6 +43,11 @@ type PlayerCountPatch = Pick<ServerRuntimeStatus, "onlinePlayers" | "maxPlayers"
 export type LifecycleHooks = {
   /** fires only when the explicit ops state actually changes, not on every status frame */
   onStateChange?: (serverId: string, state: ServerState, previous: ServerState | undefined) => void
+  /** player lifecycle events, consumed by the authentication module */
+  onPlayerJoined?: (event: { minecraftUuid: string; username: string; serverId: string }) => void
+  onPlayerLeft?: (event: { minecraftUuid: string; username?: string; reason: string }) => void
+  onGuestStarted?: (event: { minecraftUuid: string; username: string; sessionId: string }, serverId: string) => void
+  onGuestEnded?: (event: { minecraftUuid: string; sessionId: string; reason: string }) => void
 }
 
 /** wires the lifecycle handlers that exist at skeleton stage: presence tracking */
@@ -86,19 +91,30 @@ export function registerLifecycleHandlers(
     mergeCounts(connection.serverId, envelope.payload)
   })
 
-  registry.register("PLAYER_JOINED", (envelope: Envelope<"PLAYER_JOINED">) => {
+  registry.register("PLAYER_JOINED", (envelope: Envelope<"PLAYER_JOINED">, connection) => {
     logger.info({ uuid: envelope.payload.minecraftUuid, username: envelope.payload.username }, "player joined")
+    hooks.onPlayerJoined?.({
+      minecraftUuid: envelope.payload.minecraftUuid,
+      username: envelope.payload.username,
+      serverId: connection.serverId,
+    })
   })
 
   registry.register("PLAYER_LEFT", (envelope: Envelope<"PLAYER_LEFT">) => {
     logger.info({ uuid: envelope.payload.minecraftUuid, reason: envelope.payload.reason }, "player left")
+    hooks.onPlayerLeft?.({
+      minecraftUuid: envelope.payload.minecraftUuid,
+      username: envelope.payload.username,
+      reason: envelope.payload.reason,
+    })
   })
 
-  registry.register("GUEST_STARTED", (envelope: Envelope<"GUEST_STARTED">) => {
+  registry.register("GUEST_STARTED", (envelope: Envelope<"GUEST_STARTED">, connection) => {
     logger.info(
       { uuid: envelope.payload.minecraftUuid, sessionId: envelope.payload.sessionId },
       "guest session started",
     )
+    hooks.onGuestStarted?.(envelope.payload, connection.serverId)
   })
 
   registry.register("GUEST_ENDED", (envelope: Envelope<"GUEST_ENDED">) => {
@@ -106,6 +122,7 @@ export function registerLifecycleHandlers(
       { uuid: envelope.payload.minecraftUuid, sessionId: envelope.payload.sessionId, reason: envelope.payload.reason },
       "guest session ended",
     )
+    hooks.onGuestEnded?.(envelope.payload)
   })
 }
 

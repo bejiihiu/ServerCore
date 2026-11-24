@@ -30,6 +30,7 @@ import { GrammySender } from "./services/telegram-sender.js"
 import { OpsNotifier, eventForState } from "./services/ops-notifier.js"
 import { OfflineWatcher } from "./services/offline-watcher.js"
 import { SessionCounters, StatsService } from "./services/runtime-stats.js"
+<<<<<<< HEAD
 import { VotingScheduler } from "./services/voting-scheduler.js"
 import { RetentionService } from "./modules/retention/retention-service.js"
 import {
@@ -63,6 +64,14 @@ class FanoutAdapter implements NotificationFanout {
   }
 }
 
+import { AuthenticationService } from "./modules/authentication/auth-service.js"
+import { MongoAuthenticationStore } from "./modules/authentication/mongo-store.js"
+import { TelegramAuthUi } from "./modules/authentication/telegram-prompt.js"
+import { registerAuthCallbacks } from "./modules/authentication/bot-callbacks.js"
+import { mongoCollectionSizes } from "./modules/authentication/maintenance.js"
+import { AuthRequestModel } from "./database/models/auth-request.js"
+import { PlayerSessionModel } from "./database/models/session.js"
+
 async function main(): Promise<void> {
   let config: AppConfig
   try {
@@ -93,6 +102,42 @@ async function main(): Promise<void> {
   // assigned below, before any message can possibly arrive; the hook only
   // dereferences it at runtime
   let opsNotifier: OpsNotifier
+
+  // authentication module: session lifecycle + telegram login flow.
+  // the gateway push fails closed: a dead game-server link parks the message
+  // in the service outbox and the sweeper retries it.
+  const authStore = new MongoAuthenticationStore()
+  const authUi = new TelegramAuthUi({
+    api: null,
+    logger,
+    serverName: config.serverName,
+    ...(config.authMessageEffectId !== undefined && config.authMessageEffectId !== ""
+      ? { messageEffectId: config.authMessageEffectId }
+      : {}),
+  })
+  const authService = new AuthenticationService({
+    store: authStore,
+    config: {
+      requestTtlSeconds: config.authRequestTtlSeconds,
+      serverName: config.serverName,
+      rateLimitWindowMs: config.authRateLimitWindowSeconds * 1000,
+      maxRequestsPerPlayer: config.authRateLimitRequestsPerPlayer,
+      maxRequestsPerTelegram: config.authRateLimitRequestsPerTelegram,
+      maxApprovalsPerTelegram: config.authRateLimitApprovalsPerTelegram,
+    },
+    logger,
+    push: async (serverId, type, payload) => {
+      try {
+        await gateway.sendTo(serverId, type, payload, { awaitAck: true })
+        return true
+      } catch (error) {
+        logger.debug({ err: error, serverId, type }, "auth push not delivered, staying in outbox")
+        return false
+      }
+    },
+    sendPrompt: (request) => authUi.send(request),
+  })
+
   registerLifecycleHandlers(handlers, directory, logger, {
     onStateChange: (serverId, state, previous) => {
       // crash/status events flow to telegram: all events, dm + admin copy
@@ -100,11 +145,37 @@ async function main(): Promise<void> {
         logger.error({ err: error, serverId, state, previous }, "state-change notification failed")
       })
     },
+    onPlayerJoined: (event) => {
+      void authService.handlePlayerJoined(event, Date.now()).catch((error) => {
+        logger.error({ err: error, uuid: event.minecraftUuid }, "player join handling failed")
+      })
+    },
+    onPlayerLeft: (event) => {
+      void authService.handlePlayerLeft(event.minecraftUuid, Date.now()).catch((error) => {
+        logger.error({ err: error, uuid: event.minecraftUuid }, "player left handling failed")
+      })
+    },
+    onGuestStarted: (event, serverId) => {
+      void authService.handleGuestStarted(event, serverId, Date.now()).catch((error) => {
+        logger.error({ err: error, uuid: event.minecraftUuid }, "guest start handling failed")
+      })
+    },
+    onGuestEnded: (event) => {
+      void authService.handleGuestEnded(event).catch((error) => {
+        logger.error({ err: error, uuid: event.minecraftUuid }, "guest end handling failed")
+      })
+    },
   })
   const gateway: Gateway = createGateway(config, logger, handlers)
 
   const counters = new SessionCounters()
-  const statsService = new StatsService({ startedAt, gateway, directory, counters })
+  const statsService = new StatsService({
+    startedAt,
+    gateway,
+    directory,
+    counters,
+    collectionSizes: mongoCollectionSizes([PlayerSessionModel, AuthRequestModel]),
+  })
 
   // ops plumbing: rate-limited broadcast -> dm users with linked telegram
   // accounts + admin chat copies. without a bot token everything degrades to
@@ -123,6 +194,7 @@ async function main(): Promise<void> {
     logger,
   })
 
+<<<<<<< HEAD
   // admission bot: questionnaire + group voting, riding the shared
   // notification engine and the ops stats snapshot
   const admission = createAdmissionBot(config, logger, createAdmissionRepositories(), {
@@ -200,8 +272,10 @@ async function main(): Promise<void> {
     collectionStats: databaseReady() ? new MongoCollectionStats() : null,
   })
   const finalBot = bot ?? admissionBot
-  // grammy api is ready the moment the Bot exists, swap the real sender in
-  notifications.attachSender(finalBot !== null ? new GrammySender(finalBot.api) : null)
+  // grammy api is ready the moment the Bot exists, swap the real senders in
+  const api = finalBot !== null ? finalBot.api : null
+  notifications.attachSender(api !== null ? new GrammySender(api) : null)
+  authUi.attachApi(api)
 
   // durable catch-up scan on boot: votings that expired while we were down
   // (including already-extended ones) are processed by the first sweep
@@ -224,6 +298,10 @@ async function main(): Promise<void> {
   } else {
     logger.warn("mongo not ready at boot, indexes not synced")
   }
+
+  // grammy api is ready the moment the Bot exists, wire the auth ui sender
+  const api = finalBot !== null ? finalBot.api : null
+  authUi.attachApi(api)
 
   // crash detection: ws gone for N minutes => presumed offline
   const offlineWatcher = new OfflineWatcher({
@@ -263,6 +341,39 @@ async function main(): Promise<void> {
     logger.warn("bot is disabled: admission and account flows inactive")
   }
 
+  // auth sweeper: expiry enforcement, prompt retries, outbox flush; the same
+  // tick keeps /stats session counters honest
+  const sweeper = setInterval(() => {
+    void authService.sweep(Date.now()).catch((error) => {
+      logger.error({ err: error }, "auth sweep failed")
+    })
+    const stats = authService.stats()
+    counters.activeSessions = stats.activeSessions
+    counters.guestSessions = stats.guestSessions
+    counters.pendingAuths = stats.pendingAuths
+  }, config.authSweepIntervalMs)
+
+  // daily data hygiene: rolling retention over closed sessions
+  const retention = new RetentionService({
+    store: authStore,
+    config: { sessionRetentionDays: 60 },
+    logger,
+  })
+  const DAY_MS = 86_400_000
+  const retentionTimer = setInterval(
+    () => {
+      void retention.run().catch((error) => logger.error({ err: error }, "retention purge failed"))
+    },
+    DAY_MS,
+  )
+  // first purge happens shortly after boot so an existing backlog drains
+  setTimeout(() => {
+    void retention.run().catch((error) => logger.error({ err: error }, "retention purge failed"))
+  }, 30_000)
+
+  // db indexes for the auth collections, synced once mongo is reachable
+  void syncAuthIndexes(mongo, logger)
+
   logger.info({ env: config.env }, "servercore backend started")
 
   let shuttingDown = false
@@ -272,6 +383,9 @@ async function main(): Promise<void> {
     logger.info({ signal }, "shutting down")
     try {
       scheduler?.stop()
+      sweeper.unref()
+      retentionTimer.unref()
+      authService.stop()
       offlineWatcher.stop()
       stopRetention()
       await finalBot?.stop()
@@ -286,6 +400,25 @@ async function main(): Promise<void> {
 
   process.once("SIGINT", () => void shutdown("SIGINT"))
   process.once("SIGTERM", () => void shutdown("SIGTERM"))
+}
+
+/** waits for mongo in the background, then syncs the auth collection indexes */
+async function syncAuthIndexes(mongo: MongoHandle, logger: Logger): Promise<void> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    if (mongo.ready) break
+    await new Promise((resolve) => setTimeout(resolve, 2_000))
+  }
+  if (!mongo.ready) {
+    logger.warn("mongo never became ready, auth indexes not synced")
+    return
+  }
+  try {
+    await PlayerSessionModel.syncIndexes()
+    await AuthRequestModel.syncIndexes()
+    logger.info("auth collection indexes synced")
+  } catch (err) {
+    logger.error({ err }, "auth index sync failed")
+  }
 }
 
 main().catch((err) => {

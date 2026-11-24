@@ -16,11 +16,13 @@ export function registerStatsCommand<C extends Context>(
   bot.command("stats", (ctx) => {
     const fromId = ctx.from?.id
     if (fromId === undefined || !deps.adminIds.includes(fromId)) return
-    return replyWithStats(ctx, deps.stats, deps.locale)
+    return replyWithStats(ctx, deps)
   })
 }
 
-async function replyWithStats(ctx: Context, stats: StatsService, locale: Locale): Promise<void> {
+async function replyWithStats(ctx: Context, deps: { stats: StatsService; locale: Locale }): Promise<void> {
+  const stats = deps.stats
+  const locale = deps.locale
   const snap = stats.snapshot()
   const lines: string[] = []
 
@@ -34,6 +36,16 @@ async function replyWithStats(ctx: Context, stats: StatsService, locale: Locale)
     guests: snap.counters.guestSessions,
     pending: snap.counters.pendingAuths,
   }))
+
+  const sizes = await stats.sizes()
+  const sizeEntries = Object.entries(sizes)
+  if (sizeEntries.length > 0) {
+    lines.push(
+      t(locale, "ops.stats.collections", {
+        sizes: sizeEntries.map(([name, count]) => `${name} ${count}`).join(", "),
+      }),
+    )
+  }
 
   if (snap.servers.length === 0) {
     lines.push(t(locale, "ops.stats.no_servers"))
