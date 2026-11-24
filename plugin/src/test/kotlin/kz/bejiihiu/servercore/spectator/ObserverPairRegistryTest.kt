@@ -8,12 +8,12 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * the local session registry: the truth source the hiding layer reads and the
- * seam the /spec command module will drive.
+ * the observation pair view: written by the hiding bridge, read by the packet
+ * layer. it makes no lifecycle decisions of its own.
  */
-class SpecSessionRegistryTest {
+class ObserverPairRegistryTest {
 
-    private val registry = SpecSessionRegistry()
+    private val registry = ObserverPairRegistry()
 
     @Test
     fun `register makes the pair visible through the source interface`() {
@@ -86,44 +86,20 @@ class SpecSessionRegistryTest {
     }
 
     @Test
-    fun `detach cleans both directions of one player`() {
-        val admin = UUID.randomUUID()
-        val target = UUID.randomUUID()
-        val otherAdmin = UUID.randomUUID()
-
-        registry.register(admin, target)
-        registry.register(otherAdmin, target)
-
-        // target leaves: every watching pair dies, the admins' own sessions go too
-        registry.detach(target)
-
-        assertFalse(registry.isObserving(admin, target))
-        assertFalse(registry.isObserving(otherAdmin, target))
-        assertTrue(registry.allPairs().isEmpty())
-
-        // admin leaves: only their own pair dies
-        registry.register(admin, target)
-        registry.detach(admin)
-
-        assertFalse(registry.isObserved(target))
-        assertTrue(registry.allPairs().isEmpty())
-    }
-
-    @Test
-    fun `clear wipes everything and allpairs snapshots the live set`() {
+    fun `allpairs snapshots the live set and empties once the bridge unregisters`() {
         val admin = UUID.randomUUID()
         val target = UUID.randomUUID()
 
         registry.register(admin, target)
         assertEquals(setOf(admin to target), registry.allPairs())
 
-        registry.clear()
+        registry.unregister(admin, target)
 
         assertTrue(registry.allPairs().isEmpty())
     }
 
     @Test
-    fun `the registry satisfies the seam interface the spec-core side expects`() {
+    fun `the registry satisfies the seam interface the packet layer expects`() {
         val source: SpecSessionSource = registry
         val admin = UUID.randomUUID()
         val target = UUID.randomUUID()

@@ -124,6 +124,9 @@ class SpecAuditTrail(
             val count = perSessionCounts.merge(entry.sessionId, 1, Int::plus)!!
             if (count > maxEntriesPerSession) {
                 droppedBySessionCap.incrementAndGet()
+                // the cap can drop the end entry itself, so the counter has to
+                // go anyway - the start/end pair is terminal either way
+                forgetIfTerminal(entry)
                 return
             }
         }
@@ -137,9 +140,23 @@ class SpecAuditTrail(
         }
         if (!offered) {
             droppedByFullBuffer.incrementAndGet()
+            forgetIfTerminal(entry)
             return
         }
+        forgetIfTerminal(entry)
         scheduleDrain()
+    }
+
+    /**
+     * one session is one start plus at most one end, so the end entry is the
+     * terminal one: the counter goes right there instead of keeping a map
+     * entry per session for the process lifetime.
+     */
+    private fun forgetIfTerminal(entry: SpecAuditEntry) {
+        val sessionId = entry.sessionId ?: return
+        if (entry.event == SpecAuditEvents.END || entry.event == SpecAuditEvents.FORCED_END) {
+            perSessionCounts.remove(sessionId)
+        }
     }
 
     /** total entries dropped because the buffer was full */

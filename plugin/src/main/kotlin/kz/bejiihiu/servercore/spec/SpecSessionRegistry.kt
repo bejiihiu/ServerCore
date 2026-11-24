@@ -2,7 +2,6 @@ package kz.bejiihiu.servercore.spec
 
 import kz.bejiihiu.servercore.websocket.Payload
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicInteger
 import java.time.ZoneId
 
 /** why a spec session ended; travels on the wire as-is */
@@ -32,17 +31,20 @@ interface SpecEventSender {
 
 /**
  * reporting bridge for observation sessions. the [SessionCoordinator] owns the
- * truth about who is watching whom - conflicts, phases, restores - and drives
- * this class on every settled transition; nothing here decides anything.
+ * truth about who is watching whom - conflicts, phases, restores and the live
+ * session count - and drives this class on every settled transition; nothing
+ * here decides anything and nothing here counts.
  *
  * - every accepted start/end goes to the backend over the websocket (the
  *   backend writes the audit_logs rows) and to the local audit trail
- * - activeCount() feeds the SERVER_HEARTBEAT counter that /stats renders
+ * - activeCount() forwards the coordinator's own count to the heartbeat
+ *   counter that /stats renders
  * - denials (permission, level, aborted starts) land in the local trail only,
  *   the backend never saw a session to deny
  *
- * thread-safety: calls arrive from region/async threads, so the counter is
- * atomic and the ws/trail writes are fire-and-forget.
+ * thread-safety: calls arrive from region/async threads, so the count source
+ * is read through a volatile reference and the ws/trail writes are
+ * fire-and-forget.
  */
 class SpecSessionRegistry(
     private val sender: SpecEventSender,
@@ -51,12 +53,17 @@ class SpecSessionRegistry(
     private val zone: ZoneId = ZoneId.of("Europe/Moscow"),
 ) {
 
-    /** live reported sessions; the coordinator guarantees start/end symmetry */
-    private val live = AtomicInteger()
+    /** the coordinator binds its own count here once it exists */
+    @Volatile
+    private var countSource: (() -> Int)? = null
+
+    /** wire the single session authority in; until then the count reads zero */
+    fun bindActiveCount(source: () -> Int) {
+        countSource = source
+    }
 
     /** the coordinator settled a session as ACTIVE: report it upstream */
     fun started(session: SpecSession) {
-        live.incrementAndGet()
         sender.sendSpecStarted(
             Payload.SpecStarted(
                 adminUuid = session.adminId.toString(),
@@ -71,7 +78,6 @@ class SpecSessionRegistry(
 
     /** the coordinator ended a previously reported session */
     fun ended(session: SpecSession, reason: ExitReason) {
-        live.decrementAndGet()
         val endReason = SpecEndReason.fromExit(reason)
         val durationSec = (clock() - session.startedAtMs).coerceAtLeast(0) / 1000
         sender.sendSpecEnded(
@@ -114,7 +120,8 @@ class SpecSessionRegistry(
         )
     }
 
-    fun activeCount(): Int = live.get()
+    /** live sessions, straight from the coordinator - the only place that counts */
+    fun activeCount(): Int = countSource?.invoke() ?: 0
 
     private fun entry(
         session: SpecSession,

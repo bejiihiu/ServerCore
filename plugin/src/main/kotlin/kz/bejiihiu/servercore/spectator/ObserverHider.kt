@@ -46,7 +46,7 @@ import org.bukkit.plugin.java.JavaPlugin
 class ObserverHider(
     private val plugin: JavaPlugin,
     private val packets: PacketService,
-    private val sessions: SpecSessionRegistry,
+    private val sessions: ObserverPairRegistry,
     private val filter: TraceFilter,
     /**
      * optional sync seam: when the state-sync module is up, observation rows
@@ -67,7 +67,7 @@ class ObserverHider(
 
     // ---- session lifecycle ----
 
-    /** open the hiding for a pair. called by the session owner at spec start. */
+    /** open the hiding for a pair; the session bridge calls this once the session settles */
     fun begin(admin: UUID, target: UUID) {
         if (admin == target) return
         sessions.register(admin, target)

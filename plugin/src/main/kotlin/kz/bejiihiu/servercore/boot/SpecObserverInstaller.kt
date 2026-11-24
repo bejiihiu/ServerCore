@@ -1,11 +1,11 @@
 package kz.bejiihiu.servercore.boot
 
 import com.github.retrooper.packetevents.event.PacketListenerCommon
+import kz.bejiihiu.servercore.spectator.ObserverPairRegistry
 import kz.bejiihiu.servercore.spectator.ObserverHider
 import kz.bejiihiu.servercore.spectator.SpecObserverConfig
 import kz.bejiihiu.servercore.spectator.SpecResyncListener
 import kz.bejiihiu.servercore.spectator.SpecTraceListener
-import kz.bejiihiu.servercore.spectator.SpecSessionRegistry as SpectatorSpecSessionRegistry
 import kz.bejiihiu.servercore.spectator.TraceFilter
 
 /**
@@ -22,7 +22,7 @@ class SpecObserverInstaller(
     private val sync: SyncInstaller,
 ) {
 
-    lateinit var sessions: SpectatorSpecSessionRegistry
+    lateinit var sessions: ObserverPairRegistry
         private set
 
     lateinit var hider: ObserverHider
@@ -35,7 +35,7 @@ class SpecObserverInstaller(
         val packets = packet.service
         val observerConfig = SpecObserverConfig.load(plugin.config, ctx.logger)
 
-        val observerSessions = SpectatorSpecSessionRegistry()
+        val observerSessions = ObserverPairRegistry()
         sessions = observerSessions
         val traceFilter = TraceFilter(observerConfig.traceRadius, observerConfig.suppressActionBar)
         val hider = ObserverHider(plugin, packets, observerSessions, traceFilter, syncStates = sync.states)
@@ -47,7 +47,7 @@ class SpecObserverInstaller(
         } else {
             ctx.logger.warning("packet layer idle, hidden observer suppression inactive")
         }
-        plugin.server.pluginManager.registerEvents(SpecResyncListener(hider, observerSessions), plugin)
+        plugin.server.pluginManager.registerEvents(SpecResyncListener(hider), plugin)
     }
 
     fun stop() {

@@ -88,6 +88,9 @@ class SpecInstaller(
             InventoryViewerBridge(InventoryViewerViews(plugin, viewer.viewer)),
         )
         val coordinator = SessionCoordinator(effects, reporting.registry, bridges)
+        // the heartbeat/stats counter forwards the coordinator's own count;
+        // the reporting bridge keeps no second counter
+        reporting.registry.bindActiveCount(coordinator::activeCount)
         val specService = SpecService(
             plugin = plugin,
             config = specConfig,

@@ -4,15 +4,17 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * local in-memory source of truth for active observation pairs. thread-safe
- * on purpose: packet listeners (netty threads), entity schedulers (region
- * threads) and command handlers all touch it concurrently.
+ * the observation pairs the packet layer works against, as a pure view.
  *
- * the /spec command module drives [register] and [unregister] through here
- * once it lands; until then the registry works standalone so the hiding layer
- * can be wired and exercised without a session owner.
+ * it holds no lifecycle authority: the session coordinator is the only owner
+ * of "who is watching whom" (conflicts, phases, restores) and drives the
+ * hiding bridge on every settled transition; the bridge is the one writer of
+ * this view. everything else - packet hiding, resync, esp, trace - only reads.
+ *
+ * thread-safe on purpose: packet listeners (netty threads), entity schedulers
+ * (region threads) and command handlers all touch it concurrently.
  */
-class SpecSessionRegistry : SpecSessionSource {
+class ObserverPairRegistry : SpecSessionSource {
 
     /** observing admin -> the uuid it is currently watching */
     private val pairs = ConcurrentHashMap<UUID, UUID>()
@@ -45,24 +47,6 @@ class SpecSessionRegistry : SpecSessionSource {
     fun unregister(admin: UUID, target: UUID) {
         if (pairs[admin] == target) pairs.remove(admin, target)
     }
-
-    /** close everything [admin] owns (their disconnect, shutdown) */
-    fun unregisterAdmin(admin: UUID) {
-        pairs.remove(admin)
-    }
-
-    /**
-     * disconnect cleanup for one player: they leave as an admin (their pair
-     * dies) and as a target (nobody is watching them anymore). the caller
-     * decides whether restore packets are still worth sending — usually they
-     * are not, nothing restores into a leaving client.
-     */
-    fun detach(uuid: UUID) {
-        pairs.remove(uuid)
-        pairs.entries.removeIf { it.value == uuid }
-    }
-
-    fun clear() = pairs.clear()
 
     /** snapshot of every active pair, for deterministic restore passes */
     fun allPairs(): Set<Pair<UUID, UUID>> = pairs.entries.map { it.key to it.value }.toSet()

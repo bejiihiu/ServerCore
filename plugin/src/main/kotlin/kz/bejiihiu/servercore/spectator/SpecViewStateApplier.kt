@@ -18,7 +18,7 @@ import kz.bejiihiu.servercore.esp.ViewState
  * the engine's applier with the previous applier as the delegate.
  */
 class SpecViewStateApplier(
-    private val sessions: SpecSessionRegistry,
+    private val sessions: ObserverPairRegistry,
     private val hider: ObserverHider,
     private val delegate: kz.bejiihiu.servercore.esp.ViewStateApplier,
 ) : kz.bejiihiu.servercore.esp.ViewStateApplier {

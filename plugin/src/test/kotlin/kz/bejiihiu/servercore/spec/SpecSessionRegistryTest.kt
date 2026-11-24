@@ -55,12 +55,11 @@ class SpecSessionRegistryTest {
     private fun trailFor(clock: () -> Long): SpecAuditTrail = SpecAuditTrail(dir, Runnable::run, clock = clock)
 
     @Test
-    fun `started reports the session upstream and counts it`() {
+    fun `started reports the session upstream`() {
         val sender = RecordingSender()
         val registry = newRegistry(sender)
 
         registry.started(session())
-        assertEquals(1, registry.activeCount())
         assertEquals(1, sender.started.size)
 
         val payload = sender.started.single()
@@ -84,7 +83,6 @@ class SpecSessionRegistryTest {
         assertEquals(95, payload.durationSec)
         assertEquals("NORMAL", payload.reason)
         assertEquals("spec-abc", payload.sessionId)
-        assertEquals(0, registry.activeCount())
     }
 
     @Test
@@ -107,7 +105,6 @@ class SpecSessionRegistryTest {
             assertEquals(wire, sender.ended.last().reason)
         }
         assertEquals(4, sender.ended.size)
-        assertEquals(0, registry.activeCount())
     }
 
     @Test
@@ -145,17 +142,18 @@ class SpecSessionRegistryTest {
         val entry = Json.parseToJsonElement(lines[0]).jsonObject
         assertEquals(SpecAuditEvents.DENIED, entry["event"]!!.jsonPrimitive.content)
         assertEquals("no access level resolved", entry["reason"]!!.jsonPrimitive.content)
-        assertEquals(0, registry.activeCount())
     }
 
     @Test
-    fun `the counter balances across many sessions`() {
-        val sender = RecordingSender()
-        val registry = newRegistry(sender)
+    fun `the live count comes from the session authority`() {
+        val registry = newRegistry()
+        assertEquals(0, registry.activeCount(), "an unbound bridge counts nothing")
 
-        repeat(3) { registry.started(session()) }
+        var live = 3
+        registry.bindActiveCount { live }
         assertEquals(3, registry.activeCount())
-        repeat(2) { registry.ended(session(), ExitReason.COMMAND) }
-        assertEquals(1, registry.activeCount())
+
+        live = 1
+        assertEquals(1, registry.activeCount(), "the bridge only forwards, it never counts")
     }
 }

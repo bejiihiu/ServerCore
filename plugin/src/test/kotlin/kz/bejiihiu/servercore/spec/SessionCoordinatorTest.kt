@@ -120,7 +120,6 @@ class SessionCoordinatorTest {
         assertEquals(listOf(session), listener.claimed)
         assertEquals(listOf(session), listener.started)
         assertTrue(listener.aborted.isEmpty())
-        assertEquals(1, registry.activeCount())
         assertEquals(listOf(SpecAuditEvents.START), trailEvents(trail))
     }
 
@@ -140,7 +139,6 @@ class SessionCoordinatorTest {
         assertEquals(0, coordinator.activeCount())
         assertEquals(listOf(claimed), listener.aborted)
         assertTrue(listener.started.isEmpty())
-        assertEquals(0, registry.activeCount())
         assertEquals(listOf(SpecAuditEvents.DENIED), trailEvents(trail))
     }
 
@@ -182,7 +180,6 @@ class SessionCoordinatorTest {
         assertEquals(1, effects.ended.size)
         assertEquals(ExitReason.COMMAND, effects.ended[0].second)
         assertEquals(session to ExitReason.COMMAND, listener.ended.single())
-        assertEquals(0, registry.activeCount())
         assertEquals(listOf(SpecAuditEvents.START, SpecAuditEvents.END), trailEvents(trail))
     }
 
@@ -252,7 +249,6 @@ class SessionCoordinatorTest {
         // the session was never reported as started, so no end report either:
         // nothing upstream ever heard of it
         assertTrue(trailEvents(trail).isEmpty())
-        assertTrue(registry.activeCount() == 0)
         assertEquals(1, listener.ended.size)
         assertTrue(listener.started.isEmpty())
     }

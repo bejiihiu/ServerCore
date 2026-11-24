@@ -51,7 +51,7 @@ import kz.bejiihiu.servercore.packet.PacketStateRegistry
  * the row re-assert below is deterministic.
  */
 class SpecTraceListener(
-    private val sessions: SpecSessionRegistry,
+    private val sessions: ObserverPairRegistry,
     private val registry: PacketStateRegistry,
     private val poses: (UUID) -> TracePos?,
     private val filter: TraceFilter,
@@ -74,7 +74,20 @@ class SpecTraceListener(
             PacketType.Play.Server.PLAYER_INFO_UPDATE -> {
                 val packet = WrapperPlayServerPlayerInfoUpdate(event)
                 val watchers = sessions.observersOf(viewer)
-                if (packet.entries.any { watchers.contains(it.profileId) }) event.setCancelled(true)
+                if (watchers.isEmpty()) return
+                // vanilla bundles several players into one update (latency,
+                // list order, game mode...). drop only the hidden admin's
+                // rows and let the rest of the bundle through: cancelling the
+                // whole packet starves the target of unrelated tab updates
+                // until vanilla happens to resend them. the wrapper re-encodes
+                // the filtered list into the outgoing buffer.
+                val kept = packet.entries.filterNot { watchers.contains(it.profileId) }
+                if (kept.size == packet.entries.size) return
+                if (kept.isEmpty()) {
+                    event.setCancelled(true)
+                } else {
+                    packet.entries = kept
+                }
             }
 
             PacketType.Play.Server.PARTICLE ->

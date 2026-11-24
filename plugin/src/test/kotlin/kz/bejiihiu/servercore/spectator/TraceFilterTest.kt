@@ -85,7 +85,7 @@ class TraceFilterTest {
  */
 class ObserverScopeTest {
 
-    private val sessions = SpecSessionRegistry()
+    private val sessions = ObserverPairRegistry()
 
     @Test
     fun `a packet about the watching admin toward their target is in scope`() {
