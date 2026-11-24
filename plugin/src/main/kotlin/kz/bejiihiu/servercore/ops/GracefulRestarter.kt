@@ -1,11 +1,13 @@
 package kz.bejiihiu.servercore.ops
 
-import net.kyori.adventure.text.Component
-import net.kyori.adventure.title.Title
+import kz.bejiihiu.servercore.ui.CountdownRenderer
+import kz.bejiihiu.servercore.ui.Theme
+import kz.bejiihiu.servercore.ui.UiFx
+import net.kyori.adventure.bossbar.BossBar
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import org.bukkit.plugin.java.JavaPlugin
-import java.time.Duration
+import java.util.UUID
 import java.util.logging.Logger
 
 /** why a restart was triggered - selects the backend detail string */
@@ -34,6 +36,13 @@ class GracefulRestarter(
 ) {
 
     private var inProgress = false
+
+    /**
+     * one bar per player, created on their own thread. a bossbar mutation
+     * pushes a packet to every viewer, so a shared instance mutated from the
+     * global countdown thread would send from a thread that owns nobody.
+     */
+    private val bars = java.util.concurrent.ConcurrentHashMap<UUID, BossBar>()
 
     /** kicks off the full flow; hops onto the global region scheduler first */
     fun begin(reason: RestartReason) {
@@ -72,24 +81,30 @@ class GracefulRestarter(
     }
 
     private fun showCountdown(secondsRemaining: Long) {
-        val title = OpsText.text(locale, OpsText.KEY_RESTART_TITLE)
-        val subtitle = OpsText.text(locale, OpsText.KEY_RESTART_COUNTDOWN, mapOf("seconds" to secondsRemaining.toString()))
-        val actionbar = OpsText.text(locale, OpsText.KEY_RESTART_ACTIONBAR)
+        val title = Theme.render(OpsText.text(locale, OpsText.KEY_RESTART_TITLE))
+        val subtitle = Theme.render(
+            OpsText.text(locale, OpsText.KEY_RESTART_COUNTDOWN, mapOf("seconds" to secondsRemaining.toString())),
+        )
+        val barName = Theme.render(OpsText.text(locale, OpsText.KEY_RESTART_BAR))
+        val progress = (secondsRemaining.toFloat() / graceSeconds.coerceAtLeast(1)).coerceIn(0f, 1f)
+        val barColor = CountdownRenderer.barColor(secondsRemaining.toInt(), graceSeconds)
 
+        // title announces the tick, the bar carries the time; no third surface,
+        // the design rules allow a pair and this is the pair for a deadline
         forPlayer { player ->
-            player.showTitle(
-                Title.title(
-                    Component.text(title),
-                    Component.text(subtitle),
-                    Title.Times.times(Duration.ofMillis(100), Duration.ofMillis(1100), Duration.ofMillis(200)),
-                ),
-            )
-            player.sendActionBar(Component.text(actionbar))
+            val bar = bars.computeIfAbsent(player.uniqueId) {
+                BossBar.bossBar(barName, progress, barColor, BossBar.Overlay.PROGRESS)
+            }
+            bar.name(barName)
+            bar.progress(progress)
+            bar.color(barColor)
+            player.showBossBar(bar)
+            UiFx.title(player, title, subtitle, stayMs = COUNTDOWN_STAY_MS)
         }
     }
 
     private fun kickEveryoneAndRestart(reason: RestartReason) {
-        val kickMessage = Component.text(OpsText.text(locale, OpsText.KEY_RESTART_KICK))
+        val kickMessage = Theme.render(OpsText.text(locale, OpsText.KEY_RESTART_KICK))
         val players: List<Player> = Bukkit.getOnlinePlayers().toList()
 
         logger.info("[ops] kicking ${players.size} player(s), then restarting ($reason)")
@@ -97,6 +112,8 @@ class GracefulRestarter(
         for (player in players) {
             player.scheduler.run(plugin, { _ ->
                 try {
+                    // a bar left behind would survive the kick on the client
+                    bars.remove(player.uniqueId)?.let { player.hideBossBar(it) }
                     player.kick(kickMessage)
                 } catch (error: Exception) {
                     // player already gone - not a reason to skip the restart
@@ -117,5 +134,10 @@ class GracefulRestarter(
         for (player in Bukkit.getOnlinePlayers()) {
             player.scheduler.run(plugin, { _ -> action(player) }, null)
         }
+    }
+
+    private companion object {
+        /** title stay for a one-second tick: the fade tail bleeds into the next frame */
+        const val COUNTDOWN_STAY_MS = 950L
     }
 }

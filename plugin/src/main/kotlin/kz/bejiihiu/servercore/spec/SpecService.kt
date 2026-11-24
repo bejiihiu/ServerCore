@@ -2,9 +2,9 @@ package kz.bejiihiu.servercore.spec
 
 import java.util.UUID
 import kz.bejiihiu.servercore.spectator.SpecSessionReader
+import kz.bejiihiu.servercore.ui.UiScheduler.uiNow
 import kz.bejiihiu.servercore.util.I18n
 import net.kyori.adventure.text.Component
-import net.kyori.adventure.text.minimessage.MiniMessage
 import net.luckperms.api.LuckPerms
 import org.bukkit.entity.Player
 import org.bukkit.plugin.Plugin
@@ -14,6 +14,11 @@ import org.bukkit.plugin.Plugin
  * resolves the target and permissions (luckperms lookups may block on storage,
  * so they run on the async scheduler), then hands an agreed-upon transition to
  * the coordinator, which owns conflicts, phases and the audit trail.
+ *
+ * every reply — including the ones produced inside the async permission pass
+ * and the coordinator's settled callback — is re-dispatched onto the admin's
+ * entity scheduler. folia does not allow touching a player from a callback
+ * thread, and replies are the one player surface this service owns.
  */
 class SpecService(
     private val plugin: Plugin,
@@ -26,8 +31,6 @@ class SpecService(
     private val reports: SpecSessionRegistry?,
     private val i18n: I18n,
 ) {
-
-    private val mini = MiniMessage.miniMessage()
 
     /**
      * tab-completion gate, never blocks: a known level lets the command show,
@@ -47,22 +50,23 @@ class SpecService(
 
     /** /spec <player>: the full pipeline, replies to the admin via [reply] */
     fun start(admin: Player, targetName: String, reply: (Component) -> Unit) {
+        val say = replyOn(admin, reply)
         if (!config.enabled) {
-            reply(text("disabled"))
+            say(text("disabled"))
             return
         }
         val current = coordinator.activeSession(admin.uniqueId)
         if (current != null) {
-            reply(text("busy-admin", "target" to current.targetName))
+            say(text("busy-admin", "target" to current.targetName))
             return
         }
         val targetPlayer = plugin.server.getPlayerExact(targetName)
         if (targetPlayer == null || !targetPlayer.isOnline) {
-            reply(text("no-target", "target" to targetName))
+            say(text("no-target", "target" to targetName))
             return
         }
         if (targetPlayer.uniqueId == admin.uniqueId) {
-            reply(text("self"))
+            say(text("self"))
             return
         }
 
@@ -76,7 +80,7 @@ class SpecService(
                     targetPlayer.uniqueId, targetPlayer.name,
                     "no access level resolved",
                 )
-                reply(text("denied-permission"))
+                say(text("denied-permission"))
                 return@runNow
             }
             val targetLevel = resolveLevel(targetPlayer.uniqueId)
@@ -86,7 +90,7 @@ class SpecService(
                     targetPlayer.uniqueId, targetPlayer.name,
                     "target access level ${targetLevel?.let { policy.describe(it) } ?: "regular"} outranks ${policy.describe(adminLevel)}",
                 )
-                reply(text("denied-level", "target" to targetPlayer.name))
+                say(text("denied-level", "target" to targetPlayer.name))
                 return@runNow
             }
 
@@ -97,15 +101,15 @@ class SpecService(
             )
             when (coordinator.start(admin.uniqueId, admin.name, target, onSettled = { settled ->
                 if (settled) {
-                    reply(text("started", "target" to target.name))
+                    say(text("started", "target" to target.name))
                 } else {
-                    reply(text("aborted", "target" to target.name))
+                    say(text("aborted", "target" to target.name))
                 }
             })) {
-                StartOutcome.AdminBusy -> reply(
+                StartOutcome.AdminBusy -> say(
                     text("busy-admin", "target" to (coordinator.activeSession(admin.uniqueId)?.targetName ?: target.name)),
                 )
-                StartOutcome.TargetBusy -> reply(text("busy-target", "target" to target.name))
+                StartOutcome.TargetBusy -> say(text("busy-target", "target" to target.name))
                 StartOutcome.Started -> { /* the settled callback owns the reply */ }
             }
         })
@@ -113,9 +117,10 @@ class SpecService(
 
     /** /spec without arguments: leave the current session */
     fun exit(admin: Player, reply: (Component) -> Unit) {
+        val say = replyOn(admin, reply)
         when (coordinator.exit(admin.uniqueId, ExitReason.COMMAND)) {
-            ExitOutcome.Ended -> reply(text("exited"))
-            ExitOutcome.NoSession -> reply(text("not-observing"))
+            ExitOutcome.Ended -> say(text("exited"))
+            ExitOutcome.NoSession -> say(text("not-observing"))
         }
     }
 
@@ -150,8 +155,9 @@ class SpecService(
         return null
     }
 
-    private fun text(key: String, vararg placeholders: Pair<String, String>): Component {
-        val raw = i18n.text("spec.$key", *placeholders)
-        return mini.deserialize(raw)
-    }
+    private fun replyOn(admin: Player, reply: (Component) -> Unit): (Component) -> Unit =
+        { component -> admin.uiNow(plugin) { reply(component) } }
+
+    private fun text(key: String, vararg placeholders: Pair<String, String>): Component =
+        i18n.component("spec.$key", *placeholders)
 }

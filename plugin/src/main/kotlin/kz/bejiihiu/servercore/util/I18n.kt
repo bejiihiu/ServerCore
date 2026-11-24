@@ -5,6 +5,8 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Locale
+import kz.bejiihiu.servercore.ui.Theme
+import net.kyori.adventure.text.Component
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.plugin.java.JavaPlugin
 
@@ -36,16 +38,40 @@ class I18n(private val plugin: JavaPlugin, lang: String) {
     }
 
     fun text(key: String, vararg placeholders: Pair<String, String>): String =
-        format(active.getString(key) ?: base.getString(key) ?: key, placeholders)
+        format(template(key), placeholders)
 
     /** multiline entries, empty lines preserved, trailing blanks dropped */
-    fun lines(key: String, vararg placeholders: Pair<String, String>): List<String> {
+    fun lines(key: String, vararg placeholders: Pair<String, String>): List<String> =
+        rawLines(key).map { format(it, placeholders) }
+
+    /**
+     * one key rendered for a player: theme tags applied, placeholder values
+     * escaped. feature code sends this, never a raw miniMessage string — that
+     * is how a <red> from an old locale file reaches a client.
+     */
+    fun component(key: String, vararg placeholders: Pair<String, String>): Component =
+        Theme.render(template(key), placeholders.toMap())
+
+    /** same, for callers that already hold a value map */
+    fun component(key: String, values: Map<String, String>): Component =
+        Theme.render(template(key), values)
+
+    /** every line of a block key, each rendered and escaped the same way */
+    fun components(key: String, vararg placeholders: Pair<String, String>): List<Component> =
+        rawLines(key).map { Theme.render(it, placeholders.toMap()) }
+
+    /** same, for callers that already hold a value map */
+    fun components(key: String, values: Map<String, String>): List<Component> =
+        rawLines(key).map { Theme.render(it, values) }
+
+    private fun template(key: String): String =
+        active.getString(key) ?: base.getString(key) ?: key
+
+    private fun rawLines(key: String): List<String> {
         val raw = active.getStringList(key).ifEmpty { base.getStringList(key) }
-        if (raw.isNotEmpty()) {
-            return raw.dropLastWhile { it.isBlank() }.map { format(it, placeholders) }
-        }
-        // single-string keys still work as one-liners
-        return listOf(text(key, *placeholders)).dropLastWhile { it.isBlank() }
+        // list entries and block scalars both end up one line per element
+        val lines = if (raw.isNotEmpty()) raw else template(key).split('\n')
+        return lines.dropLastWhile { it.isBlank() }
     }
 
     private fun format(template: String, placeholders: Array<out Pair<String, String>>): String =

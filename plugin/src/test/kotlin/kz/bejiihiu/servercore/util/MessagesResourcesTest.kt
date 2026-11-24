@@ -30,9 +30,26 @@ class MessagesResourcesTest {
     fun `every key set used by code exists in both files`() {
         val ru = bundledKeys("/messages_ru.yml")
         val en = bundledKeys("/messages_en.yml")
-        // spot-check the surfaces that were live at the time of the drift:
-        // spec.* (spec service + inventory viewer), guest.* and protection.*
+        // the surfaces the plugin renders today: guest lifecycle, auth payoff,
+        // spec (service + inventory viewer), protection denial, permission debug
         val required = listOf(
+            "guest.welcome.title",
+            "guest.welcome.subtitle",
+            "guest.welcome-back.subtitle",
+            "guest.link-prompt",
+            "guest.restriction.actionbar",
+            "guest.reminder.actionbar",
+            "guest.limit.warning.title",
+            "guest.limit.warning.subtitle",
+            "guest.limit.last-session",
+            "guest.limit.chat",
+            "guest.mute-notice",
+            "guest.kick.limit",
+            "guest.kick.banned",
+            "guest.kick.disabled",
+            "auth.approved.title",
+            "auth.approved.subtitle",
+            "account.revoked",
             "spec.inventory-title",
             "spec.started",
             "spec.exited",
@@ -45,17 +62,34 @@ class MessagesResourcesTest {
             "spec.not-observing",
             "spec.denied-permission",
             "spec.denied-level",
-            "guest.link-prompt",
-            "guest.restriction.actionbar",
-            "guest.limit.chat",
-            "guest.kick.limit",
-            "guest.kick.banned",
-            "guest.kick.disabled",
             "protection.denied.chat",
+            "luckperms.groups.usage",
+            "luckperms.groups.entry",
+            "luckperms.groups.primary-mark",
+            "placeholders.status.guest",
+            "placeholders.application.voting",
+            "placeholders.last-seen.minutes",
         )
         for (key in required) {
             if (key !in ru) fail("messages_ru.yml is missing key: $key")
             if (key !in en) fail("messages_en.yml is missing key: $key")
+        }
+    }
+
+    @Test
+    fun `no key is shipped without a caller or a producer`() {
+        // keys that only existed for a flow nobody renders are copy debt: they
+        // drift, get translated twice and show up in audits as live surfaces.
+        // the auth lifecycle lives in the canonical locale seed now.
+        val ru = bundledKeys("/messages_ru.yml")
+        val dead = listOf(
+            "guest.welcome-back.title",
+            "auth.waiting.actionbar",
+            "auth.rejected.title",
+            "auth.expired.actionbar",
+        )
+        for (key in dead) {
+            if (key in ru) fail("messages_ru.yml still ships a key nothing renders: $key")
         }
     }
 }

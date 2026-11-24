@@ -1,82 +1,81 @@
-# english strings. mini-message tags allowed (<bold>, <gold>, <click>, ...).
-# edit freely in the plugin data folder, missing keys fall back to this file.
+# english strings: guest mode, observation, protection denials, permission debug.
+# color tags are the plugin theme tokens only (<primary> <secondary> <muted>
+# <gold> <ok> <warn> <danger> <info>); vanilla colors are banned and tested.
+# {name} are placeholders, values are escaped before substitution.
+# copy rules: no exclamation marks, no trailing periods on short lines,
+# one thought per line.
 guest:
   welcome:
-    title: "<gold>You are in guest mode</gold>"
-    subtitle: "<gray>Explore freely, gameplay unlocks after registration</gray>"
+    title: "<primary>guest pass</primary>"
+    subtitle: "<secondary>session <gold>{n}</gold> of <gold>{max}</gold> · the world is open to look around</secondary>"
   welcome-back:
-    title: "<gold>Welcome back, guest</gold>"
-    subtitle: "<gray>Your original spot was restored</gray>"
+    subtitle: "<secondary>entry point restored · session <gold>{n}</gold> of <gold>{max}</gold></secondary>"
   link-prompt:
-    - "<gray>To get access to the server you need to</gray>"
-    - "<gray>register through Telegram.</gray>"
-    - ""
-    - "<aqua>Telegram:</aqua> <click:open_url:'{link}'><underlined><gold>{link}</gold></underlined></click>"
+    - "<secondary>register through the Telegram bot to play</secondary>"
+    - "<secondary>login link</secondary> <click:open_url:'{link}'><underlined><gold>{link}</gold></underlined></click>"
   restriction:
-    actionbar: "<red>Guest mode: interaction is locked. Use <bold>/link</bold> to register</red>"
+    actionbar: "<danger>guest mode: action locked · register with /link</danger>"
   reminder:
-    actionbar: "<gray>Waiting for registration — </gray><gold>{link}</gold>"
+    actionbar: "<secondary>registration:</secondary> <gold>{link}</gold>"
   limit:
     warning:
-      title: "<red>Guest limit reached</red>"
-      subtitle: "<gray>Register to keep exploring</gray>"
+      title: "<danger>guest session limit</danger>"
+      subtitle: "<secondary>registering through the Telegram bot unlocks play</secondary>"
+    last-session: "<warn>last guest session</warn> <muted>·</muted> <secondary>register through the bot</secondary>"
     chat:
-      - "<red>You have used all {limit} guest sessions.</red>"
-      - "<gray>Register through the bot to play:</gray>"
+      - "<danger>guest sessions used up: {limit} of {limit}</danger>"
+      - "<secondary>world open until you leave · play needs sign-up</secondary>"
       - "<gold>{link}</gold>"
-  mute-notice:
-    - "<gray>Note: you are currently muted on this server — chat stays silent until it expires.</gray>"
+  mute-notice: "<secondary>you are muted — chat stays silent until it ends</secondary>"
   kick:
     limit:
-      - "<red>Guest session limit reached ({limit}).</red>"
-      - "<gray>To play on the server, register via Telegram:</gray>"
+      - "<danger>guest sessions used up: {limit}</danger>"
+      - "<secondary>registering through the Telegram bot unlocks play</secondary>"
       - "<gold>{link}</gold>"
     banned:
-      - "<red>Your access to this server is restricted.</red>"
-      - "<gray>If you believe this is a mistake, contact the administration.</gray>"
+      - "<danger>your access to this server is restricted</danger>"
+      - "<secondary>if this is a mistake, contact the staff in the bot</secondary>"
     disabled:
-      - "<red>This server requires registration.</red>"
-      - "<gray>Register via Telegram to join:</gray>"
+      - "<danger>this server is registration only</danger>"
+      - "<secondary>register through the Telegram bot</secondary>"
       - "<gold>{link}</gold>"
-# keys for later phases, kept here so both sides agree on the names early
 auth:
-  waiting:
-    actionbar: "<gray>Waiting for login confirmation in Telegram...</gray>"
   approved:
-    title: "<green>Welcome!</green>"
-    subtitle: "<gray>Authorization confirmed</gray>"
-  rejected:
-    title: "<red>Authorization denied</red>"
-  expired:
-    actionbar: "<yellow>Login request expired, use <bold>/link</bold> to try again</yellow>"
+    title: "<ok>access granted</ok>"
+    subtitle: "<secondary>registration confirmed · guest mode lifted</secondary>"
+# disconnect screen when the backend revoked the account
+account:
+  revoked:
+    - "<danger>account deleted</danger>"
+    - "<secondary>access revoked · if this is a mistake, contact the staff</secondary>"
 spec:
-  inventory-title: "<secondary>Inventory</secondary> <muted>·</muted> <gold>{target}</gold>"
-  started: "<green>Observation started: <white>{target}</white>. Run /spec to exit</green>"
-  exited: "<green>Observation ended, your state has been restored</green>"
-  aborted: "<red>Observation of {target} could not start</red>"
-  disabled: "<red>Spectator observation is disabled on this server</red>"
-  no-target: "<red>Player {target} is not online</red>"
-  self: "<red>You cannot observe yourself</red>"
-  busy-admin: "<red>You are already observing {target}. Finish the current session first</red>"
-  busy-target: "<red>{target} is already under observation by another staff member</red>"
-  not-observing: "<red>You are not observing anyone</red>"
-  denied-permission: "<red>You do not have access to spectator observation</red>"
-  denied-level: "<red>You cannot observe {target}: their access level is higher than yours</red>"
+  inventory-title: "<secondary>inventory</secondary> <muted>·</muted> <gold>{target}</gold>"
+  started: "<ok>observing</ok> <primary>{target}</primary> <secondary>· exit with /spec</secondary>"
+  exited: "<ok>observation ended, your state has been restored</ok>"
+  aborted: "<danger>observation of {target} did not start</danger>"
+  disabled: "<danger>observation is disabled on this server</danger>"
+  no-target: "<danger>{target} is offline</danger>"
+  self: "<danger>you cannot observe yourself</danger>"
+  busy-admin: "<danger>you already observe {target} · end the session first</danger>"
+  busy-target: "<danger>{target} is already observed by another staff member</danger>"
+  not-observing: "<secondary>you are not observing anyone</secondary>"
+  denied-permission: "<danger>no access to observation</danger>"
+  denied-level: "<danger>{target} has a higher access level than yours</danger>"
 protection:
   denied:
-    chat: "<red>Command <bold>{command}</bold> is not available on this server.</red>"
+    chat: "<danger>command <bold>{command}</bold> is not available on this server</danger>"
 # admin debug command: /servercore groups <player>
 luckperms:
   groups:
-    usage: "<gray>Usage:</gray> <gold>/servercore groups {arg}</gold>"
-    no-permission: "<red>You do not have permission to use this command.</red>"
-    player-not-found: "<red>Player <white>{player}</white> is not online.</red>"
-    header: "<gold>Groups of <white>{player}</white>:</gold>"
-    entry: "<gray> • </gray><yellow>{group}</yellow><gray>{primary}</gray>"
-    primary-mark: " (primary)"
-    none: "<gray>The player is not a member of any group.</gray>"
-    lookup-failed: "<red>Could not read the player's groups, details are in the server log.</red>"
-# %servercore_*% placeholder output, human-readable parts only
+    usage: "<secondary>usage:</secondary> <gold>/servercore groups {arg}</gold>"
+    no-permission: "<danger>no permission for this command</danger>"
+    player-not-found: "<danger>{player} is offline</danger>"
+    header: "<secondary>groups</secondary> <primary>{player}</primary>"
+    entry: "<muted>▸</muted> <primary>{group}</primary><muted>{primary}</muted>"
+    primary-mark: " · primary"
+    none: "<muted>the player has no groups</muted>"
+    lookup-failed: "<danger>could not read the groups · details in the log</danger>"
+# %servercore_*% placeholder values: plain text for placeholderapi, no tags
 placeholders:
   "yes": "yes"
   "no": "no"

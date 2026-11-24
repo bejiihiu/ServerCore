@@ -18,7 +18,6 @@ import kz.bejiihiu.servercore.ws.newSessionId
 import org.bukkit.Bukkit
 import org.bukkit.GameMode
 import org.bukkit.entity.Player
-import net.kyori.adventure.text.Component
 
 /** the snapshot as it travels over the wire, field names are the protocol contract */
 fun PlayerSnapshot.toPayload(): SnapshotPayload = SnapshotPayload(
@@ -191,9 +190,7 @@ class GuestSessionService(
     fun kickOverLimit(player: Player) {
         provisional.remove(player.uniqueId)
         onPlayerThread(player) {
-            val lines = messages.limitKickMessage()
-            lines.forEach(player::sendMessage)
-            player.kick(lines.lastOrNull() ?: Component.empty())
+            player.kick(messages.limitKickMessage())
         }
     }
 
@@ -237,9 +234,7 @@ class GuestSessionService(
             is JoinAction.KickDisabled -> {
                 // guest mode off: unauthenticated players simply do not get in
                 provisional.remove(uuid)
-                val lines = messages.guestDisabledMessage()
-                lines.forEach(player::sendMessage)
-                player.kick(lines.lastOrNull() ?: Component.empty())
+                player.kick(messages.guestDisabledMessage())
             }
             is JoinAction.KickDenied -> {
                 val session = registry.remove(uuid)
@@ -254,9 +249,7 @@ class GuestSessionService(
                 if (session != null || snapshots.pending(uuid) != null) snapshots.complete(uuid)
                 provisional.remove(uuid)
                 cancelLoops(uuid)
-                val lines = messages.kickMessage(action.code)
-                lines.forEach(player::sendMessage)
-                player.kick(lines.lastOrNull() ?: Component.empty())
+                player.kick(messages.kickMessage())
             }
             is JoinAction.StartGuest -> {
                 val session = registry.start(uuid, create = {
@@ -313,9 +306,14 @@ class GuestSessionService(
 
     /** welcome title + chat prompt + the periodic reminder and gamemode sweep loops */
     private fun beginRichFlow(player: Player, uuid: UUID, restored: Boolean, overLimit: Boolean, link: String?) {
-        messages.sendWelcome(player, restored)
+        messages.sendWelcome(player, restored, counter.count(uuid), config.sessionLimit)
         showPrompt(player, link)
-        if (overLimit) messages.sendLimitWarning(player)
+        if (overLimit) {
+            messages.sendLimitWarning(player)
+        } else if (counter.count(uuid) >= config.sessionLimit - 1) {
+            // warn one session early: the wall itself is too late to act on
+            messages.sendLastSessionNotice(player)
+        }
         scheduleReminder(uuid, player)
         scheduleModeSweep(uuid, player)
         notifyIfMuted(uuid, player)
@@ -429,6 +427,7 @@ class GuestSessionService(
                 GuestEndedPayload(uuid.toString(), session.sessionId, "AUTHENTICATED"),
             ),
         )
+        messages.sendApproved(player)
     }
 
     private fun sendGuestStarted(uuid: UUID, username: String, sessionId: String, snapshot: PlayerSnapshot) {

@@ -144,4 +144,17 @@ class LocalePushListenerTest {
         assertEquals(MessageType.LOCALE_ACK, MessageType.fromWire(LocaleProtocol.TYPE_LOCALE_ACK))
         assertEquals(MessageType.LOCALE_PUSH, MessageType.fromWire(LocaleProtocol.TYPE_LOCALE_PUSH))
     }
+
+    @Test
+    fun `an accepted push re-renders the ambient surfaces, a rejected one does not`() {
+        var applied = 0
+        val (service, link) = harness()
+        val listener = LocalePushListener(service, link, logger) { applied++ }
+
+        listener.onMessage(push(locale = "en"))
+        assertEquals(0, applied, "a rejected push must not repaint the tab list")
+
+        listener.onMessage(push())
+        assertEquals(1, applied)
+    }
 }

@@ -1,6 +1,7 @@
 package kz.bejiihiu.servercore.ui
 
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask
+import kz.bejiihiu.servercore.ui.UiScheduler.uiNow
 import net.kyori.adventure.bossbar.BossBar
 import net.kyori.adventure.text.Component
 import org.bukkit.entity.Player
@@ -32,7 +33,8 @@ class Countdown(
     fun start() {
         if (started) return
         started = true
-        player.showBossBar(bar)
+        // the bar is player state; showing it belongs on the player's thread
+        player.uiNow(kit.plugin) { player.showBossBar(bar) }
         // 0 delay: first frame right away, then one tick per second
         task = player.scheduler.runAtFixedRate(kit.plugin, { t -> tick(t) }, null, 0, 20)
     }
@@ -63,10 +65,11 @@ class Countdown(
         secondsLeft--
     }
 
-    /** stops the countdown and clears the bar; idempotent */
+    /** stops the countdown and clears the bar; idempotent, callable from any thread */
     fun cancel() {
         task?.cancel()
         task = null
-        player.hideBossBar(bar)
+        // the bar is player state: hiding it belongs on the player's own thread
+        player.uiNow(kit.plugin) { player.hideBossBar(bar) }
     }
 }

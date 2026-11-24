@@ -27,6 +27,8 @@ All colors live as Kotlin constants in `ui/Theme.kt`. Locale templates never use
 | `DANGER` | `#D2655C` | failure, expiry, denial |
 | `INFO` | `#8FA8BF` | informational banners |
 
+One non-text token lives beside the palette: `HOLOGRAM_BACKING_ARGB` (`#90141618`) — the translucent obsidian behind world-anchored `TextDisplay` text.
+
 Rules:
 
 - Text-bearing roles (`PRIMARY`, `SECONDARY`, `GOLD`, semantics) are unit-tested to clear 4.5:1 against a near-black chat surface; `MUTED` clears 3:1.
@@ -41,10 +43,13 @@ Minecraft's glyph set is fixed, so "type" here means weight through color, densi
 
 - **Titles:** one or two words in the accent or primary, sentence case, no trailing punctuation. Subtitle carries the actual sentence in `SECONDARY`.
 - **Chat blocks:** content lines sit behind the `┃ ` rail; `─` rules open and close the block (`FRAME_WIDTH = 40` glyphs). One thought per line. Blocks never exceed ~6 lines — anything longer belongs in an item or a command.
+- **Chat one-liners:** a single system notice keeps the rail and drops the rules (`UiFx.railLine`). If it has no rail and no `◆`, it is not a system message.
 - **Actionbar:** one line, ≤60 glyphs, re-sent on a schedule when it expresses continuous state (the pulse alternates `▸`/`▹` markers).
 - **Bossbar:** timed processes only. `PROGRESS` overlay, yellow while calm, red past the last quarter.
 - **Tab list:** one header, one footer, ambient identity, no stats.
 - **Holograms (`TextDisplay`):** world-anchored information only, slate translucent backing, non-persistent, auto-expiring.
+
+Timing is part of the system, not a per-screen choice (`UiFx`): 100 ms fade in, 2600 ms stay, 300 ms fade out. A welcome may hold 3200 ms because it is the one headline a guest gets; a one-second countdown tick holds 950 ms so the fade tail bleeds into the next frame. Kick screens are a single multi-line component — never "print the lines, then kick".
 
 ## Surface decision rules
 
@@ -62,6 +67,7 @@ Two surfaces may combine (title announces, card explains), three never overlap a
 ## Threading (Folia)
 
 - All player-owned scheduling goes through the player's `EntityScheduler` (`UiScheduler` helpers). No main-thread assumptions anywhere.
+- **Every send hops**, including "harmless" ones: `Player.uiNow` for one-shot writes, `uiDelayed`/`uiRepeat` for staged ones. The callers of a message can be the async chat event, a WS callback or the coordinator's settled hook, so a surface never sends from wherever it happens to be called. Bossbar show/hide is player state and hops too, which makes `Countdown.cancel()` safe from any thread.
 - World placement (hologram spawn/despawn) runs on the `RegionScheduler` owning the location; entity removal on the entity's own scheduler.
 - Locale pushes arrive on the WS thread: parse off the hot path, swap the store atomically, then persist to disk.
 
@@ -74,21 +80,26 @@ Two surfaces may combine (title announces, card explains), three never overlap a
 
 ## Localization
 
-- Canonical locale: RU (`locale/LocaleService.kt`). The bundled seed is `plugin/src/main/resources/locales/ru.yml`.
-- The backend ships the canonical locale bundle in its image and pushes the **full file** over WS as `LOCALE_PUSH` (see `docs/websocket-protocol.md`); the plugin acknowledges with `LOCALE_ACK` and persists the file to `plugins/ServerCore/locales/ru.yml`, which wins over the seed on boot.
-- Placeholder values are MiniMessage-escaped at injection; pushed templates are trusted only as far as their yaml parses.
+Two layers, with a hard boundary:
+
+- **Canonical runtime locale** (`locale/LocaleService.kt`, seed `plugin/src/main/resources/locales/ru.yml`). Toolkit keys — tab list, welcome card, auth window — pushed by the backend as a **full file** over WS as `LOCALE_PUSH` (see `docs/websocket-protocol.md`); the plugin acknowledges with `LOCALE_ACK` and persists it to `plugins/ServerCore/locales/ru.yml`, which wins over the seed on boot.
+- **Feature copy** (`util/I18n.kt`, seed `messages_en.yml` + `messages_ru.yml`). Guest lifecycle, observation replies, protection denials, permission debug. Admins edit these in the data folder; missing keys fall back to english, missing everywhere renders the key.
+- Both layers use the same theme tags; vanilla color names are forbidden and a test fails the build on them. `placeholders.*` in `messages_*.yml` is the exception: those values are consumed as plain legacy text by PlaceholderAPI, so they carry no markup at all.
+- Placeholder values are MiniMessage-escaped at injection (`I18n.component` / `Theme.render`); a feature never concatenates a player name into a template. Pushed templates are trusted only as far as their yaml parses.
+- `ResourceMarkupTest` parses every bundled template in strict MiniMessage (unknown and unclosed tags fail), rejects vanilla colors, legacy `§`, empty tag pairs and doubled spaces. `MessagesResourcesTest` holds ru/en key parity and the list of keys the code actually renders.
 
 ## Toolkit map
 
 | Piece | File | Purpose |
 |---|---|---|
-| Theme tokens + tag resolver | `ui/Theme.kt` | palette, decorative glyphs, frame width |
+| Theme tokens + tag resolver | `ui/Theme.kt` | palette, decorative glyphs, frame width, hologram backing |
 | Placeholder engine | `ui/Placeholders.kt` | `{name}` substitution with escaping |
-| Surfaces | `ui/UiFx.kt` | title/actionbar/chat frame/tab list primitives |
+| Surfaces | `ui/UiFx.kt` | title/actionbar/chat frame/rail line/tab list primitives |
 | Countdown formatting | `ui/CountdownRenderer.kt` | pure, unit-tested bar/clock logic |
 | Countdown runtime | `ui/Countdown.kt` | bossbar + title ticks on EntityScheduler |
-| Components | `ui/Components.kt` | `UiKit`: statusCard, banner, guestWelcome, authPrompt |
+| Components | `ui/Components.kt` | `UiKit`: title, actionBar, statusCard, banner, tabList, countdown |
 | Holograms | `ui/Holograms.kt` | expiring `TextDisplay`, Folia-safe |
-| Scheduling | `ui/UiScheduler.kt` | entity-scheduler wrappers |
+| Scheduling | `ui/UiScheduler.kt` | `uiNow`/`uiDelayed`/`uiRepeat` entity-scheduler wrappers |
 | Locale | `locale/*` | store, service, WS DTOs |
-| Demo wiring | `boot/JoinFlowListener.kt` | join flow proof; to be replaced by real state |
+| Feature copy | `util/I18n.kt` | flat key store with theme-rendered components |
+| Join identity | `boot/JoinFlowListener.kt` | tab list on arrival |

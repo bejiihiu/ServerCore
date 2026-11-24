@@ -45,6 +45,13 @@ object Theme {
     const val FRAME_WIDTH = 40
     const val CARD_WIDTH = 38
 
+    /**
+     * slate translucent backing for world-anchored text, ARGB. the alpha keeps
+     * the world readable behind it; the rgb is the same obsidian the chat
+     * surface dresses in, so a hologram never looks pasted on.
+     */
+    const val HOLOGRAM_BACKING_ARGB: Int = 0x90141618.toInt()
+
     private val mini = MiniMessage.miniMessage()
 
     /**

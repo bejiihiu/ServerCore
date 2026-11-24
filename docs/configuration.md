@@ -139,7 +139,9 @@ Per-guest interaction toggles. Each defaults to `true` (restricted):
 
 ### guest messages
 
-Player-facing text lives in `messages_en.yml` / `messages_ru.yml` (bundled, then copied to the plugin data folder on first start where admins can edit them). Missing keys fall back to the bundled English file. Keys use the `guest.*`, `auth.*` naming and support MiniMessage tags.
+Player-facing text lives in `messages_en.yml` / `messages_ru.yml` (bundled, then copied to the plugin data folder on first start where admins can edit them). Missing keys fall back to the bundled English file. Keys cover `guest.*`, `auth.approved.*`, `account.revoked`, `spec.*`, `protection.*` and `luckperms.groups.*`, and the `placeholders.*` block that feeds the PlaceholderAPI expansion.
+
+Templates are MiniMessage with the plugin's theme tags only (`<primary>`, `<secondary>`, `<muted>`, `<gold>`, `<ok>`, `<warn>`, `<danger>`, `<info>`); vanilla color names are rejected by a build test so the palette stays in one place. Values arrive as `{name}` placeholders and are escaped before substitution. `placeholders.*` is the exception: those values are plain legacy text for PlaceholderAPI and carry no tags.
 
 ### anti-esp
 

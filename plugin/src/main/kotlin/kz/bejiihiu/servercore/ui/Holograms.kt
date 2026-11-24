@@ -16,8 +16,8 @@ import org.bukkit.plugin.Plugin
  */
 object Holograms {
 
-    // slate-tinted translucent backing, matches the theme neutrals
-    private val BACKING = Color.fromARGB(0x90, 0x14, 0x16, 0x18)
+    // slate-tinted translucent backing, the same obsidian the chat surface uses
+    private val BACKING = Color.fromARGB(Theme.HOLOGRAM_BACKING_ARGB)
 
     /**
      * spawns a temporary floating text. safe to call from any thread; the

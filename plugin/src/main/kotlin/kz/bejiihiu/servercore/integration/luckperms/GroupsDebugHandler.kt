@@ -4,29 +4,29 @@ import io.papermc.paper.command.brigadier.CommandSourceStack
 import java.util.UUID
 import java.util.logging.Logger
 import kz.bejiihiu.servercore.boot.GroupsDebugCommand
-import kz.bejiihiu.servercore.ui.Placeholders
+import kz.bejiihiu.servercore.ui.UiScheduler.uiNow
 import kz.bejiihiu.servercore.util.I18n
-import net.kyori.adventure.text.minimessage.MiniMessage
+import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.OfflinePlayer
-import org.bukkit.command.ConsoleCommandSender
+import org.bukkit.entity.Player
+import org.bukkit.plugin.Plugin
 
 /**
  * /servercore groups <player> — admin-gated debug output listing a player's
  * luckperms groups (real data from the active permission source).
  *
  * threading: the target lookup happens on the command thread (the region
- * thread that owns the player registry), everything after that is async —
- * the sender's permission check and the lp group query only touch adventure
- * sends from their callback threads.
+ * thread that owns the player registry), the permission check and the lp
+ * group query complete on their own callback threads. console may be written
+ * to from anywhere, a player needs their entity scheduler — replies hop.
  */
 class GroupsDebugHandler(
+    private val plugin: Plugin,
     private val source: PermissionSource,
     private val i18n: I18n,
     private val logger: Logger,
 ) : GroupsDebugCommand.Handler {
-
-    private val mini = MiniMessage.miniMessage()
 
     override fun execute(stack: CommandSourceStack, args: Array<out String>) {
         if (args.size != 1) {
@@ -84,7 +84,7 @@ class GroupsDebugHandler(
             val primary = groups.primary
             for (group in groups.groups.sorted()) {
                 val mark = if (primary != null && group.equals(primary, ignoreCase = true)) {
-                    text("luckperms.groups.primary-mark")
+                    i18n.text("luckperms.groups.primary-mark")
                 } else {
                     ""
                 }
@@ -93,11 +93,16 @@ class GroupsDebugHandler(
         }
     }
 
-    /** template from i18n, dynamic values escaped so names stay literal */
-    private fun text(key: String, vararg values: Pair<String, String>): String =
-        Placeholders.substitute(i18n.text(key), values.toMap())
+    /** template from i18n, rendered with theme tags and escaped values */
+    private fun text(key: String, vararg values: Pair<String, String>): Component =
+        i18n.component(key, *values)
 
-    private fun reply(stack: CommandSourceStack, raw: String) {
-        stack.sender.sendMessage(mini.deserialize(raw))
+    private fun reply(stack: CommandSourceStack, line: Component) {
+        val sender = stack.sender
+        if (sender is Player) {
+            sender.uiNow(plugin) { sender.sendMessage(line) }
+        } else {
+            sender.sendMessage(line)
+        }
     }
 }

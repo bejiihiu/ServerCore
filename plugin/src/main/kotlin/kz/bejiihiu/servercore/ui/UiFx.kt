@@ -1,6 +1,7 @@
 package kz.bejiihiu.servercore.ui
 
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.JoinConfiguration
 import org.bukkit.entity.Player
 import java.time.Duration
 
@@ -54,8 +55,7 @@ object UiFx {
         out.append(rule(width))
         for (line in lines) {
             out.append(Component.newline())
-            out.append(Component.text("${Theme.RAIL} ", Theme.HAIRLINE))
-            out.append(line)
+            out.append(rail(line))
         }
         out.append(Component.newline())
         out.append(rule(width))
@@ -66,6 +66,19 @@ object UiFx {
     fun sendFrame(player: Player, lines: List<Component>, width: Int = Theme.FRAME_WIDTH) {
         player.sendMessage(frame(lines, width))
     }
+
+    /**
+     * one system line behind the rail, no rules. the lightest chat surface:
+     * for a single notice that still has to read as ours (a mute, a denial).
+     */
+    fun railLine(line: Component): Component = rail(line)
+
+    /** several pre-rendered lines as one message with real line breaks */
+    fun joinLines(lines: List<Component>): Component =
+        Component.join(JoinConfiguration.newlines(), lines)
+
+    private fun rail(line: Component): Component =
+        Component.text("${Theme.RAIL} ", Theme.HAIRLINE).append(line)
 
     private fun rule(width: Int): Component =
         Component.text(Theme.RULE.repeat(width), Theme.GOLD_DIM)

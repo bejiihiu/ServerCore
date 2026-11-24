@@ -21,6 +21,13 @@ class LocalePushListener(
     private val locale: LocaleService,
     private val link: BackendLink,
     private val logger: Logger,
+    /**
+     * runs after an accepted push, on the inbound ws thread. the ambient
+     * identity surfaces (tab list) re-render from here, otherwise a language
+     * change would only reach players who rejoin. implementations must hop
+     * onto each player's scheduler themselves.
+     */
+    private val onApplied: () -> Unit = {},
 ) : GatewayListener {
 
     override fun onMessage(envelope: WsEnvelope) {
@@ -41,6 +48,9 @@ class LocalePushListener(
                     "locale bundle applied: ${result.locale} @ ${result.revision} " +
                         "(${locale.snapshot().size} entries)",
                 )
+                runCatching(onApplied).onFailure {
+                    logger.warning("locale applied but ambient re-render failed: ${it.message}")
+                }
                 LocaleAckPayload(result.locale, result.revision, accepted = true)
             }
             is LocalePushResult.Rejected -> {

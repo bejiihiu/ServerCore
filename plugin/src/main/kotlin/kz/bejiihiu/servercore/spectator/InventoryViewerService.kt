@@ -10,9 +10,7 @@ import io.papermc.paper.threadedregions.scheduler.ScheduledTask
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kz.bejiihiu.servercore.util.I18n
-import kz.bejiihiu.servercore.ui.Theme
 import net.kyori.adventure.text.Component
-import net.kyori.adventure.text.minimessage.MiniMessage
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
@@ -326,10 +324,7 @@ class InventoryViewerService(
         else SpigotConversionUtil.fromBukkitItemStack(this)
 
     private fun title(target: Player): Component =
-        MiniMessage.miniMessage().deserialize(
-            i18n.text(TITLE_KEY, "target" to target.name),
-            Theme.tags,
-        )
+        i18n.component(TITLE_KEY, "target" to target.name)
 
     private fun sendPacket(adminId: UUID, wrapper: com.github.retrooper.packetevents.wrapper.PacketWrapper<*>) {
         val admin = plugin.server.getPlayer(adminId) ?: return

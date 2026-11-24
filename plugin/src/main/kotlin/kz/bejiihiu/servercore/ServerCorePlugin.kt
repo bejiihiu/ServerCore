@@ -96,6 +96,7 @@ import kz.bejiihiu.servercore.spec.SpecRestoreJournal
 import kz.bejiihiu.servercore.spec.SpecService
 import kz.bejiihiu.servercore.spec.SessionCoordinator
 import kz.bejiihiu.servercore.spec.VanillaAdapter
+import kz.bejiihiu.servercore.ui.UiFx
 import kz.bejiihiu.servercore.ui.UiKit
 import kz.bejiihiu.servercore.util.I18n
 import kz.bejiihiu.servercore.websocket.DelayScheduler
@@ -375,7 +376,7 @@ class ServerCorePlugin : JavaPlugin() {
         val lpConfig = LuckPermsConfig.load(config, logger)
         val permissions = PermissionSourceFactory.create(lpConfig, logger)
         permissionSource = permissions
-        GroupsDebugCommand.handler = GroupsDebugHandler(permissions, i18n, logger)
+        GroupsDebugCommand.handler = GroupsDebugHandler(this, permissions, i18n, logger)
 
         snapshots = SnapshotStore(dataFolder.toPath().resolve(guestConfig.snapshotStoragePath), io)
         snapshots.load()
@@ -394,7 +395,13 @@ class ServerCorePlugin : JavaPlugin() {
         // locale channel: the backend pushes the canonical bundle on every
         // fresh connection. the listener applies it to the live store and
         // answers LOCALE_ACK through the same hub
-        backendGateway.addListener(LocalePushListener(locale, backendGateway, logger))
+        backendGateway.addListener(
+            LocalePushListener(locale, backendGateway, logger) {
+                // ambient identity follows the language: re-render the tab list
+                // for everyone online instead of waiting for the next join
+                Bukkit.getOnlinePlayers().forEach(ui::tabList)
+            },
+        )
 
         val wsResolver = WsAccountResolver(backendGateway, accountsCache, guestConfig)
         val accounts = AccountService(
@@ -402,7 +409,7 @@ class ServerCorePlugin : JavaPlugin() {
             wsResolver,
             LocalAccountResolver(guestConfig, accountsCache),
         )
-        val messages = GuestMessageService(guestConfig, wsResolver, i18n)
+        val messages = GuestMessageService(guestConfig, wsResolver, i18n, this)
         sessions = GuestSessionService(
             this, guestConfig, accounts, wsResolver, snapshots, counter, backendGateway, messages,
             punishmentQuery = { fpBridge.punishmentQuery() },
@@ -650,7 +657,7 @@ class ServerCorePlugin : JavaPlugin() {
         val service = CommandProtectionService(protectionConfig, { aliasTree }, logger)
         service.refreshAliases()
         server.pluginManager.registerEvents(
-            CommandProtectionListener(protectionConfig, service, i18n, logger),
+            CommandProtectionListener(this, protectionConfig, service, i18n, logger),
             this,
         )
 
@@ -725,11 +732,12 @@ class ServerCorePlugin : JavaPlugin() {
     private fun revokeDeletedPlayer(minecraftUuid: String) {
         val uuid = runCatching { UUID.fromString(minecraftUuid) }.getOrNull() ?: return
         val player = server.getPlayer(uuid) ?: return
+        val message = UiFx.joinLines(i18n.components("account.revoked"))
         // entity work belongs on the entity scheduler, never on ws callbacks
         player.scheduler.run(
             this,
             { task ->
-                player.kick(Component.text("Ваш аккаунт был удалён. Доступ к серверу отозван."))
+                player.kick(message)
                 task.cancel()
             },
             null,

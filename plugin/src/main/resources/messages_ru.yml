@@ -1,82 +1,81 @@
-# русские строки. разрешены mini-message теги (<bold>, <gold>, <click>, ...).
-# можно свободно править в папке плагина, недостающие ключи берутся из english.
+# русские строки: гостевой режим, наблюдение, отказы защиты, отладка прав.
+# цветовые теги — только токены темы (<primary> <secondary> <muted> <gold>
+# <ok> <warn> <danger> <info>), ванильные цвета запрещены: их проверяет тест.
+# {name} — плейсхолдеры, значения экранируются до подстановки.
+# правила копирайта: строчные заголовки, без восклицательных знаков, без
+# точки в конце коротких строк, одна мысль на строку.
 guest:
   welcome:
-    title: "<gold>Вы в гостевом режиме</gold>"
-    subtitle: "<gray>Исследуйте свободно, игровой процесс откроется после регистрации</gray>"
+    title: "<primary>гостевой пропуск</primary>"
+    subtitle: "<secondary>сессия <gold>{n}</gold> из <gold>{max}</gold> · мир открыт для осмотра</secondary>"
   welcome-back:
-    title: "<gold>С возвращением, гость</gold>"
-    subtitle: "<gray>Ваша исходная точка восстановлена</gray>"
+    subtitle: "<secondary>точка входа восстановлена · сессия <gold>{n}</gold> из <gold>{max}</gold></secondary>"
   link-prompt:
-    - "<gray>Для получения доступа к серверу необходимо</gray>"
-    - "<gray>пройти регистрацию в Telegram.</gray>"
-    - ""
-    - "<aqua>Telegram:</aqua> <click:open_url:'{link}'><underlined><gold>{link}</gold></underlined></click>"
+    - "<secondary>играть можно после регистрации в Telegram-боте</secondary>"
+    - "<secondary>ссылка для входа</secondary> <click:open_url:'{link}'><underlined><gold>{link}</gold></underlined></click>"
   restriction:
-    actionbar: "<red>Гостевой режим: взаимодействие заблокировано. Используйте <bold>/link</bold> для регистрации</red>"
+    actionbar: "<danger>гостевой режим: действие закрыто · регистрация — /link</danger>"
   reminder:
-    actionbar: "<gray>Ожидаем регистрацию — </gray><gold>{link}</gold>"
+    actionbar: "<secondary>регистрация:</secondary> <gold>{link}</gold>"
   limit:
     warning:
-      title: "<red>Лимит гостевых сессий исчерпан</red>"
-      subtitle: "<gray>Зарегистрируйтесь, чтобы продолжить</gray>"
+      title: "<danger>лимит гостевых сессий</danger>"
+      subtitle: "<secondary>регистрация в Telegram-боте открывает игру</secondary>"
+    last-session: "<warn>последняя гостевая сессия</warn> <muted>·</muted> <secondary>регистрация в боте</secondary>"
     chat:
-      - "<red>Вы использовали все {limit} гостевых сессий.</red>"
-      - "<gray>Зарегистрируйтесь через бота, чтобы играть:</gray>"
+      - "<danger>гостевые сессии закончились: {limit} из {limit}</danger>"
+      - "<secondary>мир открыт до выхода · игра — после регистрации</secondary>"
       - "<gold>{link}</gold>"
-  mute-notice:
-    - "<gray>Учтите: сейчас у вас активен мут на этом сервере — чат молчит, пока он не истечёт.</gray>"
+  mute-notice: "<secondary>сейчас действует мут — чат молчит до его окончания</secondary>"
   kick:
     limit:
-      - "<red>Достигнут лимит гостевых сессий ({limit}).</red>"
-      - "<gray>Чтобы играть на сервере, пройдите регистрацию в Telegram:</gray>"
+      - "<danger>гостевые сессии исчерпаны: {limit}</danger>"
+      - "<secondary>регистрация в Telegram-боте открывает игру</secondary>"
       - "<gold>{link}</gold>"
     banned:
-      - "<red>Ваш доступ к этому серверу ограничен.</red>"
-      - "<gray>Если вы считаете это ошибкой, свяжитесь с администрацией.</gray>"
+      - "<danger>доступ к серверу ограничен</danger>"
+      - "<secondary>если это ошибка — напишите администрации в боте</secondary>"
     disabled:
-      - "<red>Для входа на этот сервер нужна регистрация.</red>"
-      - "<gray>Пройдите регистрацию в Telegram, чтобы зайти:</gray>"
+      - "<danger>вход на сервер — только по регистрации</danger>"
+      - "<secondary>пройдите её в Telegram-боте</secondary>"
       - "<gold>{link}</gold>"
-# ключи для следующих фаз — держим здесь, чтобы обе стороны early agree на имена
 auth:
-  waiting:
-    actionbar: "<gray>Ожидаем подтверждение входа в Telegram...</gray>"
   approved:
-    title: "<green>Добро пожаловать!</green>"
-    subtitle: "<gray>Авторизация подтверждена</gray>"
-  rejected:
-    title: "<red>В авторизации отказано</red>"
-  expired:
-    actionbar: "<yellow>Запрос на вход истёк, используйте <bold>/link</bold>, чтобы повторить</yellow>"
+    title: "<ok>доступ открыт</ok>"
+    subtitle: "<secondary>регистрация подтверждена · гостевой режим снят</secondary>"
+# экран отключения, когда бэкенд отозвал аккаунт
+account:
+  revoked:
+    - "<danger>аккаунт удалён</danger>"
+    - "<secondary>доступ отозван · если это ошибка — напишите в бот</secondary>"
 spec:
-  inventory-title: "<secondary>Инвентарь</secondary> <muted>·</muted> <gold>{target}</gold>"
-  started: "<green>Наблюдение начато: <white>{target}</white>. Чтобы выйти, введите /spec</green>"
-  exited: "<green>Наблюдение завершено, ваше состояние восстановлено</green>"
-  aborted: "<red>Наблюдение за {target} не удалось начать</red>"
-  disabled: "<red>Наблюдение отключено на этом сервере</red>"
-  no-target: "<red>Игрок {target} не в сети</red>"
-  self: "<red>Нельзя наблюдать за собой</red>"
-  busy-admin: "<red>Вы уже наблюдаете за {target}. Завершите текущую сессию</red>"
-  busy-target: "<red>За {target} уже наблюдает другой сотрудник</red>"
-  not-observing: "<red>Вы ни за кем не наблюдаете</red>"
-  denied-permission: "<red>У вас нет доступа к наблюдению</red>"
-  denied-level: "<red>Нельзя наблюдать за {target}: его уровень доступа выше вашего</red>"
+  inventory-title: "<secondary>инвентарь</secondary> <muted>·</muted> <gold>{target}</gold>"
+  started: "<ok>наблюдение</ok> <primary>{target}</primary> <secondary>· завершить — /spec</secondary>"
+  exited: "<ok>наблюдение завершено, состояние восстановлено</ok>"
+  aborted: "<danger>наблюдение за {target} не началось</danger>"
+  disabled: "<danger>наблюдение отключено на этом сервере</danger>"
+  no-target: "<danger>{target} не в сети</danger>"
+  self: "<danger>нельзя наблюдать за собой</danger>"
+  busy-admin: "<danger>вы уже наблюдаете за {target} · завершите сессию</danger>"
+  busy-target: "<danger>за {target} уже наблюдает другой сотрудник</danger>"
+  not-observing: "<secondary>вы ни за кем не наблюдаете</secondary>"
+  denied-permission: "<danger>нет доступа к наблюдению</danger>"
+  denied-level: "<danger>уровень доступа {target} выше вашего</danger>"
 protection:
   denied:
-    chat: "<red>Команда <bold>{command}</bold> недоступна на этом сервере.</red>"
+    chat: "<danger>команда <bold>{command}</bold> недоступна на этом сервере</danger>"
 # админская отладочная команда: /servercore groups <игрок>
 luckperms:
   groups:
-    usage: "<gray>Использование:</gray> <gold>/servercore groups {arg}</gold>"
-    no-permission: "<red>У вас нет прав на эту команду.</red>"
-    player-not-found: "<red>Игрок <white>{player}</white> не найден на сервере.</red>"
-    header: "<gold>Группы игрока <white>{player}</white>:</gold>"
-    entry: "<gray> • </gray><yellow>{group}</yellow><gray>{primary}</gray>"
-    primary-mark: " (основная)"
-    none: "<gray>Игрок не состоит ни в одной группе.</gray>"
-    lookup-failed: "<red>Не удалось получить группы игрока, подробности в логе сервера.</red>"
-# вывод %servercore_*% плейсхолдеров, только человекочитаемые части
+    usage: "<secondary>использование:</secondary> <gold>/servercore groups {arg}</gold>"
+    no-permission: "<danger>нет прав на эту команду</danger>"
+    player-not-found: "<danger>{player} не в сети</danger>"
+    header: "<secondary>группы</secondary> <primary>{player}</primary>"
+    entry: "<muted>▸</muted> <primary>{group}</primary><muted>{primary}</muted>"
+    primary-mark: " · основная"
+    none: "<muted>игрок не состоит в группах</muted>"
+    lookup-failed: "<danger>не удалось прочитать группы · подробности в логе</danger>"
+# значения %servercore_*%: обычный текст для placeholderapi, без тегов
 placeholders:
   "yes": "да"
   "no": "нет"
@@ -91,9 +90,9 @@ placeholders:
     expired: "истекла"
   last-seen:
     now: "сейчас"
-    minutes: "{n} мин. назад"
-    hours: "{n} ч. назад"
-    days: "{n} дн. назад"
+    minutes: "{n} мин назад"
+    hours: "{n} ч назад"
+    days: "{n} дн назад"
   duration:
     h: "{n}ч"
     m: "{n}м"

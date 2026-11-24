@@ -2,6 +2,7 @@ package kz.bejiihiu.servercore.ui
 
 import kz.bejiihiu.servercore.locale.LocaleService
 import kz.bejiihiu.servercore.ui.UiScheduler.uiDelayed
+import kz.bejiihiu.servercore.ui.UiScheduler.uiNow
 import kz.bejiihiu.servercore.ui.UiScheduler.uiRepeat
 import net.kyori.adventure.text.Component
 import org.bukkit.entity.Player
@@ -29,12 +30,13 @@ class UiKit(
     ) {
         val t = locale.component(titleKey, values)
         val s = subtitleKey?.let { locale.component(it, values) } ?: Component.empty()
-        UiFx.title(player, t, s, stayMs)
+        player.uiNow(plugin) { UiFx.title(player, t, s, stayMs) }
     }
 
     /** one transient actionbar line from a locale key */
     fun actionBar(player: Player, key: String, values: Map<String, String> = emptyMap()) {
-        UiFx.actionBar(player, locale.component(key, values))
+        val line = locale.component(key, values)
+        player.uiNow(plugin) { UiFx.actionBar(player, line) }
     }
 
     /**
@@ -44,19 +46,21 @@ class UiKit(
      */
     fun statusCard(player: Player, key: String, values: Map<String, String> = emptyMap()) {
         val lines = locale.lines(key, values).map { Theme.render(it) }
-        UiFx.sendFrame(player, lines)
+        player.uiNow(plugin) { UiFx.sendFrame(player, lines) }
     }
 
     /** single-line system event ping, colored by kind */
     fun banner(player: Player, kind: BannerKind, key: String, values: Map<String, String> = emptyMap()) {
         val line = Component.text("${Theme.MARK} ", Theme.GOLD)
             .append(locale.component(key, values).colorIfAbsent(kind.color))
-        player.sendMessage(line)
+        player.uiNow(plugin) { player.sendMessage(line) }
     }
 
     /** ambient identity surface, called on join and on locale change */
     fun tabList(player: Player) {
-        UiFx.tabList(player, locale.component("tablist.header"), locale.component("tablist.footer"))
+        val header = locale.component("tablist.header")
+        val footer = locale.component("tablist.footer")
+        player.uiNow(plugin) { UiFx.tabList(player, header, footer) }
     }
 
     /** a reusable countdown driven by the player's entity scheduler */

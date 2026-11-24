@@ -14,6 +14,18 @@ import org.bukkit.plugin.Plugin
  */
 object UiScheduler {
 
+    /**
+     * runs [task] on the thread that owns the player, right now (next tick at
+     * the latest). every surface that touches a player goes through here or
+     * through a delayed/repeating sibling — folia has no main thread, and a
+     * packet sent from a ws or async callback is a crash waiting to happen.
+     * a retired player silently drops the task, which is exactly what a quit
+     * race wants.
+     */
+    fun Player.uiNow(plugin: Plugin, task: () -> Unit) {
+        scheduler.run(plugin, { task() }, null)
+    }
+
     /** one delayed task on the thread that owns the player */
     fun Player.uiDelayed(plugin: Plugin, delayTicks: Long, task: (ScheduledTask) -> Unit): ScheduledTask? =
         scheduler.runDelayed(plugin, task, null, delayTicks)
