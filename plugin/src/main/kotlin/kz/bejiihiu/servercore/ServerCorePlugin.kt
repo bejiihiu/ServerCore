@@ -80,8 +80,11 @@ import kz.bejiihiu.servercore.protection.ProtectionLifecycle
 import kz.bejiihiu.servercore.protection.ServerCoreCommands
 import kz.bejiihiu.servercore.spec.BukkitHiddenObserver
 import kz.bejiihiu.servercore.spec.FoliaSpecEffects
+import kz.bejiihiu.servercore.spec.GamemodeSanctionBridge
+import kz.bejiihiu.servercore.spec.InventoryViewerBridge
+import kz.bejiihiu.servercore.spec.InventoryViewerViews
 import kz.bejiihiu.servercore.spec.LuckPermsAdapter
-import kz.bejiihiu.servercore.spec.SpecAuditWriter
+import kz.bejiihiu.servercore.spec.ObserverHidingBridge
 import kz.bejiihiu.servercore.spec.SpecCommand
 import kz.bejiihiu.servercore.spec.SpecConfig
 import kz.bejiihiu.servercore.spec.SpecPermissionPolicy
@@ -309,30 +312,30 @@ class ServerCorePlugin : JavaPlugin() {
         presence = presenceService
         server.pluginManager.registerEvents(presenceService, this)
 
-        // spec audit: local append-only jsonl trail + the session registry that
-        // reports starts/ends to the backend and feeds the heartbeat counter.
-        // the /spec command itself hooks into the registry when it lands
+        // spec reporting bridge: every settled session start/end goes to the
+        // backend over the websocket (the backend writes the audit_logs rows);
+        // the local audit trail is the same events as a daily-rotating jsonl
         val specAuditConfig = pluginConfig.specAudit
-        if (specAuditConfig.enabled) {
-            val trail = SpecAuditTrail(
+        val specTrail = if (specAuditConfig.enabled) {
+            SpecAuditTrail(
                 directory = dataFolder.toPath().resolve(specAuditConfig.directory),
                 io = io,
                 retentionDays = specAuditConfig.retentionDays.toLong(),
                 maxEntriesPerSession = specAuditConfig.maxEntriesPerSession,
                 queueCapacity = specAuditConfig.queueCapacity,
             )
-            val specSender = object : SpecEventSender {
-                override fun sendSpecStarted(payload: Payload.SpecStarted) {
-                    client.send(MessageType.SPEC_STARTED, payload)
-                }
-
-                override fun sendSpecEnded(payload: Payload.SpecEnded) {
-                    client.send(MessageType.SPEC_ENDED, payload)
-                }
+        } else null
+        val specSender = object : SpecEventSender {
+            override fun sendSpecStarted(payload: Payload.SpecStarted) {
+                client.send(MessageType.SPEC_STARTED, payload)
             }
-            specTrail = trail
-            specRegistry = SpecSessionRegistry(trail, specSender)
+
+            override fun sendSpecEnded(payload: Payload.SpecEnded) {
+                client.send(MessageType.SPEC_ENDED, payload)
+            }
         }
+        this.specTrail = specTrail
+        specRegistry = SpecSessionRegistry(specSender, specTrail)
 
         // guest mode stack (uses its own local gateway handle for envelope-level
         // helpers; both handles share the same backend connection semantics)
@@ -424,12 +427,31 @@ class ServerCorePlugin : JavaPlugin() {
         // visibility engine (the engine itself drives disguiseStack.applier)
         disguiseStack = DisguiseStack.create(this, config, logger)
 
+        // hidden observer layer for /spec: while an admin watches a player,
+        // the admin's entity vanishes from that client (destroy + suppressed
+        // spawns/data + tab removal), and comes back intact on session end.
+        // the session coordinator drives it through the hiding bridge; this
+        // registry stays the seam the esp engine and resync paths read
+        val observerConfig = SpecObserverConfig.load(config, logger)
+        val observerSessions = SpectatorSpecSessionRegistry()
+        val traceFilter = TraceFilter(observerConfig.traceRadius, observerConfig.suppressActionBar)
+        val hider = ObserverHider(this, packets, observerSessions, traceFilter, syncStates = viewStates)
+        val traceListener = SpecTraceListener(observerSessions, packets.registry, hider::poseOf, traceFilter)
+        if (packets.register(traceListener)) {
+            specTraceListener = traceListener
+        } else {
+            logger.warning("packet layer idle, hidden observer suppression inactive")
+        }
+        server.pluginManager.registerEvents(SpecResyncListener(hider, observerSessions), this)
+        specHider = hider
+
         // protection stack: command denial, gamemode guard, op lockdown.
         // guest sessions keep their players in spectator, so that specific
         // shape is sanctioned through the guard's seam
         val protectionConfig = ProtectionConfig.load(config, logger)
+        val overrideRegistry = AllowedGamemodeOverrideRegistry()
         if (protectionConfig.enabled) {
-            setupProtection(protectionConfig, i18n, sessions)
+            setupProtection(protectionConfig, i18n, sessions, overrideRegistry)
         } else {
             logger.warning("protection disabled in config: command and gamemode guards are off")
         }
@@ -457,19 +479,22 @@ class ServerCorePlugin : JavaPlugin() {
                 specPermission = specConfig.permission.specPermission,
                 fallbackLevelIndex = specConfig.permission.fallbackLevelIndex,
             )
-            val specAudit = if (specConfig.logToAudit) {
-                SpecAuditWriter(
-                    baseFile = dataFolder.toPath().resolve(specConfig.audit.path),
-                    maxFileBytes = specConfig.audit.maxFileBytes,
-                    maxKept = specConfig.audit.maxKept,
-                    io = io,
-                )
-            } else null
-
             val specJournal = SpecRestoreJournal(dataFolder.toPath().resolve("spec-restore-journal.json"), io)
             specJournal.load()
             val specEffects = FoliaSpecEffects(this, BukkitHiddenObserver(this), specJournal, logger)
-            val specCoordinator = SessionCoordinator(specEffects, specAudit)
+            // the session machine is the single owner of the truth; the
+            // bridges hang off its lifecycle callbacks:
+            // - gamemode sanction: the guard sees the grant before the
+            //   spectator switch fires its event
+            // - packet hiding: the admin vanishes from the target the moment
+            //   the session settles, comes back the moment it ends
+            // - inventory viewer: the live view opens with the session
+            val specBridges = listOf(
+                GamemodeSanctionBridge(overrideRegistry),
+                ObserverHidingBridge(hider),
+                InventoryViewerBridge(InventoryViewerViews(this, inventoryViewer)),
+            )
+            val specCoordinator = SessionCoordinator(specEffects, specRegistry, specBridges)
             val specService = SpecService(
                 plugin = this,
                 config = specConfig,
@@ -478,7 +503,7 @@ class ServerCorePlugin : JavaPlugin() {
                 coordinator = specCoordinator,
                 effects = specEffects,
                 journal = specJournal,
-                audit = specAudit,
+                reports = specRegistry,
                 i18n = i18n,
             )
             spec = specService
@@ -498,24 +523,6 @@ class ServerCorePlugin : JavaPlugin() {
                 SpecCommand(specService).register(event.registrar())
             }
         }
-
-        // hidden observer layer for /spec: while an admin watches a player,
-        // the admin's entity vanishes from that client (destroy + suppressed
-        // spawns/data + tab removal), and comes back intact on session end.
-        // the session side (command, audit, permission ordering) lives in the
-        // spec-core module; both meet at the SpecSessionSource seam over this registry
-        val observerConfig = SpecObserverConfig.load(config, logger)
-        val observerSessions = SpectatorSpecSessionRegistry()
-        val traceFilter = TraceFilter(observerConfig.traceRadius, observerConfig.suppressActionBar)
-        val hider = ObserverHider(this, packets, observerSessions, traceFilter, syncStates = viewStates)
-        val traceListener = SpecTraceListener(observerSessions, packets.registry, hider::poseOf, traceFilter)
-        if (packets.register(traceListener)) {
-            specTraceListener = traceListener
-        } else {
-            logger.warning("packet layer idle, hidden observer suppression inactive")
-        }
-        server.pluginManager.registerEvents(SpecResyncListener(hider, observerSessions), this)
-        specHider = hider
 
         // anti-esp visibility engine; guests flag flows in so guest-viewing-guest
         // stays vanilla, the spec registry flags in so a watching admin renders
@@ -577,7 +584,12 @@ class ServerCorePlugin : JavaPlugin() {
      * gamemode guard with sweep, command block audit, op lockdown and the
      * /servercore admin command.
      */
-    private fun setupProtection(protectionConfig: ProtectionConfig, i18n: I18n, sessions: GuestSessionService) {
+    private fun setupProtection(
+        protectionConfig: ProtectionConfig,
+        i18n: I18n,
+        sessions: GuestSessionService,
+        overrideRegistry: AllowedGamemodeOverrideRegistry,
+    ) {
         val dispatcherRef = AtomicReference<CommandDispatcher<CommandSourceStack>?>(null)
         val aliasTree = CommandTreeSources.combined(
             commandMap = { runCatching { Bukkit.getCommandMap() }.getOrNull() },
@@ -591,7 +603,7 @@ class ServerCorePlugin : JavaPlugin() {
             this,
         )
 
-        val registry = AllowedGamemodeOverrideRegistry()
+        val registry = overrideRegistry
         val guard = GamemodeGuardListener(
             plugin = this,
             config = protectionConfig,
@@ -687,15 +699,16 @@ class ServerCorePlugin : JavaPlugin() {
             sync.restoreAllForReload()
             sync.release()
         }
-        // hidden observer pairs restore next, in deterministic order, while
-        // the packetevents pipeline is still fully alive
+        // sessions end first, while the packetevents pipeline is still fully
+        // alive: the lifecycle bridges restore client views and admin modes
+        // through the normal session-end path
+        spec?.shutdown()
+        // hidden observer pairs restore next, in deterministic order, as a
+        // belt-and-braces pass over anything the session sweep did not cover
         specHider?.shutdown()
         specTraceListener?.let { packetService?.unregister(it) }
         // detach our listener first, the shared packetevents instance must outlive us
         packetService?.stop()
-        // sessions never survive a restart: end them, restore what can be
-        // restored live, journal the rest for the next join
-        spec?.shutdown()
         wsGateway?.stop()
         esp?.stop()
         updater?.stop()

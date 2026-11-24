@@ -23,7 +23,7 @@ class SpecService(
     private val coordinator: SessionCoordinator,
     private val effects: FoliaSpecEffects,
     private val journal: SpecRestoreJournal,
-    private val audit: SpecAuditWriter?,
+    private val reports: SpecSessionRegistry?,
     private val i18n: I18n,
 ) {
 
@@ -71,18 +71,19 @@ class SpecService(
         plugin.server.asyncScheduler.runNow(plugin, { _ ->
             val adminLevel = resolveLevel(admin.uniqueId)
             if (adminLevel == null) {
-                audit?.record(
-                    SpecAuditEvent.SPEC_DENIED, admin.uniqueId.toString(), admin.name,
-                    targetPlayer.uniqueId.toString(), targetPlayer.name, "no access level resolved",
+                reports?.denied(
+                    admin.uniqueId, admin.name,
+                    targetPlayer.uniqueId, targetPlayer.name,
+                    "no access level resolved",
                 )
                 reply(text("denied-permission"))
                 return@runNow
             }
             val targetLevel = resolveLevel(targetPlayer.uniqueId)
             if (!policy.canObserve(adminLevel, targetLevel)) {
-                audit?.record(
-                    SpecAuditEvent.SPEC_DENIED, admin.uniqueId.toString(), admin.name,
-                    targetPlayer.uniqueId.toString(), targetPlayer.name,
+                reports?.denied(
+                    admin.uniqueId, admin.name,
+                    targetPlayer.uniqueId, targetPlayer.name,
                     "target access level ${targetLevel?.let { policy.describe(it) } ?: "regular"} outranks ${policy.describe(adminLevel)}",
                 )
                 reply(text("denied-level", "target" to targetPlayer.name))

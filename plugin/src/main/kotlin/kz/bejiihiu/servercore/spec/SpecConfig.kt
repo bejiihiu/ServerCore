@@ -1,7 +1,6 @@
 package kz.bejiihiu.servercore.spec
 
 import java.util.logging.Logger
-import org.bukkit.configuration.ConfigurationSection
 import org.bukkit.configuration.file.FileConfiguration
 
 /**
@@ -19,23 +18,11 @@ data class SpecPermissionConfig(
     val fallbackLevelIndex: Int,
 )
 
-data class SpecAuditFileConfig(
-    /** audit file path, relative to the plugin data folder */
-    val path: String,
-    /** rotate the file once it grows past this, bytes */
-    val maxFileBytes: Long,
-    /** how many rotated files to keep around */
-    val maxKept: Int,
-)
-
 data class SpecConfig(
     val enabled: Boolean,
     /** live target inventory viewing is wired in a later phase, the toggle already exists */
     val liveInventory: Boolean,
-    /** write every session start/stop/denial to the audit file */
-    val logToAudit: Boolean,
     val permission: SpecPermissionConfig,
-    val audit: SpecAuditFileConfig,
 ) {
     companion object {
         fun load(file: FileConfiguration, logger: Logger): SpecConfig {
@@ -54,12 +41,9 @@ data class SpecConfig(
                 // standalone spec permission holders land on the lowest level by default
                 ?: (levels.size - 1).coerceAtLeast(0)
 
-            val audit = auditFrom(spec?.getConfigurationSection("audit"))
-
             return SpecConfig(
                 enabled = bool("enabled", true),
                 liveInventory = bool("live-inventory", true),
-                logToAudit = bool("log-to-audit", true),
                 permission = SpecPermissionConfig(
                     useLuckPerms = bool("permission.use-luckperms", true),
                     levels = levels,
@@ -67,17 +51,7 @@ data class SpecConfig(
                         ?.trim()?.ifEmpty { "servercore.spec" } ?: "servercore.spec",
                     fallbackLevelIndex = fallbackLevelIndex,
                 ),
-                audit = audit,
             )
-        }
-
-        private fun auditFrom(section: ConfigurationSection?): SpecAuditFileConfig {
-            val path = section?.getString("path", "audit/spec-audit.jsonl")
-                ?.trim()?.ifEmpty { "audit/spec-audit.jsonl" } ?: "audit/spec-audit.jsonl"
-            val maxBytes = section?.getLong("max-file-bytes", 5L * 1024 * 1024)?.coerceIn(64L * 1024, 1024L * 1024 * 1024)
-                ?: 5L * 1024 * 1024
-            val maxKept = section?.getInt("max-kept", 10)?.coerceIn(1, 100) ?: 10
-            return SpecAuditFileConfig(path = path, maxFileBytes = maxBytes, maxKept = maxKept)
         }
     }
 }

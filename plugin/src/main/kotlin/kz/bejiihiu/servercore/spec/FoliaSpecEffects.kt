@@ -76,12 +76,18 @@ class FoliaSpecEffects(
                                                 session.savedState?.let { saved ->
                                                     admin.teleportAsync(saved.location.clone(), PlayerTeleportEvent.TeleportCause.PLUGIN)
                                                 }
+                                            } else {
+                                                // world refused the start: undo the spectator switch right
+                                                // here, the coordinator has torn the claim down and has no
+                                                // restore of its own to run
+                                                abortRestore(admin, session)
                                             }
                                             onComplete(false)
                                             return@run
                                         }
                                         if (!targetPlayer.isOnline) {
                                             attachTask.cancel()
+                                            abortRestore(admin, session)
                                             onComplete(false)
                                             return@run
                                         }
@@ -148,6 +154,27 @@ class FoliaSpecEffects(
                 if (saved != null) journal.put(saved.toRecord(session.adminId))
             },
         )
+    }
+
+    /**
+     * a refused start left the admin in spectator, possibly stranded at the
+     * target's position: send them home and put the saved mode back. the
+     * coordinator has already torn the claim down, nobody else will.
+     */
+    private fun abortRestore(admin: Player, session: SpecSession) {
+        val saved = session.savedState ?: return
+        admin.teleportAsync(saved.location.clone(), PlayerTeleportEvent.TeleportCause.PLUGIN)
+            .whenComplete { _, _ ->
+                admin.scheduler.run(
+                    plugin,
+                    { task ->
+                        task.cancel()
+                        restore(admin, saved)
+                    },
+                    // admin gone mid-flight: the journal replays it on their next join
+                    { journal.put(saved.toRecord(session.adminId)) },
+                )
+            }
     }
 
     /** replay path for the restore journal: called on join with a fresh entity */

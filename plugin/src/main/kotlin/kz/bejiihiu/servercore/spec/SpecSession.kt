@@ -39,14 +39,15 @@ class SpecSession(
     val targetName: String,
     /** state captured before the first mutation, null until the effects port got to run */
     @Volatile var savedState: SavedAdminState? = null,
+    /** wire identity of this session, handed out to the backend on SPEC_STARTED */
+    val sessionId: String = UUID.randomUUID().toString(),
+    /** started-at wall clock, audit bookkeeping; injectable so tests can age sessions */
+    val startedAtMs: Long = System.currentTimeMillis(),
 ) {
 
     @Volatile
     var phase: SessionPhase = SessionPhase.STARTING
         internal set
-
-    /** started-at wall clock, audit bookkeeping */
-    val startedAtMs: Long = System.currentTimeMillis()
 
     /**
      * viewer interfaces and other per-session handles that must be shut when the

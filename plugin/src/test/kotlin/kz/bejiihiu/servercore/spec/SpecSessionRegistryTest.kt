@@ -9,7 +9,6 @@ import java.nio.file.Path
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.io.TempDir
 
@@ -20,8 +19,6 @@ class SpecSessionRegistryTest {
 
     private val admin = UUID.fromString("069a79f4-44e9-4726-a5be-fca90e38aaf5")
     private val target = UUID.fromString("1b4b2f2e-1c2d-3e4f-5a6b-7c8d9e0f1a2b")
-    private val otherAdmin = UUID.fromString("2a4b6c8e-0d1f-2a3b-4c5d-6e7f8091a2b3")
-    private val secondTarget = UUID.fromString("3c5d7e9f-0a1b-2c3d-4e5f-60718293a4b5")
 
     /** records every spec frame the registry produces */
     private class RecordingSender : SpecEventSender {
@@ -35,19 +32,34 @@ class SpecSessionRegistryTest {
         }
     }
 
+    private fun session(
+        adminId: UUID = admin,
+        targetId: UUID = target,
+        startedAt: Long = 100_000L,
+    ): SpecSession = SpecSession(
+        adminId = adminId,
+        adminName = "Admin",
+        targetId = targetId,
+        targetName = "Target",
+        sessionId = "spec-abc",
+        startedAtMs = startedAt,
+    )
+
     private fun newRegistry(
         sender: RecordingSender = RecordingSender(),
-        clock: () -> Long = System::currentTimeMillis,
+        clock: () -> Long = { 100_000L },
         audit: SpecAuditTrail? = null,
-    ): SpecSessionRegistry = SpecSessionRegistry(audit, sender, clock)
+    ): SpecSessionRegistry = SpecSessionRegistry(sender, audit, clock)
+
+    /** trail whose prune clock matches the fake entry clock, so nothing expires mid-test */
+    private fun trailFor(clock: () -> Long): SpecAuditTrail = SpecAuditTrail(dir, Runnable::run, clock = clock)
 
     @Test
-    fun `start registers the session, reports it and counts it`() {
+    fun `started reports the session upstream and counts it`() {
         val sender = RecordingSender()
         val registry = newRegistry(sender)
 
-        val result = registry.start(admin, "Admin", target, "Target", "spec-abc")
-        assertEquals(SpecStartResult.STARTED, result)
+        registry.started(session())
         assertEquals(1, registry.activeCount())
         assertEquals(1, sender.started.size)
 
@@ -59,50 +71,52 @@ class SpecSessionRegistryTest {
     }
 
     @Test
-    fun `conflicting sessions are refused`() {
-        val registry = newRegistry()
-        assertEquals(SpecStartResult.STARTED, registry.start(admin, "Admin", target, "Target", "spec-1"))
-
-        // same admin, another target
-        assertEquals(SpecStartResult.ADMIN_BUSY, registry.start(admin, "Admin", secondTarget, "Other", "spec-2"))
-
-        // another admin, same target
-        assertEquals(
-            SpecStartResult.TARGET_ALREADY_WATCHED,
-            registry.start(otherAdmin, "Other", target, "Target", "spec-3"),
-        )
-
-        // nothing changed: one session, one live claim
-        assertEquals(1, registry.activeCount())
-        assertEquals(1, registry.listActive().size)
-    }
-
-    @Test
-    fun `end computes the wall duration and reports the reason`() {
+    fun `ended computes the wall duration and reports the reason`() {
         val sender = RecordingSender()
         var now = 100_000L
         val registry = newRegistry(sender, { now })
 
-        registry.start(admin, "Admin", target, "Target", "spec-1")
+        registry.started(session())
         now += 95_000
-        assertTrue(registry.end(admin, "spec-1", SpecEndReason.NORMAL))
+        registry.ended(session(), ExitReason.COMMAND)
 
         val payload = sender.ended.single()
         assertEquals(95, payload.durationSec)
         assertEquals("NORMAL", payload.reason)
-        assertEquals("spec-1", payload.sessionId)
+        assertEquals("spec-abc", payload.sessionId)
         assertEquals(0, registry.activeCount())
+    }
 
-        // the target claim is free again
-        assertEquals(SpecStartResult.STARTED, registry.start(otherAdmin, "Other", target, "Target", "spec-2"))
+    @Test
+    fun `every exit reason maps to its wire reason`() {
+        val sender = RecordingSender()
+        var now = 100_000L
+        val registry = newRegistry(sender, { now })
+
+        val cases = listOf(
+            ExitReason.COMMAND to "NORMAL",
+            ExitReason.TARGET_QUIT to "TARGET_DISCONNECTED",
+            ExitReason.ADMIN_QUIT to "ADMIN_DISCONNECTED",
+            ExitReason.SERVER_SHUTDOWN to "FORCED",
+        )
+        for ((exit, wire) in cases) {
+            val s = session()
+            registry.started(s)
+            now += 1_000
+            registry.ended(s, exit)
+            assertEquals(wire, sender.ended.last().reason)
+        }
+        assertEquals(4, sender.ended.size)
+        assertEquals(0, registry.activeCount())
     }
 
     @Test
     fun `a non-normal end lands as SPEC_FORCED_END in the audit trail`() {
-        val trail = SpecAuditTrail(dir, Runnable::run)
+        val trail = trailFor { 100_000L }
         val registry = newRegistry(audit = trail)
-        registry.start(admin, "Admin", target, "Target", "spec-1")
-        registry.endAllForTarget(target, SpecEndReason.TARGET_DISCONNECTED)
+        val s = session()
+        registry.started(s)
+        registry.ended(s, ExitReason.TARGET_QUIT)
         trail.flushNow()
 
         val file = Files.list(dir).use { stream ->
@@ -116,30 +130,32 @@ class SpecSessionRegistryTest {
     }
 
     @Test
-    fun `end with an unknown session is a no-op`() {
+    fun `denials land in the trail only, never on the wire`() {
         val sender = RecordingSender()
-        val registry = newRegistry(sender)
-        assertFalse(registry.end(admin, "nope", SpecEndReason.NORMAL))
-        assertEquals(SpecStartResult.STARTED, registry.start(admin, "Admin", target, "Target", "spec-1"))
-        assertFalse(registry.end(admin, "different-id", SpecEndReason.NORMAL))
-        assertEquals(1, registry.activeCount())
-        assertTrue(sender.ended.isEmpty())
+        val trail = trailFor { 100_000L }
+        val registry = newRegistry(sender, audit = trail)
+
+        registry.denied(admin, "Admin", target, "Target", "no access level resolved")
+        trail.flushNow()
+
+        assertTrue(sender.started.isEmpty() && sender.ended.isEmpty())
+        val names = Files.list(dir).use { s -> s.map { it.fileName.toString() }.toList() }
+        val lines = names.flatMap { Files.readAllLines(dir.resolve(it)) }.filter { it.isNotBlank() }
+        assertEquals(1, lines.size)
+        val entry = Json.parseToJsonElement(lines[0]).jsonObject
+        assertEquals(SpecAuditEvents.DENIED, entry["event"]!!.jsonPrimitive.content)
+        assertEquals("no access level resolved", entry["reason"]!!.jsonPrimitive.content)
+        assertEquals(0, registry.activeCount())
     }
 
     @Test
-    fun `admin disconnect closes all their sessions`() {
+    fun `the counter balances across many sessions`() {
         val sender = RecordingSender()
         val registry = newRegistry(sender)
-        registry.start(admin, "Admin", target, "Target", "spec-1")
-        registry.start(otherAdmin, "Other", secondTarget, "Other", "spec-2")
 
-        assertEquals(1, registry.endAllForAdmin(admin, SpecEndReason.ADMIN_DISCONNECTED))
+        repeat(3) { registry.started(session()) }
+        assertEquals(3, registry.activeCount())
+        repeat(2) { registry.ended(session(), ExitReason.COMMAND) }
         assertEquals(1, registry.activeCount())
-        // only the admin's own session ends; the other admin keeps watching
-        assertEquals(1, sender.ended.size)
-        assertEquals("ADMIN_DISCONNECTED", sender.ended[0].reason)
-
-        // target claims of the closed sessions are free again
-        assertEquals(SpecStartResult.STARTED, registry.start(admin, "Admin", target, "Target", "spec-3"))
     }
 }

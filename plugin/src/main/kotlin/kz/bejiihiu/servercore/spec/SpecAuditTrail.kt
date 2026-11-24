@@ -19,6 +19,7 @@ object SpecAuditEvents {
     const val START = "SPEC_START"
     const val END = "SPEC_END"
     const val FORCED_END = "SPEC_FORCED_END"
+    const val DENIED = "SPEC_DENIED"
 }
 
 /**
@@ -33,7 +34,8 @@ data class SpecAuditEntry(
     val time: String,
     val admin: String,
     val adminName: String? = null,
-    val target: String,
+    /** null on denials that never got as far as a target */
+    val target: String? = null,
     val targetName: String? = null,
     val event: String,
     val sessionId: String? = null,
