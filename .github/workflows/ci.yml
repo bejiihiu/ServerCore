@@ -1,0 +1,44 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  plugin:
+    name: plugin (folia)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: set up jdk 25
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: set up gradle (with caching)
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: build plugin
+        run: ./gradlew build
+
+  backend:
+    name: backend (bun)
+    runs-on: ubuntu-latest
+    # only runs once the backend module actually lands with a package.json
+    if: ${{ hashFiles('backend/package.json') != '' }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: install deps
+        run: bun install --frozen-lockfile
+        working-directory: backend
+
+      # test/typecheck steps get added by the backend workstream once the
+      # package defines its scripts
