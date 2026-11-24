@@ -12,16 +12,16 @@
 # salesman.
 
 tablist:
-  header: "<gold>◆</gold> <primary>закрытый сезон · второй заход</primary>"
-  footer: "<muted>доступ по пропуску</muted>"
+  header: "<gold>◆</gold> <primary>закрытый сезон</primary>"
+  footer: "<muted>вторая волна · доступ по пропуску</muted>"
 
 guest:
   welcome:
-    title: "Гостевой пропуск"
+    title: "<primary>гостевой пропуск</primary>"
     subtitle: "<secondary>сессия <gold>{n}</gold> из <gold>{max}</gold> · мир открыт для осмотра</secondary>"
     card: |
       <gold>гостевой пропуск</gold>
-      <secondary>мир открыт для осмотра, чат для гостей закрыт</secondary>
+      <secondary>мир открыт для осмотра, взаимодействие ограничено</secondary>
       <secondary>сессия <gold>{n}</gold> из <gold>{max}</gold></secondary>
       <muted>полный доступ открывается после одобрения заявки</muted>
 
@@ -30,11 +30,11 @@ auth:
     card: |
       <gold>подтверждение входа</gold>
       <secondary>код: <bold><gold>{code}</gold></bold></secondary>
-      <secondary>назови код в Telegram-боте — с него придёт подтверждение</secondary>
+      <secondary>отправьте код боту — он подтвердит вход</secondary>
       <muted>без подтверждения сессия закроется по таймеру</muted>
-  pulse: "<primary>код <gold>{code}</gold> — подтверди вход в Telegram</primary>"
+  pulse: "<primary>код <gold>{code}</gold> — подтвердите вход в боте</primary>"
   window: "<gold>{code}</gold> <muted>·</muted> <secondary>осталось {time}</secondary>"
   expired: "окно подтверждения истекло"
 
 countdown:
-  tick: "<secondary>через мгновение</secondary>"
+  tick: "<secondary>время на исходе</secondary>"
