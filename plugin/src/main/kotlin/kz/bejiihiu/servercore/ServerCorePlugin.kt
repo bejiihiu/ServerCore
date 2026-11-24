@@ -16,6 +16,11 @@ import kz.bejiihiu.servercore.guest.LocalAccountResolver
 import kz.bejiihiu.servercore.guest.SnapshotStore
 import kz.bejiihiu.servercore.guest.WsAccountResolver
 import kz.bejiihiu.servercore.locale.LocaleService
+import kz.bejiihiu.servercore.packet.CachedViewStateStore
+import kz.bejiihiu.servercore.packet.PacketConfig
+import kz.bejiihiu.servercore.packet.PacketService
+import kz.bejiihiu.servercore.packet.PacketThreads
+import kz.bejiihiu.servercore.packet.WsSyncedViewStateStore
 import kz.bejiihiu.servercore.ops.GithubReleaseClient
 import kz.bejiihiu.servercore.ops.GracefulRestarter
 import kz.bejiihiu.servercore.ops.OpsConfig
@@ -75,6 +80,18 @@ class ServerCorePlugin : JavaPlugin() {
     private var packetSync: PacketStateSync? = null
     private var syncReconciler: SyncReconciler? = null
     private lateinit var opsBus: OpsEventBus
+    private var packetService: PacketService? = null
+
+    override fun onLoad() {
+        // packetevents is a server-installed plugin we attach to, not one we
+        // bundle — pre-flight just checks it is on the server, the shared
+        // instance boots with its own plugin lifecycle
+        saveDefaultConfig()
+        val packetConfig = PacketConfig.load(config, logger)
+        if (packetConfig.enabled && server.pluginManager.getPlugin("PacketEvents") == null) {
+            logger.warning("packetevents plugin not found on this server, packet layer will idle")
+        }
+    }
 
     override fun onEnable() {
         saveDefaultConfig()
@@ -235,9 +252,10 @@ class ServerCorePlugin : JavaPlugin() {
 
         // packet state sync: every client-view state transition goes through
         // the double-load-guarded coordinator. the registry and the packet
-        // writer are seams — the packetevents writer plugs into ResyncExecutor
-        // when it lands; until then the vanilla-only fallback keeps registry
-        // state correct without emitting packets.
+        // writer are seams — the packetevents layer attaches below via
+        // PacketService, whose applier feeds both the registry and real
+        // packet writes; until PE is present the vanilla-only fallback keeps
+        // registry state correct without emitting packets.
         val viewStates = InMemoryViewStateRegistry()
         val entityIds = EntityIdentityTracker()
         packetSync = PacketStateSync.create(
@@ -253,6 +271,25 @@ class ServerCorePlugin : JavaPlugin() {
             server.pluginManager.registerEvents(PacketStateListener(sync, entityIds), this)
             syncReconciler = SyncReconciler(this, sync).also { it.start() }
         }
+
+        // packetevents layer: personal entity view foundation. attaches its
+        // listener to the shared PE instance only when packetevents is
+        // reachable, otherwise idles without breaking boot
+        val packetConfig = PacketConfig.load(config, logger)
+        val packets = PacketService(
+            plugin = this,
+            config = packetConfig,
+            store = WsSyncedViewStateStore(
+                CachedViewStateStore(
+                    ttlMillis = packetConfig.cacheTtlMillis,
+                    maxViewers = 1024,
+                    maxTargetsPerViewer = 512,
+                ),
+            ),
+            threads = PacketThreads(this),
+        )
+        packets.start()
+        packetService = packets
 
         // heartbeat keeps the backend's liveness picture fresh
         presenceService.startHeartbeat()
@@ -290,6 +327,8 @@ class ServerCorePlugin : JavaPlugin() {
             sync.restoreAllForReload()
             sync.release()
         }
+        // detach our listener first, the shared packetevents instance must outlive us
+        packetService?.stop()
         wsGateway?.stop()
         updater?.stop()
         restartSchedule?.stop()
