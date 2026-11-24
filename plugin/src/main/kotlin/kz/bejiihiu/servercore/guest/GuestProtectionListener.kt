@@ -20,7 +20,7 @@ import org.bukkit.event.player.PlayerPortalEvent
 import org.bukkit.inventory.InventoryHolder
 
 /**
- * the §10.3 wall. every handler is a cheap membership check plus cancel —
+ * the guest restriction wall. every handler is a cheap membership check plus cancel —
  * events fire on region threads (chat on async), cancelling is thread-safe,
  * and no state is mutated here. hints are throttled so a flapping guest does
  * not get spammed.
