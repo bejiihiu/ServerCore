@@ -20,6 +20,7 @@ export type ServerStatsEntry = {
   onlinePlayers: number
   maxPlayers: number
   tps?: number
+  activeSpecSessions?: number
   secondsSinceLastSeen: number
 }
 
@@ -81,6 +82,7 @@ export class StatsService {
       onlinePlayers: server.onlinePlayers,
       maxPlayers: server.maxPlayers,
       ...(server.tps !== undefined ? { tps: server.tps } : {}),
+      ...(server.activeSpecSessions !== undefined ? { activeSpecSessions: server.activeSpecSessions } : {}),
       secondsSinceLastSeen: Math.max(0, Math.floor((now - server.lastSeenAt) / 1000)),
     }))
 

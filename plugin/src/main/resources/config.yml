@@ -104,12 +104,16 @@ spec:
     # level index granted by spec-permission alone when no listed group matches
     fallback-level: helper
   audit:
-    # local audit trail (jsonl), relative to plugins/ServerCore/
-    path: audit/spec-audit.jsonl
-    # rotate once the file grows past this many bytes
-    max-file-bytes: 5242880
-    # how many rotated files to keep
-    max-kept: 10
+    # local append-only audit trail (jsonl), relative to plugins/ServerCore/;
+    # files rotate daily as spec-audit-YYYY-MM-DD.jsonl. the backend keeps the
+    # same events in its own audit_logs collection
+    directory: audit
+    # rotated files older than this are deleted
+    retention-days: 30
+    # audit rows allowed per single session, overflow is dropped
+    max-entries-per-session: 64
+    # bounded write buffer, a full buffer drops entries instead of blocking
+    queue-capacity: 1024
 
 protection:
   # master switch for the whole stack: command denial, gamemode guard,

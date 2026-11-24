@@ -31,6 +31,9 @@ interface ServerStatsProvider {
     fun onlinePlayers(): Int
     fun maxPlayers(): Int
     fun serverVersion(): String
+
+    /** live count of active spec sessions from the plugin's own registry */
+    fun activeSpecSessions(): Int = 0
 }
 
 /**
@@ -215,7 +218,7 @@ class GatewayClient(
             codec.newMessageId(),
             MessageType.SERVER_STATUS,
             System.currentTimeMillis(),
-            Payload.ServerStatus(stats.onlinePlayers(), stats.maxPlayers(), stats.serverVersion()),
+            Payload.ServerStatus(stats.onlinePlayers(), stats.maxPlayers(), stats.serverVersion(), stats.activeSpecSessions()),
         )
         synchronized(sendLock) {
             try {
