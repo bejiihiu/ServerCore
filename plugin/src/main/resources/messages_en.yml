@@ -47,3 +47,14 @@ auth:
     title: "<red>Authorization denied</red>"
   expired:
     actionbar: "<yellow>Login request expired, use <bold>/link</bold> to try again</yellow>"
+# admin debug command: /servercore groups <player>
+luckperms:
+  groups:
+    usage: "<gray>Usage:</gray> <gold>/servercore groups {arg}</gold>"
+    no-permission: "<red>You do not have permission to use this command.</red>"
+    player-not-found: "<red>Player <white>{player}</white> is not online.</red>"
+    header: "<gold>Groups of <white>{player}</white>:</gold>"
+    entry: "<gray> • </gray><yellow>{group}</yellow><gray>{primary}</gray>"
+    primary-mark: " (primary)"
+    none: "<gray>The player is not a member of any group.</gray>"
+    lookup-failed: "<red>Could not read the player's groups, details are in the server log.</red>"

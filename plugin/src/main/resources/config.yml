@@ -94,6 +94,28 @@ protection:
   blocked-commands: []
   enforce-gamemode: true
 
+# permissions live in LuckPerms (soft-depend). when LuckPerms is installed on
+# the server, everything below is ignored — groups and nodes are managed
+# through LuckPerms itself. this section is only read without LuckPerms: a
+# static, config-driven stand-in so the plugin still boots and admins keep
+# access. it is never a replacement for real group management.
+luckperms:
+  fallback:
+    # group handed to every player the static map knows nothing about
+    default-group: default
+    # static group overrides, uuid -> group name (rank ordering only)
+    groups:
+      # "069a79f4-44e9-4726-a5be-fca90e38aaf5": admin
+    # static permission grants, only checked while LuckPerms is absent
+    permissions:
+      # nodes granted to every player
+      everyone: []
+      # per-player nodes: exact nodes or prefix wildcards ("servercore.*")
+      players:
+        # "069a79f4-44e9-4726-a5be-fca90e38aaf5":
+        #   - servercore.admin
+        #   - servercore.spec
+
 placeholders:
   cache-ttl-milliseconds: 2000
 

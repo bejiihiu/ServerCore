@@ -47,3 +47,14 @@ auth:
     title: "<red>В авторизации отказано</red>"
   expired:
     actionbar: "<yellow>Запрос на вход истёк, используйте <bold>/link</bold>, чтобы повторить</yellow>"
+# админская отладочная команда: /servercore groups <игрок>
+luckperms:
+  groups:
+    usage: "<gray>Использование:</gray> <gold>/servercore groups {arg}</gold>"
+    no-permission: "<red>У вас нет прав на эту команду.</red>"
+    player-not-found: "<red>Игрок <white>{player}</white> не найден на сервере.</red>"
+    header: "<gold>Группы игрока <white>{player}</white>:</gold>"
+    entry: "<gray> • </gray><yellow>{group}</yellow><gray>{primary}</gray>"
+    primary-mark: " (основная)"
+    none: "<gray>Игрок не состоит ни в одной группе.</gray>"
+    lookup-failed: "<red>Не удалось получить группы игрока, подробности в логе сервера.</red>"
