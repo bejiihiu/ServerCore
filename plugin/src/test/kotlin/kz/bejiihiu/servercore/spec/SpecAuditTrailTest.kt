@@ -142,6 +142,22 @@ class SpecAuditTrailTest {
     }
 
     @Test
+    fun `the per-session counter is released when the session ends`() {
+        val trail = newTrail(maxEntriesPerSession = 3)
+        val ts = 1_795_537_800_000
+        repeat(3) { trail.record(entry(ts, sessionId = "spec-1")) }
+        // the end row is terminal: it gets dropped by the cap, and the counter
+        // goes with it instead of lingering for the process lifetime
+        trail.record(entry(ts, event = SpecAuditEvents.END, sessionId = "spec-1"))
+        repeat(3) { trail.record(entry(ts, sessionId = "spec-1")) }
+        trail.flushNow()
+
+        val file = dir.resolve(SpecAuditFiles.fileNameFor(ts, zone))
+        assertEquals(6, linesOf(file).size)
+        assertEquals(1, trail.droppedForSessionCap())
+    }
+
+    @Test
     fun `a full buffer drops entries instead of blocking`() {
         // an executor that only queues: nothing drains until we say so, so the
         // in-memory buffer actually fills up

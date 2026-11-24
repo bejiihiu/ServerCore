@@ -66,9 +66,9 @@ import kz.bejiihiu.servercore.sync.VanillaOnlyResyncExecutor
 import kz.bejiihiu.servercore.ws.OpsStatusSink
 import kz.bejiihiu.servercore.spectator.InventoryViewerService
 import kz.bejiihiu.servercore.spectator.ObserverHider
+import kz.bejiihiu.servercore.spectator.ObserverPairRegistry
 import kz.bejiihiu.servercore.spectator.SpecObserverConfig
 import kz.bejiihiu.servercore.spectator.SpecResyncListener
-import kz.bejiihiu.servercore.spectator.SpecSessionRegistry as SpectatorSpecSessionRegistry
 import kz.bejiihiu.servercore.spectator.SpecTraceListener
 import kz.bejiihiu.servercore.spectator.SpecViewStateApplier
 import kz.bejiihiu.servercore.spectator.TraceFilter
@@ -487,7 +487,7 @@ class ServerCorePlugin : JavaPlugin() {
         // the session coordinator drives it through the hiding bridge; this
         // registry stays the seam the esp engine and resync paths read
         val observerConfig = SpecObserverConfig.load(config, logger)
-        val observerSessions = SpectatorSpecSessionRegistry()
+        val observerSessions = ObserverPairRegistry()
         val traceFilter = TraceFilter(observerConfig.traceRadius, observerConfig.suppressActionBar)
         val hider = ObserverHider(this, packets, observerSessions, traceFilter, syncStates = viewStates)
         val traceListener = SpecTraceListener(observerSessions, packets.registry, hider::poseOf, traceFilter)
@@ -496,7 +496,7 @@ class ServerCorePlugin : JavaPlugin() {
         } else {
             logger.warning("packet layer idle, hidden observer suppression inactive")
         }
-        server.pluginManager.registerEvents(SpecResyncListener(hider, observerSessions), this)
+        server.pluginManager.registerEvents(SpecResyncListener(hider), this)
         specHider = hider
 
         // protection stack: command denial, gamemode guard, op lockdown.
@@ -549,6 +549,10 @@ class ServerCorePlugin : JavaPlugin() {
                 InventoryViewerBridge(InventoryViewerViews(this, inventoryViewer)),
             )
             val specCoordinator = SessionCoordinator(specEffects, specRegistry, specBridges)
+            // the coordinator is the only session authority; the reporting
+            // bridge forwards its count to the heartbeat/stats instead of
+            // keeping a second copy
+            specRegistry?.bindActiveCount(specCoordinator::activeCount)
             val specService = SpecService(
                 plugin = this,
                 config = specConfig,
