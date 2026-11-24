@@ -1,6 +1,7 @@
 package kz.bejiihiu.servercore.config
 
 import org.bukkit.configuration.file.FileConfiguration
+import kz.bejiihiu.servercore.spectator.SpecConfig
 import kz.bejiihiu.servercore.websocket.GatewayConfig
 
 /**
@@ -9,6 +10,7 @@ import kz.bejiihiu.servercore.websocket.GatewayConfig
  */
 data class PluginConfig(
     val gateway: GatewayConfig,
+    val spec: SpecConfig,
 )
 
 object ConfigLoader {
@@ -33,6 +35,7 @@ object ConfigLoader {
                 reconnectMaxMs = reconnectMax,
                 heartbeatIntervalMs = heartbeat,
             ),
+            spec = SpecConfig.load(config),
         )
     }
 }

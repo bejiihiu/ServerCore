@@ -47,3 +47,5 @@ auth:
     title: "<red>Authorization denied</red>"
   expired:
     actionbar: "<yellow>Login request expired, use <bold>/link</bold> to try again</yellow>"
+spec:
+  inventory-title: "<secondary>Inventory</secondary> <muted>·</muted> <gold>{target}</gold>"
