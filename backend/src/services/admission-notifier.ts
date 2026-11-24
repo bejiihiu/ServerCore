@@ -95,13 +95,15 @@ export class AdmissionNotifier {
 
   /** admin-only: suspicious join/invite activity */
   async anomaly(input: { kind: string; telegramId: string; inviteName?: string }): Promise<void> {
+    const invite =
+      input.inviteName === undefined
+        ? ""
+        : t(this.deps.locale, "admission.admin.invite_ref", { invite: input.inviteName })
     await this.notifyAdmins(
       t(this.deps.locale, "admission.admin.anomaly", {
         kind: input.kind,
         telegram: input.telegramId,
-        invite: input.inviteName
-          ? t(this.deps.locale, "admission.admin.invite_ref", { name: input.inviteName })
-          : "",
+        invite,
       }),
     )
   }

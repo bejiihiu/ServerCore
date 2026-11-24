@@ -51,6 +51,28 @@ export function withoutCustomEmoji(screen: ScreenMessage): ScreenMessage {
   }
 }
 
+/**
+ * minimal context shape the interactive flows reply through. keeping it
+ * structural (instead of importing grammY's Context) lets conversations and
+ * plain handlers share one call site: ctx.reply records the api call for the
+ * conversation replay log exactly like any other reply.
+ */
+export type ScreenReplyTarget = {
+  reply(text: string, other?: Parameters<Api["sendMessage"]>[2]): Promise<unknown>
+}
+
+/** replies with a screen: html, no link previews, markup when the screen has one */
+export async function replyScreen(
+  ctx: ScreenReplyTarget,
+  screen: ScreenMessage,
+  options: { replyToMessageId?: number } = {},
+): Promise<void> {
+  const other: Parameters<Api["sendMessage"]>[2] = { ...composeText() }
+  if (screen.markup !== undefined) other.reply_markup = screen.markup
+  if (options.replyToMessageId !== undefined) other.reply_parameters = { message_id: options.replyToMessageId }
+  await ctx.reply(screen.text, other)
+}
+
 type SendMessageOther = Parameters<Api["sendMessage"]>[2]
 
 function sendMessageOther(args: SendTextArgs, screen: ScreenMessage): SendMessageOther {
@@ -95,6 +117,99 @@ export async function editScreen(api: Api, args: EditScreenArgs): Promise<Messag
     const fallback = withoutCustomEmoji(args.screen)
     return await api.editMessageText(args.chatId, args.messageId, fallback.text, editMessageOther(fallback))
   }
+}
+
+/**
+ * edit with a send fallback: telegram refuses to edit messages older than
+ * 48h (they become inaccessible), navigation then continues as a fresh
+ * message instead of dying.
+ */
+export async function editOrSendScreen(api: Api, args: EditScreenArgs): Promise<Message | true> {
+  try {
+    return await editScreen(api, args)
+  } catch (err) {
+    if (isPremiumRequiredError(err)) throw err
+    return await sendScreen(api, { chatId: args.chatId, screen: args.screen })
+  }
+}
+
+/**
+ * ephemeral messages (bot api 10.2): a message in a chat visible to exactly
+ * one user. delivery is best-effort (offline users may miss it).
+ */
+export type EphemeralSpec = {
+  chatId: number | string
+  screen: ScreenMessage
+  /** direct receiver; omit when sending as an ephemeral callback reply */
+  receiverUserId?: number
+  /** ephemeral reply to a callback query, shown only to the user who pressed */
+  callbackQueryId?: string
+  /** show in place of the original message (callback replies only) */
+  replaceCallbackMessage?: boolean
+}
+
+function ephemeralParams(spec: EphemeralSpec): NonNullable<SendMessageOther>["ephemeral_message_parameters"] {
+  const params: NonNullable<NonNullable<SendMessageOther>["ephemeral_message_parameters"]> = {}
+  if (spec.receiverUserId !== undefined) params.receiver_user_id = spec.receiverUserId
+  if (spec.callbackQueryId !== undefined) {
+    params.callback_query_id = spec.callbackQueryId
+    if (spec.replaceCallbackMessage === true) params.replace_callback_query_message = true
+  }
+  return params
+}
+
+/** sends an ephemeral screen; falls back to plain text on the premium gate */
+export async function sendEphemeralScreen(api: Api, spec: EphemeralSpec): Promise<Message> {
+  const build = (screen: ScreenMessage): SendMessageOther => {
+    const other: SendMessageOther = { ...composeText(), ephemeral_message_parameters: ephemeralParams(spec) }
+    if (screen.markup !== undefined) other.reply_markup = screen.markup
+    return other
+  }
+  try {
+    return await api.sendMessage(spec.chatId, spec.screen.text, build(spec.screen))
+  } catch (err) {
+    if (!isPremiumRequiredError(err)) throw err
+    const fallback = withoutCustomEmoji(spec.screen)
+    return await api.sendMessage(spec.chatId, fallback.text, build(fallback))
+  }
+}
+
+/** edits an already-delivered ephemeral message */
+export async function editEphemeralScreen(
+  api: Api,
+  args: { chatId: number | string; receiverUserId: number; ephemeralMessageId: number; screen: ScreenMessage },
+): Promise<true> {
+  const build = (screen: ScreenMessage): Parameters<Api["editEphemeralMessageText"]>[4] => {
+    const other: Parameters<Api["editEphemeralMessageText"]>[4] = { ...composeText() }
+    if (screen.markup !== undefined) other.reply_markup = screen.markup
+    return other
+  }
+  try {
+    return await api.editEphemeralMessageText(
+      args.chatId,
+      args.receiverUserId,
+      args.ephemeralMessageId,
+      args.screen.text,
+      build(args.screen),
+    )
+  } catch (err) {
+    if (!isPremiumRequiredError(err)) throw err
+    const fallback = withoutCustomEmoji(args.screen)
+    return await api.editEphemeralMessageText(
+      args.chatId,
+      args.receiverUserId,
+      args.ephemeralMessageId,
+      fallback.text,
+      build(fallback),
+    )
+  }
+}
+
+export async function deleteEphemeralScreen(
+  api: Api,
+  args: { chatId: number | string; receiverUserId: number; ephemeralMessageId: number },
+): Promise<true> {
+  return await api.deleteEphemeralMessage(args.chatId, args.receiverUserId, args.ephemeralMessageId)
 }
 
 /**

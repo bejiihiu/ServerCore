@@ -1,11 +1,14 @@
 import type { Context } from "grammy"
 import type { Conversation, ConversationFlavor } from "@grammyjs/conversations"
-import type { InlineKeyboard, Lang } from "../../services/ports.js"
+import type { Lang } from "../../services/ports.js"
 import type { ApplicationService } from "../../services/application-service.js"
 import type { VotingService } from "../../services/voting-service.js"
-import { t } from "../../services/i18n.js"
-import { answerValidationErrorText } from "../../services/questionnaire.js"
-import { toGrammYMarkup } from "../telegram-api.js"
+import { ANSWER_MAX_LENGTH } from "../../services/questionnaire.js"
+import { CALLBACK } from "../keyboards.js"
+import { emoji, tr } from "../ui/runtime.js"
+import { applicationCardScreen, hintScreen, noticeScreen, type ScreenMessage } from "../ui/screens/index.js"
+import type { ActionButton } from "../ui/keyboards/index.js"
+import { replyScreen } from "../ui/sending.js"
 
 /** the slice of services the questionnaire conversation needs */
 export type QuestionnaireDeps = {
@@ -16,19 +19,8 @@ export type QuestionnaireDeps = {
 type BotContext = Context & ConversationFlavor<Context>
 type Convo = Conversation<BotContext, BotContext>
 
-const CANCEL_DATA = "app:cancel"
-const SUBMIT_DATA = "app:submit"
-
-function cancelKeyboard(lang: Lang): InlineKeyboard {
-  return [[{ text: t(lang, "app.cancelButton"), data: CANCEL_DATA }]]
-}
-
-function submitKeyboard(lang: Lang): InlineKeyboard {
-  return [
-    [{ text: t(lang, "app.submitButton"), data: SUBMIT_DATA }],
-    [{ text: t(lang, "app.cancelButton"), data: CANCEL_DATA }],
-  ]
-}
+const CANCEL_DATA = CALLBACK.appCancel
+const SUBMIT_DATA = CALLBACK.appSubmit
 
 /** minimal update shape the classifiers look at */
 type RawUpdate = {
@@ -83,6 +75,71 @@ export function isSummaryAction(update: RawUpdate): boolean {
   return input !== null && input.kind !== "OTHER_TEXT"
 }
 
+function submitButton(label: string): ActionButton {
+  return { label, callbackData: SUBMIT_DATA, style: "primary" }
+}
+
+function cancelButton(label: string): ActionButton {
+  return { label, callbackData: CANCEL_DATA }
+}
+
+/** one questionnaire step: section title, the question, nothing else */
+function questionScreen(lang: Lang, index: number, total: number, question: string): ScreenMessage {
+  const t = tr(lang)
+  return noticeScreen({
+    t,
+    e: emoji,
+    tone: "pending",
+    title: t.t("app.questionTitle", { n: index + 1, total }),
+    body: question,
+    actions: [cancelButton(t.t("app.cancelButton"))],
+  })
+}
+
+function summaryScreen(lang: Lang, nickname: string, answers: ReadonlyArray<string>): ScreenMessage {
+  const t = tr(lang)
+  return applicationCardScreen({
+    t,
+    e: emoji,
+    tone: "pending",
+    title: t.t("app.summaryTitle"),
+    nickname,
+    answers,
+    aside: t.t("app.summaryAside"),
+    actions: [cancelButton(t.t("app.cancelButton")), submitButton(t.t("app.submitButton"))],
+  })
+}
+
+function cancelledScreen(lang: Lang): ScreenMessage {
+  const t = tr(lang)
+  return noticeScreen({
+    t,
+    e: emoji,
+    tone: "neutral",
+    title: t.t("app.cancelledTitle"),
+    body: t.t("app.cancelledBody"),
+  })
+}
+
+function submittedScreen(lang: Lang): ScreenMessage {
+  const t = tr(lang)
+  return noticeScreen({
+    t,
+    e: emoji,
+    tone: "active",
+    title: t.t("app.submittedTitle"),
+    body: t.t("app.submittedBody"),
+  })
+}
+
+/** validation failure: same question again, only the reason changes */
+function answerErrorScreen(lang: Lang, reason: "EMPTY" | "TOO_LONG"): ScreenMessage {
+  const t = tr(lang)
+  return reason === "EMPTY"
+    ? hintScreen(t.t("app.answerEmpty"))
+    : hintScreen(t.t("app.answerTooLong", { max: ANSWER_MAX_LENGTH }))
+}
+
 /**
  * builds the questionnaire conversation builder, closing over the services
  * (conversation args must stay json-serializable, so services travel via
@@ -110,15 +167,13 @@ export function createApplicationConversation(deps: QuestionnaireDeps) {
       const question = deps.applications.questionText(lang, index)
       if (question === null) return
 
-      await ctx.reply(t(lang, "app.question", { n: index + 1, total, question }), {
-        reply_markup: toGrammYMarkup(cancelKeyboard(lang)),
-      })
+      await replyScreen(ctx, questionScreen(lang, index, total, question))
 
       // commands must never be swallowed as an answer text: /cancel cancels,
       // every other command gets a hint and drops through to its handler
       const update = await conversation.waitUntil(
         (c) => classifyQuestionInput(c) !== null,
-        { otherwise: (nonAnswer) => void nonAnswer.reply(t(lang, "app.answerNonText")) },
+        { otherwise: (nonAnswer) => void replyScreen(nonAnswer, hintScreen(tr(lang).t("app.answerNonText"))) },
       )
       const input = classifyQuestionInput(update)
       if (input === null) continue
@@ -126,23 +181,23 @@ export function createApplicationConversation(deps: QuestionnaireDeps) {
       if (input.kind === "CANCEL_BUTTON") {
         await ctx.answerCallbackQuery()
         await conversation.external(() => deps.applications.cancelDraft(telegramId))
-        await ctx.reply(t(lang, "app.cancelled"))
+        await replyScreen(ctx, cancelledScreen(lang))
         return
       }
       if (input.kind === "CANCEL_COMMAND") {
         await conversation.external(() => deps.applications.cancelDraft(telegramId))
-        await ctx.reply(t(lang, "app.cancelled"))
+        await replyScreen(ctx, cancelledScreen(lang))
         return
       }
       if (input.kind === "OTHER_COMMAND") {
-        await ctx.reply(t(lang, "app.commandHint"))
+        await replyScreen(ctx, hintScreen(tr(lang).t("app.commandHint")))
         continue
       }
 
       const saved = await conversation.external(() => deps.applications.saveDraftStep(telegramId, index, input.text))
       if (!saved.ok) {
         if (saved.reason === "NO_DRAFT") return // draft vanished mid-flow
-        await ctx.reply(answerValidationErrorText(saved.reason, lang))
+        await replyScreen(ctx, answerErrorScreen(lang, saved.reason))
         continue // same question again, step not advanced
       }
       draft.step = index + 1
@@ -150,18 +205,14 @@ export function createApplicationConversation(deps: QuestionnaireDeps) {
 
     // summary + submit/cancel, straight from the spec layout
     const questions = lang === "en" ? deps.applications.questionsEn : deps.applications.questionsRu
-    const rendered = draft.answers
-      .map((answer, i) => `${i + 1}. ${questions[i] ?? ""}\n${answer}`)
-      .join("\n\n")
-    await ctx.reply(t(lang, "app.summary", { username: draft.username, answers: rendered }), {
-      reply_markup: toGrammYMarkup(submitKeyboard(lang)),
-    })
+    const rendered = draft.answers.map((answer, i) => `${i + 1}. ${questions[i] ?? ""}\n${answer}`)
+    await replyScreen(ctx, summaryScreen(lang, draft.username, rendered))
 
     // summary wait: buttons or /cancel; anything else (free text, stickers,
     // stale keyboards) gets a nudge and the wait continues instead of the
     // conversation silently eating the update
     const choiceUpdate = await conversation.waitUntil(isSummaryAction, {
-      otherwise: (nonAnswer) => void nonAnswer.reply(t(lang, "app.buttonHint")),
+      otherwise: (nonAnswer) => void replyScreen(nonAnswer, hintScreen(tr(lang).t("app.buttonHint"))),
     })
     const choice = classifySummaryInput(choiceUpdate)
     if (choice === null) return
@@ -170,7 +221,7 @@ export function createApplicationConversation(deps: QuestionnaireDeps) {
     }
     if (choice.kind === "CANCEL_BUTTON" || choice.kind === "CANCEL_COMMAND") {
       await conversation.external(() => deps.applications.cancelDraft(telegramId))
-      await ctx.reply(t(lang, "app.cancelled"))
+      await replyScreen(ctx, cancelledScreen(lang))
       return
     }
     // the wait only lets a submit through; anything else means the classifier
@@ -188,9 +239,20 @@ export function createApplicationConversation(deps: QuestionnaireDeps) {
     })
 
     if (outcome.ok) {
-      await ctx.reply(t(lang, "app.submitted"))
+      await replyScreen(ctx, submittedScreen(lang))
       return
     }
-    await ctx.reply(deps.applications.blockText(outcome.reason, lang))
+
+    const t = tr(lang)
+    const block = deps.applications.blockScreen(outcome.reason)
+    await replyScreen(ctx, noticeScreen({
+      t,
+      e: emoji,
+      tone: "attention",
+      title: t.t(block.titleKey),
+      body: block.date === undefined
+        ? t.t(block.bodyKey)
+        : t.t(block.bodyKey, { date: block.date, tz: t.t("common.tzShort") }),
+    }))
   }
 }

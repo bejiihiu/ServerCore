@@ -1,102 +1,137 @@
 import { describe, expect, test } from "bun:test"
 import {
-  LOCALES,
-  isLocale,
-  langOf,
-  statusLabel,
-  t,
-  tPlural,
-  type Locale,
-} from "../src/services/i18n.js"
-import { I18nError, i18n, providerFor } from "../src/i18n/index.js"
-import { createTranslator, escapeHtml } from "../src/bot/ui/text/index.js"
+  createI18n,
+  defaultPlural,
+  ruPlural,
+  I18nError,
+  type I18nParams,
+  type LocaleDict,
+} from "../src/i18n/index.js"
 
-describe("message store", () => {
+const dict: LocaleDict = {
+  plain: "значение",
+  greet: "Привет, {{name}}!",
+  multi: "{{a}} и {{b}}",
+  players: {
+    one: "{{count}} игрок",
+    few: "{{count}} игрока",
+    many: "{{count}} игроков",
+    other: "{{count}} игрока",
+  },
+  partial: {
+    one: "один",
+    other: "несколько ({{count}})",
+  },
+}
+
+function make(): ReturnType<typeof createI18n> {
+  return createI18n({ ru: dict }, { defaultLocale: "ru", pluralRules: { ru: ruPlural } })
+}
+
+describe("i18n lookup", () => {
   test("resolves dotted keys", () => {
-    expect(t("ru", "menu.title")).toBe("ServerCore")
-    expect(t("en", "auth.approve")).toBe("✅ Confirm login")
+    expect(make().t("plain")).toBe("значение")
+    expect(make().t("players.one", { count: 1 })).toBe("1 игрок")
   })
 
-  test("interpolates named params order-agnostically", () => {
-    expect(t("ru", "menu.statusLinked", { nickname: "Соня" })).toBe("Аккаунт привязан: Соня")
-    expect(t("en", "bot.account.screen", { username: "x", status: "Active", telegram: "y" })).toContain("x")
+  test("interpolates placeholders", () => {
+    expect(make().t("greet", { name: "Соня" })).toBe("Привет, Соня!")
+    expect(make().t("multi", { a: 1, b: "два" })).toBe("1 и два")
   })
 
-  test("an unknown key renders as the key itself, never as an empty message", () => {
-    expect(t("ru", "nope.missing" as never)).toBe("nope.missing")
+  test("throws on a missing key with the key in the error", () => {
+    expect(() => make().t("nope.missing")).toThrow(I18nError)
+    expect(() => make().t("nope.missing")).toThrow("nope.missing")
   })
 
-  test("both locales carry every key", () => {
-    // the store is typed as a full ru+en matrix, so a missing column is a
-    // compile error; this guards the runtime shape too
-    for (const locale of LOCALES) {
-      expect(t(locale, "bot.delete.confirm").length).toBeGreaterThan(20)
-      expect(t(locale, "auth.window", { seconds: 75 })).not.toMatch(/\{\w+\}/)
-    }
-  })
-})
-
-describe("pluralization", () => {
-  test("ru picks one/few/many per cldr", () => {
-    expect(tPlural("ru", "status.players", 1)).toBe("1 игрок")
-    expect(tPlural("ru", "status.players", 3)).toBe("3 игрока")
-    expect(tPlural("ru", "status.players", 22)).toBe("22 игрока")
-    expect(tPlural("ru", "status.players", 11)).toBe("11 игроков")
-    expect(tPlural("ru", "status.players", 0)).toBe("0 игроков")
+  test("throws when a placeholder param is missing", () => {
+    expect(() => make().t("greet")).toThrow(I18nError)
+    expect(() => make().t("multi", { a: 1 })).toThrow(/"b"/)
   })
 
-  test("en only separates singular from plural", () => {
-    expect(tPlural("en", "status.players", 1)).toBe("1 player")
-    expect(tPlural("en", "status.players", 5)).toBe("5 players")
+  test("escape option html-escapes substituted values", () => {
+    expect(make().t("greet", { name: "<b>&" }, { escape: true })).toBe("Привет, &lt;b&gt;&amp;!")
+    expect(make().tPlural("players", 1, { junk: "<x>" }, { escape: true })).toBe("1 игрок")
   })
 
-  test("count is injected even when the caller passes extra params", () => {
-    expect(tPlural("ru", "status.players", 2, { junk: "x" })).toBe("2 игрока")
+  test("plain interpolation never escapes (plugin texts are not html)", () => {
+    expect(make().t("greet", { name: "<b>" })).toBe("Привет, <b>!")
+  })
+
+  test("leaves text intact when there are no placeholders", () => {
+    expect(make().t("plain", { junk: 1 })).toBe("значение")
+  })
+
+  test("has() reports key presence", () => {
+    const i18n = make()
+    expect(i18n.has("plain")).toBe(true)
+    expect(i18n.has("nope")).toBe(false)
+    expect(i18n.has("players.one")).toBe(true)
   })
 })
 
-describe("providers", () => {
-  test("a provider is pinned to one locale", () => {
-    expect(providerFor("en").t("menu.subtitle")).toBe("server access")
-    expect(providerFor("ru").t("menu.subtitle")).toBe("доступ на сервер")
+describe("i18n pluralization (ru)", () => {
+  test("ru plural classes", () => {
+    expect(ruPlural(1)).toBe("one")
+    expect(ruPlural(21)).toBe("one")
+    expect(ruPlural(101)).toBe("one")
+    expect(ruPlural(2)).toBe("few")
+    expect(ruPlural(4)).toBe("few")
+    expect(ruPlural(22)).toBe("few")
+    expect(ruPlural(5)).toBe("many")
+    expect(ruPlural(11)).toBe("many")
+    expect(ruPlural(112)).toBe("many")
+    expect(ruPlural(0)).toBe("many")
+    expect(ruPlural(1.5)).toBe("other")
   })
 
-  test("the default provider renders ru", () => {
-    expect(i18n.locale).toBe("ru")
-    expect(i18n.t("common.back")).toBe("‹ Назад")
+  test("default plural rule (english-like)", () => {
+    expect(defaultPlural(1)).toBe("one")
+    expect(defaultPlural(0)).toBe("other")
+    expect(defaultPlural(2)).toBe("other")
   })
 
-  test("unknown keys stay visible through the provider", () => {
-    expect(providerFor("ru").t("nope.missing")).toBe("nope.missing")
+  test("tPlural picks the ru form and injects count", () => {
+    const i18n = make()
+    expect(i18n.tPlural("players", 1)).toBe("1 игрок")
+    expect(i18n.tPlural("players", 3)).toBe("3 игрока")
+    expect(i18n.tPlural("players", 7)).toBe("7 игроков")
+    expect(i18n.tPlural("players", 11)).toBe("11 игроков")
+    expect(i18n.tPlural("players", 2, { junk: "x" })).toBe("2 игрока")
   })
 
-  test("locale helpers agree with the locale list", () => {
-    expect(isLocale("ru")).toBe(true)
-    expect(isLocale("de")).toBe(false)
-    expect(langOf(undefined, "en")).toBe("en")
-    expect(langOf("ru", "en")).toBe("ru")
-    for (const locale of LOCALES as readonly Locale[]) {
-      expect(statusLabel(locale, "ACTIVE").length).toBeGreaterThan(0)
-    }
+  test("tPlural falls back to other when the form is absent", () => {
+    expect(make().tPlural("partial", 3)).toBe("несколько (3)")
+  })
+
+  test("tPlural throws when neither the form nor other exists", () => {
+    expect(() => make().tPlural("plain", 5)).toThrow(I18nError)
   })
 })
 
-describe("html translator", () => {
-  test("escapes every substituted value", () => {
-    const tr = createTranslator(providerFor("ru"))
-    expect(tr.t("menu.statusLinked", { nickname: "<b>&" })).toBe(
-      `Аккаунт привязан: ${escapeHtml("<b>&")}`,
-    )
-    expect(tr.tPlural("status.players", 1, { junk: "<x>" })).toBe("1 игрок")
+describe("i18n multi-locale", () => {
+  test("provider() falls back to the default locale", () => {
+    const i18n = make()
+    expect(i18n.provider("de").t("plain")).toBe("значение")
+    expect(i18n.provider("ru").t("greet", { name: "x" })).toBe("Привет, x!")
   })
 
-  test("the template itself is never escaped", () => {
-    expect(providerFor("ru").t("auth.approve")).toContain("✅")
+  test("addLocale registers a new dictionary at runtime", () => {
+    const i18n = make()
+    i18n.addLocale("en", { plain: "value" })
+    expect(i18n.provider("en").t("plain")).toBe("value")
+    // default untouched
+    expect(i18n.t("plain")).toBe("значение")
   })
 
-  test("an unknown emoji key throws with the key in the error", () => {
-    const error = new I18nError("unknown emoji key", "nope")
-    expect(error.name).toBe("I18nError")
-    expect(error.key).toBe("nope")
+  test("createI18n rejects an empty dictionary set", () => {
+    expect(() => createI18n({}, { defaultLocale: "ru" })).toThrow(I18nError)
+  })
+})
+
+describe("i18n params typing", () => {
+  test("string and number params both work", () => {
+    const params: I18nParams = { count: 3, name: "ник" }
+    expect(make().t("greet", params)).toBe("Привет, ник!")
   })
 })

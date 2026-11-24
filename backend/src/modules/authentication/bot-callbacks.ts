@@ -1,7 +1,7 @@
 import type { Context } from "grammy"
 import type { Bot } from "grammy"
 import type { Logger } from "../../logging/logger.js"
-import { i18n } from "../../i18n/index.js"
+import { i18n } from "../../i18n/instance.js"
 import type { AuthenticationService, CallbackOutcome } from "./auth-service.js"
 import type { TelegramAuthUi, AuthOutcomeKey } from "./telegram-prompt.js"
 import { parseAuthCallbackData } from "./telegram-prompt.js"

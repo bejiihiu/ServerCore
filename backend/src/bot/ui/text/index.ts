@@ -95,7 +95,7 @@ export function composeText(): ComposedText {
 }
 
 /**
- * bot-side translator: identical surface to the i18n provider, but every
+ * bot-side translator: identical surface to the i18n provider but every
  * substituted value is html-escaped — bot messages always render as html, so
  * user-controlled data (nicknames etc) can never inject markup.
  */
@@ -104,18 +104,9 @@ export type Translator = {
   tPlural(key: string, count: number, params?: Readonly<Record<string, string | number>>): string
 }
 
-function escapedParams(
-  params: Readonly<Record<string, string | number>> | undefined,
-): Record<string, string> | undefined {
-  if (params === undefined) return undefined
-  const escaped: Record<string, string> = {}
-  for (const [key, value] of Object.entries(params)) escaped[key] = escapeHtml(String(value))
-  return escaped
-}
-
 export function createTranslator(provider: I18nProvider): Translator {
   return {
-    t: (key, params) => provider.t(key, escapedParams(params)),
-    tPlural: (key, count, params) => provider.tPlural(key, count, escapedParams(params)),
+    t: (key, params) => provider.t(key, params, { escape: true }),
+    tPlural: (key, count, params) => provider.tPlural(key, count, params, { escape: true }),
   }
 }

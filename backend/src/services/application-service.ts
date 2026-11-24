@@ -11,7 +11,6 @@ import type {
   VoterInfo,
 } from "./ports.js"
 import type { AdmissionNotifier } from "./admission-notifier.js"
-import { t } from "./i18n.js"
 import { formatMoscowTime } from "./moscow-time.js"
 import { isDraftComplete, validateAnswer } from "./questionnaire.js"
 import type { RateLimiter } from "../utils/rate-limiter.js"
@@ -272,32 +271,37 @@ export class ApplicationService {
     return { ok: true, application }
   }
 
-  /** localized explanation for a blocked start/submit */
-  blockText(
-    reason: StartBlockReason | "NO_DRAFT" | "INCOMPLETE",
-    lang: Lang,
+  /**
+   * screen keys for a blocked start/submit. the service owns which refusal is
+   * which; the bot layer renders it (and adds its own timezone label), so no
+   * user-facing text is built here.
+   */
+  blockScreen(
+    reason: SubmitBlockReason,
     cooldownUntil?: Date,
-  ): string {
+  ): { titleKey: string; bodyKey: string; date?: string } {
     switch (reason) {
       case "NO_USER":
-        return t(lang, "status.notFound")
+        return { titleKey: "app.notFoundTitle", bodyKey: "app.notFoundBody" }
       case "NOT_LINKED":
-        return t(lang, "status.notLinked")
+        return { titleKey: "app.notLinkedTitle", bodyKey: "app.notLinkedBody" }
       case "RATE_LIMITED":
-        return t(lang, "app.rateLimited")
+        return { titleKey: "app.rateLimitedTitle", bodyKey: "app.rateLimitedBody" }
       case "LIVE_APPLICATION":
-        return t(lang, "app.blockedLive")
+        return { titleKey: "app.blockedLiveTitle", bodyKey: "app.blockedLiveBody" }
       case "INELIGIBLE_STATUS":
-        return t(lang, "app.blockedStatus")
+        return { titleKey: "app.blockedStatusTitle", bodyKey: "app.blockedStatusBody" }
       case "COOLDOWN":
-        return t(lang, "app.blockedCooldown", {
-          date: cooldownUntil
-            ? formatMoscowTime(cooldownUntil)
-            : formatMoscowTime(new Date(this.deps.clock.nowMs() + this.deps.cooldownMs)),
-        })
+        return {
+          titleKey: "app.blockedCooldownTitle",
+          bodyKey: "app.blockedCooldownBody",
+          date: formatMoscowTime(
+            cooldownUntil ?? new Date(this.deps.clock.nowMs() + this.deps.cooldownMs),
+          ),
+        }
       case "NO_DRAFT":
       case "INCOMPLETE":
-        return t(lang, "error.generic")
+        return { titleKey: "common.errorTitle", bodyKey: "common.error" }
     }
   }
 }

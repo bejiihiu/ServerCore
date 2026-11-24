@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   isPremiumRequiredError,
   renderPlainText,
+  replyScreen,
   withoutCustomEmoji,
   withoutCustomEmojiMarkup,
   withoutCustomEmojiText,
@@ -62,6 +63,42 @@ describe("custom emoji degradation of a whole screen", () => {
 
   test("screen without markup survives degradation", () => {
     expect(withoutCustomEmoji({ text: "<tg-emoji emoji-id=\"1\">🟡</tg-emoji> ждём" })).toEqual({ text: "🟡 ждём" })
+  })
+})
+
+describe("replyScreen (conversation path)", () => {
+  function recorder(): { calls: Array<{ text: string; other?: Record<string, unknown> }>; ctx: Parameters<typeof replyScreen>[0] } {
+    const calls: Array<{ text: string; other?: Record<string, unknown> }> = []
+    return {
+      calls,
+      ctx: {
+        reply: async (text: string, other?: Record<string, unknown>) => {
+          calls.push(other === undefined ? { text } : { text, other })
+          return undefined
+        },
+      } as unknown as Parameters<typeof replyScreen>[0],
+    }
+  }
+
+  test("html, disabled previews and the markup ride along", async () => {
+    const { calls, ctx } = recorder()
+    await replyScreen(ctx, {
+      text: "<b>Статус</b>",
+      markup: { inline_keyboard: [[{ text: "‹ Назад", callback_data: "menu:back" }]] },
+    })
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.text).toBe("<b>Статус</b>")
+    expect(calls[0]?.other).toEqual({
+      parse_mode: "HTML",
+      link_preview_options: { is_disabled: true },
+      reply_markup: { inline_keyboard: [[{ text: "‹ Назад", callback_data: "menu:back" }]] },
+    })
+  })
+
+  test("a screen without markup sends no reply_markup key at all", async () => {
+    const { calls, ctx } = recorder()
+    await replyScreen(ctx, { text: "<i>Загрузка…</i>" })
+    expect(calls[0]?.other).toEqual({ parse_mode: "HTML", link_preview_options: { is_disabled: true } })
   })
 })
 

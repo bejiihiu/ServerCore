@@ -1,5 +1,5 @@
-import type { AnswerPair, ApplicationInfo, InlineKeyboard, Lang } from "./ports.js"
-import { t, statusLabel } from "./i18n.js"
+import type { AnswerPair, InlineKeyboard, Lang } from "./ports.js"
+import { t } from "./i18n.js"
 import { formatMoscowTime } from "./moscow-time.js"
 
 /** callback data layout for voting buttons */
@@ -59,21 +59,6 @@ export function formatAnnouncement(input: {
     answers: formatAnswersList(input.answers),
     endTime: formatMoscowTime(input.expiresAt),
   })
-}
-
-/** localized per-viewer application view; questions re-rendered by index */
-export function formatApplicationView(
-  application: ApplicationInfo,
-  lang: Lang,
-  questions: string[],
-): string {
-  const rendered = application.answers
-    .map((pair, i) => `${i + 1}. ${questions[i] ?? pair.question}\n${pair.answer}`)
-    .join("\n\n")
-  const body = t(lang, "app.summary", { username: application.minecraftUuid, answers: rendered })
-  return `${t(lang, "app.viewHeader")}\n\n${body}\n\n${t(lang, "vote.resultLine", {
-    verdict: statusLabel(lang, application.status),
-  })}`
 }
 
 /** the one-line verdict appended to the group message when voting closes */

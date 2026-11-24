@@ -284,8 +284,8 @@ export class AccountService {
     })
 
     this.logger.info({ minecraftUuid, username }, "telegram account linked")
-    await this.notifier.notifyUser(params.telegramId, t(user.language, "bot.link.success", { username }))
-    await this.notifier.notifyAdmins(t(this.defaultLanguage, "bot.link.success", { username }))
+    await this.notifier.notifyUser(params.telegramId, t(user.language, "account.linked", { username }))
+    await this.notifier.notifyAdmins(t(this.defaultLanguage, "account.linked", { username }))
     return { linked: true, username, idempotent: false }
   }
 
@@ -322,7 +322,7 @@ export class AccountService {
     if (user.telegramId !== "") {
       await this.notifier.notifyUser(
         user.telegramId,
-        t(user.language, "bot.account.status_changed", {
+        t(user.language, "account.status_changed", {
           from: statusLabel(user.language, from),
           to: statusLabel(user.language, to),
         }),

@@ -1,9 +1,12 @@
 import type { Conversation } from "@grammyjs/conversations"
 import type { LinkFailureReason } from "../../modules/account/account-service.js"
-import { t, type Locale } from "../../services/i18n.js"
-import { CALLBACK, linkingKeyboard } from "../keyboards.js"
+import type { Locale } from "../../services/i18n.js"
+import { CALLBACK } from "../keyboards.js"
 import type { BotContext } from "../context.js"
 import type { AccountService } from "../../modules/account/account-service.js"
+import { emoji, tr } from "../ui/runtime.js"
+import { confirmDialogScreen, hintScreen, loadingScreen, noticeScreen, type ScreenMessage } from "../ui/screens/index.js"
+import { replyScreen } from "../ui/sending.js"
 
 /** the linking conversation needs the account service and nothing else */
 export type LinkingConversationDeps = {
@@ -12,14 +15,14 @@ export type LinkingConversationDeps = {
   fallbackLanguage: Locale
 }
 
-const FAILURE_KEYS: Record<LinkFailureReason, "bot.link.fail_token" | "bot.link.fail_frozen" | "bot.link.fail_already_linked" | "bot.link.fail_ownership" | "bot.link.fail_offline" | "bot.link.fail_rate_limited" | "bot.link.fail_not_found"> = {
-  TOKEN_INVALID: "bot.link.fail_token",
-  ACCOUNT_FROZEN: "bot.link.fail_frozen",
-  ALREADY_LINKED: "bot.link.fail_already_linked",
-  OWNERSHIP_NOT_PROVEN: "bot.link.fail_ownership",
-  SERVER_OFFLINE: "bot.link.fail_offline",
-  RATE_LIMITED: "bot.link.fail_rate_limited",
-  ACCOUNT_NOT_FOUND: "bot.link.fail_not_found",
+const FAILURE_KEYS: Record<LinkFailureReason, string> = {
+  TOKEN_INVALID: "fail.token",
+  ACCOUNT_FROZEN: "fail.frozen",
+  ALREADY_LINKED: "fail.alreadyLinked",
+  OWNERSHIP_NOT_PROVEN: "fail.ownership",
+  SERVER_OFFLINE: "fail.offline",
+  RATE_LIMITED: "fail.rateLimited",
+  ACCOUNT_NOT_FOUND: "fail.notFound",
 }
 
 /**
@@ -47,19 +50,19 @@ export async function linkingConversation(
     return existing?.language ?? deps.fallbackLanguage
   })
 
-  await ctx.reply(t(locale, "bot.link.prompt", { username }), { reply_markup: linkingKeyboard((key) => t(locale, key)) })
+  await replyScreen(ctx, promptScreen(locale, username))
 
   const answer = await conversation.waitForCallbackQuery([CALLBACK.linkConfirm, CALLBACK.linkCancel], {
-    otherwise: (nonAnswer) => nonAnswer.reply(t(locale, "bot.link.confirming")),
+    otherwise: (nonAnswer) => void replyScreen(nonAnswer, hintScreen(tr(locale).t("link.nudge"))),
   })
   await answer.answerCallbackQuery()
 
   if (answer.callbackQuery.data === CALLBACK.linkCancel) {
-    await ctx.reply(t(locale, "bot.link.cancelled"))
+    await replyScreen(ctx, cancelledScreen(locale))
     return
   }
 
-  await ctx.reply(t(locale, "bot.link.confirming"))
+  await replyScreen(ctx, loadingScreen(tr(locale), tr(locale).t("link.progress")))
 
   // the whole business flow runs exactly once, outside the replay machine
   const outcome = await conversation.external(() =>
@@ -71,8 +74,58 @@ export async function linkingConversation(
   )
 
   if (outcome.linked) {
-    await ctx.reply(t(locale, "bot.link.success", { username: outcome.username }))
+    await replyScreen(ctx, successScreen(locale, outcome.username))
     return
   }
-  await ctx.reply(t(locale, FAILURE_KEYS[outcome.reason]))
+  await replyScreen(ctx, failureScreen(locale, outcome.reason))
+}
+
+function promptScreen(locale: Locale, username: string): ScreenMessage {
+  const t = tr(locale)
+  return confirmDialogScreen({
+    t,
+    e: emoji,
+    tone: "pending",
+    title: t.t("link.confirmTitle"),
+    body: t.t("link.confirmFact", { username }),
+    aside: t.t("link.confirmAside"),
+    keyboard: {
+      cancel: { label: t.t("common.cancel"), callbackData: CALLBACK.linkCancel },
+      confirm: { label: t.t("common.confirm"), callbackData: CALLBACK.linkConfirm },
+    },
+  })
+}
+
+function cancelledScreen(locale: Locale): ScreenMessage {
+  const t = tr(locale)
+  return noticeScreen({
+    t,
+    e: emoji,
+    tone: "neutral",
+    title: t.t("link.cancelledTitle"),
+    body: t.t("link.cancelledBody"),
+  })
+}
+
+function successScreen(locale: Locale, username: string): ScreenMessage {
+  const t = tr(locale)
+  return noticeScreen({
+    t,
+    e: emoji,
+    tone: "active",
+    title: t.t("link.successTitle"),
+    body: t.t("link.successFact", { username }),
+    aside: t.t("link.successAside"),
+  })
+}
+
+function failureScreen(locale: Locale, reason: LinkFailureReason): ScreenMessage {
+  const t = tr(locale)
+  return noticeScreen({
+    t,
+    e: emoji,
+    tone: "attention",
+    title: t.t("link.failTitle"),
+    body: t.t(`link.${FAILURE_KEYS[reason]}`),
+  })
 }
