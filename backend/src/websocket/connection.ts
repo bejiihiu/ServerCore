@@ -49,6 +49,7 @@ export class ServerConnection {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
   private closeTimer: ReturnType<typeof setTimeout> | null = null
   private lastSeenAt: number
+  private activeRoutes = 0
 
   constructor(serverId: string, socket: Bun.ServerWebSocket<GatewaySocketData>, options: ConnectionOptions, logger: Logger) {
     this.serverId = serverId
@@ -79,6 +80,19 @@ export class ServerConnection {
     this.lastSeenAt = Date.now()
   }
 
+  /** handlers that started but have not finished yet, watched by the drain */
+  get inFlightHandlers(): number {
+    return this.activeRoutes
+  }
+
+  /** resolves once every in-flight handler finished, bounded by the timeout */
+  async drain(timeoutMs: number): Promise<void> {
+    const deadline = Date.now() + timeoutMs
+    while (this.activeRoutes > 0 && Date.now() < deadline) {
+      await Bun.sleep(25)
+    }
+  }
+
   /**
    * handles a raw inbound frame. returns null when the frame was consumed
    * (valid + routed), or a failure when the connection must close.
@@ -104,13 +118,6 @@ export class ServerConnection {
       return { reason: "BAD_ENVELOPE", detail: "unexpected handshake after upgrade" }
     }
 
-    if (!this.replayGuard.checkAndRecord(envelope.id, now)) {
-      // duplicate id = replayed frame, protocol violation
-      return { reason: "BAD_ENVELOPE", detail: `replayed message id ${envelope.id}` }
-    }
-
-    this.lastSeenAt = now
-
     const correlationId = envelope.correlationId
     if (envelope.type === "ACK" && correlationId) {
       const ack = this.pendingAcks.get(correlationId)
@@ -122,14 +129,35 @@ export class ServerConnection {
       return null
     }
 
+    if (!this.replayGuard.checkAndRecord(envelope.id, now)) {
+      // same envelope id twice = the peer replayed a frame we already
+      // consumed. every frame is hmac-signed, so this is the legitimate peer
+      // redelivering after a lost ack, not an attack: ack it again, process
+      // nothing. killing the connection here would turn one lost ack into a
+      // reconnect loop.
+      this.logger.debug({ serverId: this.serverId, id: envelope.id }, "duplicate frame, acked without reprocessing")
+      if (!NO_ACK_TYPES.includes(envelope.type)) {
+        this.sendRaw("ACK", { ackedId: envelope.id }, envelope.id)
+      }
+      return null
+    }
+
+    this.lastSeenAt = now
+
     if (!NO_ACK_TYPES.includes(envelope.type)) {
       this.sendRaw("ACK", { ackedId: envelope.id }, envelope.id)
     }
 
-    // handler errors must not kill the connection — log and keep going
-    void route(envelope, this).catch((error: unknown) => {
-      this.logger.error({ err: error, serverId: this.serverId, type: envelope.type }, "message handler failed")
-    })
+    // handler errors must not kill the connection — log and keep going.
+    // the route is tracked so a graceful shutdown can wait for it to finish
+    this.activeRoutes += 1
+    void route(envelope, this)
+      .catch((error: unknown) => {
+        this.logger.error({ err: error, serverId: this.serverId, type: envelope.type }, "message handler failed")
+      })
+      .finally(() => {
+        this.activeRoutes -= 1
+      })
 
     return null
   }

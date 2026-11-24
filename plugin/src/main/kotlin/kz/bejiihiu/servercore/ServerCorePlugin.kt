@@ -43,11 +43,15 @@ import kz.bejiihiu.servercore.sync.VanillaOnlyResyncExecutor
 import kz.bejiihiu.servercore.ui.UiKit
 import kz.bejiihiu.servercore.util.I18n
 import kz.bejiihiu.servercore.websocket.DelayScheduler
+import kz.bejiihiu.servercore.websocket.DurableOutbox
 import kz.bejiihiu.servercore.websocket.GatewayClient
 import kz.bejiihiu.servercore.websocket.GatewayListener
 import kz.bejiihiu.servercore.websocket.Payload
+import kz.bejiihiu.servercore.websocket.RawFrameListener
 import kz.bejiihiu.servercore.websocket.ServerStatsProvider
 import kz.bejiihiu.servercore.ws.BackendGateway
+import kz.bejiihiu.servercore.ws.GatewayLink
+import kz.bejiihiu.servercore.ws.WsEnvelope
 import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.event.EventHandler
@@ -164,14 +168,29 @@ class ServerCorePlugin : JavaPlugin() {
             override fun serverVersion(): String = server.getMinecraftVersion()
         }
 
+        // durable outbox: guest lifecycle frames survive reconnects AND plugin
+        // restarts, parked on disk until the backend acknowledges them
+        val durableOutbox = DurableOutbox(
+            file = dataFolder.toPath().resolve("ws-outbox.json"),
+            io = io,
+            maxEntries = gatewayConfig.gateway.outboxMaxEntries,
+        )
+        durableOutbox.load()
+
+        // the link adapter is created after the client (it wraps it), so the
+        // listener captures a mutable reference
+        var gatewayLink: GatewayLink? = null
         val gatewayListener = object : GatewayListener {
             override fun onConnected() {
                 logger.info("backend gateway connected as ${gatewayConfig.gateway.serverId}")
-                // re-announce live guest sessions so both sides agree on reality
+                // the guest hub goes live with the transport, then both sides
+                // re-sync what happened while the link was down
+                gatewayLink?.let { backendGateway.attach(it) }
                 sessions.reconcile()
             }
 
             override fun onDisconnected() {
+                gatewayLink?.let { backendGateway.detach(it) }
                 logger.warning("backend gateway disconnected, reconnect scheduled")
             }
 
@@ -184,8 +203,8 @@ class ServerCorePlugin : JavaPlugin() {
             }
         }
 
-        // folia async scheduler drives reconnect delays; the client itself is
-        // bukkit-free, so its callbacks may run on any async thread
+        // folia async scheduler drives reconnect delays and the watchdog; the
+        // client itself is bukkit-free, so its callbacks may run on any async thread
         val delayScheduler = DelayScheduler { task: Runnable, delayMs: Long ->
             server.asyncScheduler.runDelayed(this, { _ -> task.run() }, delayMs, TimeUnit.MILLISECONDS)
         }
@@ -196,15 +215,20 @@ class ServerCorePlugin : JavaPlugin() {
             scheduler = delayScheduler,
             stats = stats,
             presenceLookup = { uuid -> presence?.isOnline(uuid) ?: false },
+            rawListener = RawFrameListener { id, type, payload, correlationId ->
+                backendGateway.receive(WsEnvelope(id, type, System.currentTimeMillis(), correlationId, payload))
+            },
+            durablePark = durableOutbox,
         )
         wsGateway = client
+        gatewayLink = GatewayLink(client)
 
         val presenceService = PlayerPresenceService(this, client)
         presence = presenceService
         server.pluginManager.registerEvents(presenceService, this)
 
-        // guest mode stack (uses its own local gateway handle for envelope-level
-        // helpers; both handles share the same backend connection semantics)
+        // guest mode stack (its hub is attached to the real transport below;
+        // until the link is up every send fails closed to local behavior)
         val guestConfig = GuestConfig.load(config, logger)
         val i18n = I18n(this, guestConfig.lang)
 

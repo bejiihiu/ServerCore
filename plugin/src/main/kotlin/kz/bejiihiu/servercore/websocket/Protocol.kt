@@ -12,12 +12,18 @@ import java.util.Base64
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
-/** message types on the wire; only the ones this plugin speaks */
+/** message types on the wire; everything the plugin speaks */
 enum class MessageType(val wire: String) {
     PLAYER_JOINED("PLAYER_JOINED"),
     PLAYER_LEFT("PLAYER_LEFT"),
     SERVER_STATUS("SERVER_STATUS"),
     SERVER_HEARTBEAT("SERVER_HEARTBEAT"),
+    AUTH_REQUEST("AUTH_REQUEST"),
+    AUTH_APPROVED("AUTH_APPROVED"),
+    AUTH_REJECTED("AUTH_REJECTED"),
+    AUTH_EXPIRED("AUTH_EXPIRED"),
+    GUEST_STARTED("GUEST_STARTED"),
+    GUEST_ENDED("GUEST_ENDED"),
     LINK_TOKEN("LINK_TOKEN"),
     SESSION_CHECK("SESSION_CHECK"),
     SESSION_CHECK_RESULT("SESSION_CHECK_RESULT"),
@@ -29,6 +35,25 @@ enum class MessageType(val wire: String) {
         private val byWire = entries.associateBy { it.wire }
         fun fromWire(value: String): MessageType? = byWire[value]
     }
+}
+
+/** how much a frame hurts when it dies together with the connection */
+enum class Durability {
+    /** stale by definition, a fresh one is on the way: heartbeats, status */
+    DROP,
+
+    /** worth keeping across a blip, a crash may still lose it: presence events */
+    QUEUE,
+
+    /** must survive a plugin restart: guest lifecycle + snapshots */
+    DURABLE,
+}
+
+/** durability class per wire type; anything unlisted dies with the link */
+fun durabilityOf(type: MessageType): Durability = when (type) {
+    MessageType.GUEST_STARTED, MessageType.GUEST_ENDED -> Durability.DURABLE
+    MessageType.PLAYER_JOINED, MessageType.PLAYER_LEFT -> Durability.QUEUE
+    else -> Durability.DROP
 }
 
 /** typed payloads for the messages we send or act on */
@@ -43,6 +68,13 @@ sealed interface Payload {
     data class AccountDeleted(val minecraftUuid: String, val reason: String) : Payload
     data class Ack(val ackedId: String) : Payload
     data class Error(val code: String, val message: String) : Payload
+
+    /**
+     * pass-through payload for types the gateway relays without interpreting
+     * (guest lifecycle, auth verdicts): the json object travels verbatim, the
+     * ws layer owns its shape
+     */
+    data class Raw(val json: JsonObject) : Payload
 }
 
 /** one wire message: envelope meta + typed payload, hmac set after signing */
@@ -82,7 +114,7 @@ class EnvelopeCodec(private val secret: String) {
             put("type", envelope.type.wire)
             put("timestamp", envelope.timestamp)
             envelope.correlationId?.let { put("correlationId", it) }
-            put("payload", payloadToJson(envelope.payload))
+            put("payload", payloadAsJson(envelope.payload))
         }
         return hmac(canonicalize(meta))
     }
@@ -93,7 +125,7 @@ class EnvelopeCodec(private val secret: String) {
             put("type", envelope.type.wire)
             put("timestamp", envelope.timestamp)
             envelope.correlationId?.let { put("correlationId", it) }
-            put("payload", payloadToJson(envelope.payload))
+            put("payload", payloadAsJson(envelope.payload))
         }
         // signed envelope = meta + hmac, serialized canonically (same key order)
         val signed = buildJsonObject {
@@ -142,7 +174,8 @@ class EnvelopeCodec(private val secret: String) {
     private fun JsonObject.long(key: String): Long? =
         (this[key] as? JsonPrimitive)?.content?.toLongOrNull()
 
-    private fun payloadToJson(payload: Payload): JsonElement = when (payload) {
+    /** payload as a json object; also the relay format for the ws layer */
+    fun payloadAsJson(payload: Payload): JsonElement = when (payload) {
         is Payload.PlayerJoined -> buildJsonObject {
             put("minecraftUuid", payload.minecraftUuid)
             put("username", payload.username)
@@ -185,6 +218,7 @@ class EnvelopeCodec(private val secret: String) {
             put("code", payload.code)
             put("message", payload.message)
         }
+        is Payload.Raw -> payload.json
     }
 
     private fun payloadFromJson(type: MessageType, element: JsonElement): Payload {
@@ -223,6 +257,14 @@ class EnvelopeCodec(private val secret: String) {
                 obj.stringOrThrow("minecraftUuid"),
                 obj.stringOrThrow("reason"),
             )
+            // relayed types: the payload stays a raw object, the ws layer owns it
+            MessageType.AUTH_REQUEST,
+            MessageType.AUTH_APPROVED,
+            MessageType.AUTH_REJECTED,
+            MessageType.AUTH_EXPIRED,
+            MessageType.GUEST_STARTED,
+            MessageType.GUEST_ENDED,
+            -> Payload.Raw(obj)
             MessageType.ACK -> Payload.Ack(obj.stringOrThrow("ackedId"))
             MessageType.ERROR -> Payload.Error(obj.stringOrThrow("code"), obj.stringOrThrow("message"))
         }

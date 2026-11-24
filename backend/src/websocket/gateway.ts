@@ -21,7 +21,8 @@ export type Gateway = {
     payload: PayloadOf<T>,
     options?: { awaitAck?: boolean; correlationId?: string },
   ): Promise<void>
-  stop(): void
+  /** graceful shutdown: waits for in-flight handlers, then closes every socket */
+  stop(): Promise<void>
 }
 
 /**
@@ -169,8 +170,16 @@ export function createGateway(config: AppConfig, logger: Logger, handlers: Handl
         ...(options.correlationId !== undefined ? { correlationId: options.correlationId } : {}),
       })
     },
-    stop(): void {
+    async stop(): Promise<void> {
       stats.running = false
+      // graceful drain: in-flight message handlers get a bounded window to
+      // finish before the sockets go down, so a shutdown never cuts a
+      // half-processed event in half
+      const draining = [...connections.values()].map((connection) => connection.drain(config.wsDrainTimeoutMs))
+      if (draining.length > 0) {
+        logger.info({ connections: draining.length, timeoutMs: config.wsDrainTimeoutMs }, "draining gateway connections")
+        await Promise.all(draining)
+      }
       for (const [, connection] of connections) {
         connection.close(1001, "server shutting down")
       }

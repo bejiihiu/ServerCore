@@ -11,10 +11,8 @@ import kz.bejiihiu.servercore.ws.AuthRequestPayload
 import kz.bejiihiu.servercore.ws.BackendGateway
 import kz.bejiihiu.servercore.ws.GatewayListener
 import kz.bejiihiu.servercore.ws.MessageTypes
-import kz.bejiihiu.servercore.ws.PlayerJoinedPayload
 import kz.bejiihiu.servercore.ws.WsEnvelope
 import kz.bejiihiu.servercore.ws.decodePayload
-import kz.bejiihiu.servercore.ws.messageEnvelope
 
 /**
  * resolves account state through the backend: player_joined goes out, the
@@ -56,14 +54,10 @@ class WsAccountResolver(
     override fun resolve(uuid: UUID, username: String): CompletableFuture<AccountStatus> {
         val future = CompletableFuture<AccountStatus>()
         waiting[uuid] = future
-        val sent = gateway.send(messageEnvelope(MessageTypes.PLAYER_JOINED, PlayerJoinedPayload(uuid.toString(), username)))
-        if (!sent) {
-            waiting.remove(uuid)
-            // link down mid-join: not an error, the caller falls back to the local resolver
-            future.completeExceptionally(IllegalStateException("backend link is down"))
-            return future
-        }
-        // timeout leaves the entry behind otherwise; clean up whichever way we finish
+        // the presence layer already announces the join over the same link; a
+        // second PLAYER_JOINED from here would churn the backend session
+        // bookkeeping (fresh session + fresh prompt per duplicate). we just
+        // wait for the verdict — no answer within the timeout means guest
         future.whenComplete { _, _ -> waiting.remove(uuid, future) }
         return future.orTimeout(config.resolveTimeoutMs, TimeUnit.MILLISECONDS)
     }

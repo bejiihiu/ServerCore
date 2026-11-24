@@ -365,7 +365,7 @@ async function main(): Promise<void> {
       offlineWatcher.stop()
       stopRetention()
       await bot?.stop()
-      gateway.stop()
+      await gateway.stop()
       await app.close()
       await disconnectDatabase(logger)
     } catch (err) {

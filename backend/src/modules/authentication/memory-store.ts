@@ -15,6 +15,11 @@ export class InMemoryAuthenticationStore implements AuthenticationStore {
     this.users.set(user.minecraftUuid, user)
   }
 
+  /** open sessions only, closed ones are removed from the map */
+  get sessionCount(): number {
+    return this.sessions.size
+  }
+
   get requestCount(): number {
     return this.requests.size
   }

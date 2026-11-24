@@ -88,6 +88,8 @@ const envSchema = z.object({
   WS_MAX_PACKET_BYTES: z.coerce.number().int().min(1024).max(1_048_576).default(262_144),
   WS_REPLAY_WINDOW_MS: z.coerce.number().int().min(1000).default(30_000),
   WS_NONCE_TTL_MS: z.coerce.number().int().min(1000).default(120_000),
+  // graceful shutdown: in-flight handler waits get this long before sockets close
+  WS_DRAIN_TIMEOUT_MS: z.coerce.number().int().min(100).default(5_000),
 
   // one-time login/link token lifetime, must stay in the 60-90 band
   AUTH_REQUEST_TTL_SECONDS: z.coerce.number().int().min(60).max(90).default(75),
@@ -150,6 +152,7 @@ export type AppConfig = {
   wsMaxPacketBytes: number
   wsReplayWindowMs: number
   wsNonceTtlMs: number
+  wsDrainTimeoutMs: number
   authRequestTtlSeconds: number
   groupChatId: number | null
   /** interface language for group/admin-facing messages, per-user overrides */
@@ -264,6 +267,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     wsMaxPacketBytes: result.data.WS_MAX_PACKET_BYTES,
     wsReplayWindowMs: result.data.WS_REPLAY_WINDOW_MS,
     wsNonceTtlMs: result.data.WS_NONCE_TTL_MS,
+    wsDrainTimeoutMs: result.data.WS_DRAIN_TIMEOUT_MS,
     authRequestTtlSeconds: result.data.AUTH_REQUEST_TTL_SECONDS,
     groupChatId: result.data.GROUP_CHAT_ID ?? null,
     questions: { ru: questionsRu, en: questionsEn },

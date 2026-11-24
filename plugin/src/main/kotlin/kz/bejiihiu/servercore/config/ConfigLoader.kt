@@ -19,10 +19,20 @@ object ConfigLoader {
         val reconnectInitial = config.getLong("backend.reconnect-initial-seconds", 1L) * 1000
         val reconnectMax = config.getLong("backend.reconnect-max-seconds", 60L) * 1000
         val heartbeat = config.getLong("backend.heartbeat-interval-seconds", 15L) * 1000
+        val ackTimeout = config.getLong("backend.ack-timeout-milliseconds", 10_000L)
+        val ackMaxRetries = config.getInt("backend.ack-max-retries", 2)
+        val livenessTimeout = config.getLong("backend.liveness-timeout-milliseconds", 45_000L)
+        val dedupeTtl = config.getLong("backend.dedupe-ttl-milliseconds", 600_000L)
+        val outboxMax = config.getInt("backend.outbox-max-entries", 500)
 
         require(url.startsWith("ws://") || url.startsWith("wss://")) { "backend.url must start with ws:// or wss://" }
         require(serverId.matches(Regex("[a-z0-9._-]+"))) { "backend.server-id must be [a-z0-9._-]+" }
         require(secret.length >= 32) { "backend.secret must be at least 32 characters" }
+        require(ackTimeout > 0) { "backend.ack-timeout-milliseconds must be positive" }
+        require(ackMaxRetries >= 0) { "backend.ack-max-retries must not be negative" }
+        require(livenessTimeout > 0) { "backend.liveness-timeout-milliseconds must be positive" }
+        require(dedupeTtl > 0) { "backend.dedupe-ttl-milliseconds must be positive" }
+        require(outboxMax > 0) { "backend.outbox-max-entries must be positive" }
 
         return PluginConfig(
             gateway = GatewayConfig(
@@ -32,6 +42,11 @@ object ConfigLoader {
                 reconnectInitialMs = reconnectInitial,
                 reconnectMaxMs = reconnectMax,
                 heartbeatIntervalMs = heartbeat,
+                ackTimeoutMs = ackTimeout,
+                ackMaxRetries = ackMaxRetries,
+                livenessTimeoutMs = livenessTimeout,
+                dedupeTtlMs = dedupeTtl,
+                outboxMaxEntries = outboxMax,
             ),
         )
     }

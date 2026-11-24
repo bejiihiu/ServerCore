@@ -17,6 +17,20 @@ backend:
     max-delay-seconds: 120
   # periodic liveness message cadence
   heartbeat-interval-seconds: 15
+  # an unacknowledged frame waits this long before the first retry
+  ack-timeout-milliseconds: 10000
+  # retries after the first ack timeout; after that durable frames park on
+  # disk until the link returns, the rest are dropped (fresh ones follow)
+  ack-max-retries: 2
+  # no inbound frame for this long on a "connected" socket = half-open link,
+  # force reconnect. the backend acks every heartbeat, so a healthy link
+  # speaks at least once per heartbeat interval
+  liveness-timeout-milliseconds: 45000
+  # how long a processed backend push is remembered, a redelivered copy inside
+  # the window is acked but never applied twice
+  dedupe-ttl-milliseconds: 600000
+  # hard cap of the durable outbox file (guest lifecycle frames)
+  outbox-max-entries: 500
 
 guest:
   # master switch. when off, unauthenticated players are kicked with the

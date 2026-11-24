@@ -215,9 +215,17 @@ export class AuthenticationService {
     serverId: string,
     now: number,
   ): Promise<void> {
-    if (this.openSessions.has(event.minecraftUuid)) {
+    const existing = await this.store.findOpenSession(event.minecraftUuid)
+    if (existing !== null) {
+      // same session id = a redelivered GUEST_STARTED (reconnect replay):
+      // the session is already on file, exactly once, no duplicate row
+      if (existing.sessionId === event.sessionId) {
+        this.openSessions.set(event.minecraftUuid, existing.status)
+        return
+      }
       // a waiting-auth session keeps its own binding untouched; the plugin's
       // guest id is plugin-local bookkeeping and never overrides it
+      this.openSessions.set(event.minecraftUuid, existing.status)
       return
     }
     await this.store.createSession({
@@ -231,7 +239,7 @@ export class AuthenticationService {
     this.openSessions.set(event.minecraftUuid, "GUEST")
   }
 
-  async handleGuestEnded(event: { minecraftUuid: string; reason: string }): Promise<void> {
+  async handleGuestEnded(event: { minecraftUuid: string; sessionId?: string; reason: string }): Promise<void> {
     if (event.reason === "AUTHENTICATED") {
       // approval already flipped the status; this is the plugin's confirmation
       await this.store.updateOpenSessionStatus(event.minecraftUuid, "AUTHENTICATED")

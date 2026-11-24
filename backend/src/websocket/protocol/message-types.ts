@@ -73,9 +73,10 @@ export const BACKEND_TO_PLUGIN_TYPES: readonly MessageType[] = [
   "ERROR",
 ]
 
-/** these are fire-and-forget or answered by a dedicated reply, no ACK expected */
+/** these are fire-and-forget or answered by a dedicated reply, no ACK expected.
+ * SERVER_HEARTBEAT acks on purpose: the ack is the plugin's read-side liveness
+ * signal, a half-open connection stops producing them and gets reconnected. */
 export const NO_ACK_TYPES: readonly MessageType[] = [
-  "SERVER_HEARTBEAT",
   "SERVER_HELLO",
   "SERVER_READY",
   "ACK",
