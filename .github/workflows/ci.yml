@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
 
 jobs:
@@ -42,3 +42,10 @@ jobs:
 
       # test/typecheck steps get added by the backend workstream once the
       # package defines its scripts
+      - name: typecheck
+        run: bun run typecheck
+        working-directory: backend
+
+      - name: test
+        run: bun test
+        working-directory: backend
