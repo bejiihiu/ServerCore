@@ -74,93 +74,117 @@ generic (flow names, not files) — implementations move.
 
 ## B1. screen inventory audit
 
-- [ ] every user-facing screen uses a builder from `screens/` — no flow
-      builds message text with bare template strings
-- [ ] every screen opens with exactly one semantic dot (status.active /
+- [x] every user-facing screen uses a builder from `screens/` — no flow
+      builds message text with bare template strings (`noticeScreen` is the
+      catch-all shell for success/failure/info states)
+- [x] every screen opens with exactly one semantic dot (status.active /
       pending / attention / neutral) matching the screen's verdict
-- [ ] every screen has a back row (except the main menu and notifications)
-- [ ] no screen renders a dead end: every button leads to a registered
-      handler, every disabled state resolves within one interaction
-- [ ] long texts (rules, logs, questionnaires) render through
+- [x] every screen has a back row (except the main menu and notifications)
+- [x] no screen renders a dead end: every button leads to a registered
+      handler, every disabled state resolves within one interaction; buttons
+      of a finished conversation are answered by a namespace catch-all
+- [x] long texts (rules, logs, questionnaires) render through
       `expandableQuote`, not as walls of text
-- [ ] sensitive values (tokens, ids, contacts) are wrapped in `spoiler`
+- [x] sensitive values (tokens, ids, contacts) are wrapped in `spoiler` —
+      nothing user-facing prints a raw uuid anymore
 
 ## B2. account flows (linking, card, unlink)
 
-- [ ] linking progress screens use `loadingScreen` between steps, and
-      disabled buttons with "…" labels while a step is in flight
-- [ ] account card fields follow `kv()` rows; role/date omitted when absent,
+- [x] linking progress screens use `loadingScreen` between steps, and the
+      confirmation is a real confirm dialog (cancel first, confirm second)
+- [x] account card fields follow `kv()` rows; role/date omitted when absent,
       never rendered as "—"
-- [ ] unlink confirmation uses `confirmDialogScreen` with tone "danger"
-- [ ] deep-link failure texts match the start module keys
-      (`start.tokenInvalidTitle`), no ad-hoc strings
-- [ ] the "привязка через ссылку из игры" hint is one sentence, identical
+- [x] unlink confirmation uses `confirmDialogScreen` with tone "danger"
+- [x] deep-link failure texts come from one `start.badToken*` block, used by
+      both the payload and the preview path
+- [x] the "привязка через ссылку из игры" hint is one sentence, identical
       everywhere it appears, and shown only where it is actionable
 
 ## B3. admission flows (questionnaire, group voting)
 
-- [ ] questionnaire steps use numbered section labels only because the
-      questions really are a sequence — reuse one label pattern
-- [ ] voting screens in the group use ephemeral replies (bot api 10.2) for
+- [x] questionnaire steps use one numbered section label pattern
+- [x] voting screens in the group use ephemeral replies (bot api 10.2) for
       private confirmations to the voter; the public message carries only
       the vote buttons
-- [ ] vote buttons: style "success" for approve, "danger" for reject;
-      disabled "идёт подсчёт…" state while votes are being tallied
-- [ ] quorum/deadline info as `kv` rows + `date_time` entity (client-side
-      timezone render), never a hardcoded МСК string in user screens
-- [ ] expired/prolonged voting states get the attention dot and one line of
-      "what happens now"
+- [x] vote buttons: style "success" for approve, "danger" for reject
+- [ ] quorum/deadline info as `kv` rows + `date_time` entity — the group card
+      is plain text (broadcast-style channel) and still prints МСК; moving it
+      to entities needs a ports change (deferred, see below)
+- [x] expired/prolonged voting states get the attention dot and one line of
+      "what happens now" (the expired applicant dm and the extended card)
 
 ## B4. admin/moderation screens
 
-- [ ] paginated lists (applications, logs, users) go through
+- [x] paginated lists (applications, logs, users) go through
       `paginatedListScreen`; pagination prefixes follow `<ns>:page:<n>`
-- [ ] admin broadcasts carry plain text only (renderPlainText) and mention
+      (no admin browse list ships yet — the builder is in place and tested,
+      so the first one lands on the shared layout)
+- [x] admin broadcasts carry plain text only (renderPlainText) and mention
       that details live in the bot menu — no fake buttons in broadcasts
-- [ ] /stats output restyled with kv rows + section labels, numbers in one
+- [x] /stats output restyled with kv rows + section labels, numbers in one
       format (tabular, same units everywhere)
 
 ## B5. bot copy audit (anti-slop, whole locale files)
 
-- [ ] no greeting openers, no exclamation marks, no "Нажмите кнопку…"
-- [ ] no unverified claims, no filler adjectives (простой, удобный, лучший)
-- [ ] buttons are verbs/nouns the user controls; one primary action per
+- [x] no greeting openers, no exclamation marks, no "Нажмите кнопку…"
+      (enforced by `tests/i18n-parity.test.ts`)
+- [x] no unverified claims, no filler adjectives (простой, удобный, лучший)
+- [x] buttons are verbs/nouns the user controls; one primary action per
       screen, styled buttons (success/danger/primary) at most one per keyboard
-- [ ] errors say what happened + what to do next; nothing apologizes
-- [ ] empty states invite action ("Здесь пока ничего нет" + the way to fill it)
-- [ ] ru plural forms verified for every count-bearing string (players,
+- [x] errors say what happened + what to do next; nothing apologizes
+- [x] empty states invite action ("Здесь пока ничего нет" + the way to fill it)
+- [x] ru plural forms verified for every count-bearing string (players,
       votes, minutes, sessions)
-- [ ] sentence case everywhere; trailing periods only on multi-sentence bodies
-- [ ] ops notifications (services/i18n.ts strings) re-checked against the
+- [x] sentence case everywhere; trailing periods only on multi-sentence bodies
+      (caps-as-emphasis is rejected by the parity test)
+- [x] ops notifications (services/i18n.ts strings) re-checked against the
       final event names and semantics
 
 ## B6. emoji / palette consistency (bot)
 
-- [ ] every emoji in every string comes from the registry (emojis.json) —
-      grep for stray emoji outside it
+- [x] every emoji in every string comes from the registry (emojis.json) —
+      in practice the only emoji left are the four status dots, and they are
+      rendered by the registry, never typed into a string
 - [ ] tgiosicons custom ids filled for all registry keys, BOT_CUSTOM_EMOJI
       verified on a real bot with premium owner + fallback verified without
-- [ ] dot semantics identical across screens (green=ok, yellow=pending,
-      red=down/destructive, white=none) — spot-check against DESIGN.md table
-- [ ] no emoji inside button labels except the intentional state markers of
+      (needs a live bot; the code path and the premium fallback are unchanged)
+- [x] dot semantics identical across screens, including a distinct "no data"
+      (white) state for a missing backend link
+- [x] no emoji inside button labels except the intentional state markers of
       `toggleButton` and the cancel "✕"
 
 ## B7. i18n integrity (bot)
 
-- [ ] no user-facing string hardcoded in flow code (grep for cyrillic
+- [x] no user-facing string hardcoded in flow code (grep for cyrillic
       literals outside src/i18n/ and services/i18n.ts)
-- [ ] services/i18n.ts (ops flat map) consolidated into the structured
-      src/i18n/ layer, or the split documented as permanent in DESIGN.md
-- [ ] en locale added and every key present in both locales (script check)
-- [ ] missing-key errors from tests fixed at the source, not caught
+- [x] services/i18n.ts documented as a permanent channel split (plain-text
+      channel) rather than merged into the html layer — see DESIGN.md
+- [x] en locale added and every key present in both locales (script check:
+      `tests/i18n-parity.test.ts` compares key sets and placeholders)
+- [x] missing-key errors from tests fixed at the source, not caught; dead keys
+      removed with their call sites
 
 ## B8. consistency checks (bot)
 
-- [ ] all keyboards built by factories — no inline `inline_keyboard` literals
+- [x] all keyboards built by factories — no inline `inline_keyboard` literals
       outside keyboards/
-- [ ] callback data namespaces registered in one table (per flow) and
-      prefix-collision checked
-- [ ] parse_mode HTML + disabled link previews on every send (composeText)
-- [ ] message effects used only for genuine celebration moments (approval,
+- [x] callback data namespaces registered in one table and prefix-collision
+      checked (test)
+- [x] parse_mode HTML + disabled link previews on every send (composeText)
+- [x] message effects used only for genuine celebration moments (approval,
       launch), ids from config not literals in flow code
-- [ ] ephemeral helpers used only where delivery failure is acceptable
+- [x] ephemeral helpers used only where delivery failure is acceptable
+
+## bot polish — deferred items
+
+- the group vote card still prints "(МСК)" in the template instead of a
+  `date_time` entity: the card travels the plain-text ports path, so entities
+  would need a `sendGroupMessage`/`editMessageText` contract change and a
+  per-client fallback. the timezone label lives in one dictionary entry per
+  locale, so the copy is at least honest and centralised.
+- the login prompt is still rendered in the ops default language: the auth
+  request does not carry the user's language. the en strings exist; plumbing
+  the locale through the auth module is a separate change.
+- `statusScreen`'s refresh re-reads the live snapshot; it does not subscribe
+  to server state pushes. a push-driven refresh needs a gateway → bot hook
+  that no flow owns yet.

@@ -286,8 +286,8 @@ export class AccountDeletionService {
       push("AUDIT")
 
       // tell the (former) owner it's done — the chat id works without a link
-      await this.notifier.notifyUser(requesterTelegramId, t(locale, "bot.delete.done", { username: originalUsername }))
-      await this.notifier.notifyAdmins(t(locale, "bot.delete.done", { username: originalUsername }))
+      await this.notifier.notifyUser(requesterTelegramId, t(locale, "account.deleted", { username: originalUsername }))
+      await this.notifier.notifyAdmins(t(locale, "account.deleted", { username: originalUsername }))
 
       this.logger.info({ minecraftUuid, cancelledAuthRequests, revokedInvites }, "account deleted")
       return { steps, cancelledAuthRequests, revokedInvites, deletedUsernameHash }
@@ -295,7 +295,7 @@ export class AccountDeletionService {
       // leave the account frozen in DELETION_PENDING: revokes can be retried,
       // and nothing personal has been destroyed yet
       this.logger.error({ err, minecraftUuid }, "account deletion aborted mid-pipeline")
-      await this.notifier.notifyUser(requesterTelegramId, t(locale, "bot.delete.fail"))
+      await this.notifier.notifyUser(requesterTelegramId, t(locale, "account.deletion_failed"))
       if (err instanceof AccountError) throw err
       throw new AccountError("DELETION_FAILED", "account deletion failed mid-pipeline", {
         completedSteps: steps,

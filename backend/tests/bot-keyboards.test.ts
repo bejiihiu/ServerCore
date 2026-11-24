@@ -1,16 +1,15 @@
 import { describe, expect, test } from "bun:test"
 import {
-  accountKeyboard,
-  deleteConfirmKeyboard,
-  toggleKey,
+  accountActions,
   CALLBACK,
+  CALLBACK_NAMESPACES,
+  namespaceOf,
 } from "../src/bot/keyboards.js"
 import {
   actionRow,
   backButton,
   backRow,
   callbackData,
-  cancelButton,
   confirmKeyboard,
   inlineKeyboard,
   menuGrid,
@@ -129,12 +128,12 @@ describe("paginationRow", () => {
 
 describe("back navigation", () => {
   test("the return target is the callback data itself", () => {
-    expect(backButton("menu:back")).toEqual({ text: "‹ Назад", callback_data: "menu:back" })
-    expect(backRow("menu:back")).toEqual([{ text: "‹ Назад", callback_data: "menu:back" }])
+    expect(backButton("menu:back", "‹ Назад")).toEqual({ text: "‹ Назад", callback_data: "menu:back" })
+    expect(backRow("menu:back", "‹ Назад")).toEqual([{ text: "‹ Назад", callback_data: "menu:back" }])
   })
 
-  test("custom label", () => {
-    expect(backButton("menu:back", "← в меню")).toEqual({ text: "← в меню", callback_data: "menu:back" })
+  test("the label is required, so no language is baked into the toolkit", () => {
+    expect(backButton("menu:back", "Back")).toEqual({ text: "Back", callback_data: "menu:back" })
   })
 })
 
@@ -190,39 +189,57 @@ describe("confirmKeyboard", () => {
   })
 })
 
-describe("cancelButton", () => {
-  test("default and custom label", () => {
-    expect(cancelButton("a:cancel")).toEqual({ text: "✕ Отмена", callback_data: "a:cancel" })
-    expect(cancelButton("a:cancel", "Не сейчас")).toEqual({ text: "Не сейчас", callback_data: "a:cancel" })
+describe("account actions", () => {
+  test("refresh and language always present, language names the target", () => {
+    const actions = accountActions({
+      labels: { refresh: "Обновить", language: "Язык: English", delete: "Удалить аккаунт" },
+      canDelete: false,
+    })
+    expect(actions).toEqual([
+      { label: "Обновить", callbackData: CALLBACK.refresh },
+      { label: "Язык: English", callbackData: CALLBACK.languageToggle },
+    ])
+  })
+
+  test("delete appears only when the telegram link exists and is danger-styled", () => {
+    const actions = accountActions({
+      labels: { refresh: "Обновить", language: "Language: Русский", delete: "Удалить аккаунт" },
+      canDelete: true,
+    })
+    expect(actions[2]).toEqual({
+      label: "Удалить аккаунт",
+      callbackData: CALLBACK.delete,
+      style: "danger",
+    })
   })
 })
 
-describe("account keyboard", () => {
-  test("toggle button invites the other language, not the current one", () => {
-    const ru = accountKeyboard((key) => key, "ru")
-    const en = accountKeyboard((key) => key, "en")
-    // raw keys are the labels here; the toggle row must follow the locale
-    expect(ru.inline_keyboard.flat().some((b) => b.text === "bot.kb.toggle_to_en")).toBe(true)
-    expect(en.inline_keyboard.flat().some((b) => b.text === "bot.kb.toggle_to_ru")).toBe(true)
-    expect(toggleKey("ru")).toBe("bot.kb.toggle_to_en")
-    expect(toggleKey("en")).toBe("bot.kb.toggle_to_ru")
+describe("callback namespaces", () => {
+  test("every callback constant uses a registered namespace", () => {
+    for (const data of Object.values(CALLBACK)) {
+      const namespace = namespaceOf(data)
+      expect(namespace).not.toBeNull()
+      expect(CALLBACK_NAMESPACES).toHaveProperty(namespace as string)
+    }
   })
 
-  test("delete button carries the account callback", () => {
-    const kb = accountKeyboard((key) => key, "ru")
-    expect(kb.inline_keyboard[0]?.[0]).toEqual({ text: "bot.kb.delete", callback_data: CALLBACK.accountDelete })
+  test("namespaceOf reads the prefix and rejects bare ids", () => {
+    expect(namespaceOf("menu:back")).toBe("menu")
+    expect(namespaceOf("account:refresh")).toBe("account")
+    expect(namespaceOf("noprefix")).toBeNull()
+    expect(namespaceOf(":broken")).toBeNull()
   })
-})
 
-describe("delete confirmation uses its own callback namespace", () => {
-  test("stale linking keyboard cannot confirm a deletion", () => {
-    const kb = deleteConfirmKeyboard((key) => key)
-    const datas = kb.inline_keyboard.flat().map((b) => (b as { callback_data?: string }).callback_data)
-    expect(datas).toContain(CALLBACK.deleteConfirm)
-    expect(datas).toContain(CALLBACK.deleteCancel)
-    // the linking conversation waits on link:* — the two flows must never share data
-    expect(datas).not.toContain(CALLBACK.linkConfirm)
-    expect(datas).not.toContain(CALLBACK.linkCancel)
+  test("deletion and linking never share a prefix", () => {
+    // a stale linking keyboard must never be able to confirm a deletion
     expect(CALLBACK.deleteConfirm).not.toBe(CALLBACK.linkConfirm)
+    expect(namespaceOf(CALLBACK.deleteConfirm)).not.toBe(namespaceOf(CALLBACK.linkConfirm))
+  })
+
+  test("language toggle and language picks live in one namespace", () => {
+    expect(namespaceOf(CALLBACK.languageToggle)).toBe("lang")
+    expect(namespaceOf(CALLBACK.langRu)).toBe("lang")
+    expect(namespaceOf(CALLBACK.langEn)).toBe("lang")
+    expect(CALLBACK.langRu).not.toBe(CALLBACK.langEn)
   })
 })
