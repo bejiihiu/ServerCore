@@ -62,3 +62,105 @@ Feature flows consume the toolkit through these entry points; verify each integr
 - [ ] Nothing pulses unless it is a live state
 - [ ] Template check: swap the server name for another closed-server brand — if every message still fits verbatim, the copy is generic; push it back toward specifics of this season
 - [ ] Readability pass in real clients: check frames at default chat width and at GUI scale 2; no line wraps mid-rail
+
+---
+
+# Bot polish — telegram UI/UX pass
+
+the sections above cover the in-game (plugin) surfaces. the checklist below
+covers the telegram bot: design system in `backend/src/bot/ui/DESIGN.md`,
+toolkit in `backend/src/bot/ui/`, i18n in `backend/src/i18n/`. keep entries
+generic (flow names, not files) — implementations move.
+
+## B1. screen inventory audit
+
+- [ ] every user-facing screen uses a builder from `screens/` — no flow
+      builds message text with bare template strings
+- [ ] every screen opens with exactly one semantic dot (status.active /
+      pending / attention / neutral) matching the screen's verdict
+- [ ] every screen has a back row (except the main menu and notifications)
+- [ ] no screen renders a dead end: every button leads to a registered
+      handler, every disabled state resolves within one interaction
+- [ ] long texts (rules, logs, questionnaires) render through
+      `expandableQuote`, not as walls of text
+- [ ] sensitive values (tokens, ids, contacts) are wrapped in `spoiler`
+
+## B2. account flows (linking, card, unlink)
+
+- [ ] linking progress screens use `loadingScreen` between steps, and
+      disabled buttons with "…" labels while a step is in flight
+- [ ] account card fields follow `kv()` rows; role/date omitted when absent,
+      never rendered as "—"
+- [ ] unlink confirmation uses `confirmDialogScreen` with tone "danger"
+- [ ] deep-link failure texts match the start module keys
+      (`start.tokenInvalidTitle`), no ad-hoc strings
+- [ ] the "привязка через ссылку из игры" hint is one sentence, identical
+      everywhere it appears, and shown only where it is actionable
+
+## B3. admission flows (questionnaire, group voting)
+
+- [ ] questionnaire steps use numbered section labels only because the
+      questions really are a sequence — reuse one label pattern
+- [ ] voting screens in the group use ephemeral replies (bot api 10.2) for
+      private confirmations to the voter; the public message carries only
+      the vote buttons
+- [ ] vote buttons: style "success" for approve, "danger" for reject;
+      disabled "идёт подсчёт…" state while votes are being tallied
+- [ ] quorum/deadline info as `kv` rows + `date_time` entity (client-side
+      timezone render), never a hardcoded МСК string in user screens
+- [ ] expired/prolonged voting states get the attention dot and one line of
+      "what happens now"
+
+## B4. admin/moderation screens
+
+- [ ] paginated lists (applications, logs, users) go through
+      `paginatedListScreen`; pagination prefixes follow `<ns>:page:<n>`
+- [ ] admin broadcasts carry plain text only (renderPlainText) and mention
+      that details live in the bot menu — no fake buttons in broadcasts
+- [ ] /stats output restyled with kv rows + section labels, numbers in one
+      format (tabular, same units everywhere)
+
+## B5. bot copy audit (anti-slop, whole locale files)
+
+- [ ] no greeting openers, no exclamation marks, no "Нажмите кнопку…"
+- [ ] no unverified claims, no filler adjectives (простой, удобный, лучший)
+- [ ] buttons are verbs/nouns the user controls; one primary action per
+      screen, styled buttons (success/danger/primary) at most one per keyboard
+- [ ] errors say what happened + what to do next; nothing apologizes
+- [ ] empty states invite action ("Здесь пока ничего нет" + the way to fill it)
+- [ ] ru plural forms verified for every count-bearing string (players,
+      votes, minutes, sessions)
+- [ ] sentence case everywhere; trailing periods only on multi-sentence bodies
+- [ ] ops notifications (services/i18n.ts strings) re-checked against the
+      final event names and semantics
+
+## B6. emoji / palette consistency (bot)
+
+- [ ] every emoji in every string comes from the registry (emojis.json) —
+      grep for stray emoji outside it
+- [ ] tgiosicons custom ids filled for all registry keys, BOT_CUSTOM_EMOJI
+      verified on a real bot with premium owner + fallback verified without
+- [ ] dot semantics identical across screens (green=ok, yellow=pending,
+      red=down/destructive, white=none) — spot-check against DESIGN.md table
+- [ ] no emoji inside button labels except the intentional state markers of
+      `toggleButton` and the cancel "✕"
+
+## B7. i18n integrity (bot)
+
+- [ ] no user-facing string hardcoded in flow code (grep for cyrillic
+      literals outside src/i18n/ and services/i18n.ts)
+- [ ] services/i18n.ts (ops flat map) consolidated into the structured
+      src/i18n/ layer, or the split documented as permanent in DESIGN.md
+- [ ] en locale added and every key present in both locales (script check)
+- [ ] missing-key errors from tests fixed at the source, not caught
+
+## B8. consistency checks (bot)
+
+- [ ] all keyboards built by factories — no inline `inline_keyboard` literals
+      outside keyboards/
+- [ ] callback data namespaces registered in one table (per flow) and
+      prefix-collision checked
+- [ ] parse_mode HTML + disabled link previews on every send (composeText)
+- [ ] message effects used only for genuine celebration moments (approval,
+      launch), ids from config not literals in flow code
+- [ ] ephemeral helpers used only where delivery failure is acceptable
