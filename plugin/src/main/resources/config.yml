@@ -94,6 +94,22 @@ spec:
   # reported (e.g. plugin-side inventory edits)
   live-inventory-full-resync-seconds: 5
   log-to-audit: true
+  permission:
+    # luckperms is the permission backend when installed, vanilla checks otherwise
+    use-luckperms: true
+    # access levels, highest first: membership in a listed group grants that level
+    levels: [owner, admin, moderator, helper]
+    # the standalone node that also grants access (moderators per product decision)
+    spec-permission: servercore.spec
+    # level index granted by spec-permission alone when no listed group matches
+    fallback-level: helper
+  audit:
+    # local audit trail (jsonl), relative to plugins/ServerCore/
+    path: audit/spec-audit.jsonl
+    # rotate once the file grows past this many bytes
+    max-file-bytes: 5242880
+    # how many rotated files to keep
+    max-kept: 10
 
 protection:
   # master switch for the whole stack: command denial, gamemode guard,

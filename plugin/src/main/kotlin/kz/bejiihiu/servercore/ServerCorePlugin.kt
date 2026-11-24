@@ -52,6 +52,17 @@ import kz.bejiihiu.servercore.protection.OpLockdown
 import kz.bejiihiu.servercore.protection.ProtectionConfig
 import kz.bejiihiu.servercore.protection.ProtectionLifecycle
 import kz.bejiihiu.servercore.protection.ServerCoreCommands
+import kz.bejiihiu.servercore.spec.BukkitHiddenObserver
+import kz.bejiihiu.servercore.spec.FoliaSpecEffects
+import kz.bejiihiu.servercore.spec.LuckPermsAdapter
+import kz.bejiihiu.servercore.spec.SpecAuditWriter
+import kz.bejiihiu.servercore.spec.SpecCommand
+import kz.bejiihiu.servercore.spec.SpecConfig
+import kz.bejiihiu.servercore.spec.SpecPermissionPolicy
+import kz.bejiihiu.servercore.spec.SpecRestoreJournal
+import kz.bejiihiu.servercore.spec.SpecService
+import kz.bejiihiu.servercore.spec.SessionCoordinator
+import kz.bejiihiu.servercore.spec.VanillaAdapter
 import kz.bejiihiu.servercore.ui.UiKit
 import kz.bejiihiu.servercore.util.I18n
 import kz.bejiihiu.servercore.websocket.DelayScheduler
@@ -64,6 +75,9 @@ import com.mojang.brigadier.CommandDispatcher
 import io.papermc.paper.command.brigadier.CommandSourceStack
 import java.util.concurrent.atomic.AtomicReference
 import net.kyori.adventure.text.Component
+import net.luckperms.api.LuckPerms
+import net.luckperms.api.LuckPermsProvider
+import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents
 import org.bukkit.Bukkit
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
@@ -103,6 +117,7 @@ class ServerCorePlugin : JavaPlugin() {
     private var disguiseStack: DisguiseStack? = null
     private var gamemodeGuard: GamemodeGuardListener? = null
     private var commandBlockAuditor: CommandBlockAuditor? = null
+    private var spec: SpecService? = null
 
     override fun onLoad() {
         // packetevents is a server-installed plugin we attach to, not one we
@@ -342,6 +357,71 @@ class ServerCorePlugin : JavaPlugin() {
             logger.warning("protection disabled in config: command and gamemode guards are off")
         }
 
+        // spectator observation stack: brigadier command + session machine +
+        // local audit. soft-dependency on luckperms, vanilla fallback otherwise
+        val specConfig = SpecConfig.load(config, logger)
+        if (specConfig.enabled) {
+            val luckPerms: LuckPerms? = if (specConfig.permission.useLuckPerms) {
+                // luckperms not on the server (or not initialized yet) is not fatal,
+                // the vanilla-permission fallback covers access decisions
+                runCatching { LuckPermsProvider.get() }.getOrNull()
+            } else null
+            if (specConfig.permission.useLuckPerms && luckPerms == null) {
+                logger.warning("spec: luckperms requested but not available, falling back to vanilla permission checks")
+            }
+
+            val adapters = buildList {
+                if (luckPerms != null) add(LuckPermsAdapter(luckPerms))
+                add(VanillaAdapter { uuid -> server.getPlayer(uuid) })
+            }
+            val specPolicy = SpecPermissionPolicy(
+                adapters = adapters,
+                levels = specConfig.permission.levels,
+                specPermission = specConfig.permission.specPermission,
+                fallbackLevelIndex = specConfig.permission.fallbackLevelIndex,
+            )
+            val specAudit = if (specConfig.logToAudit) {
+                SpecAuditWriter(
+                    baseFile = dataFolder.toPath().resolve(specConfig.audit.path),
+                    maxFileBytes = specConfig.audit.maxFileBytes,
+                    maxKept = specConfig.audit.maxKept,
+                    io = io,
+                )
+            } else null
+
+            val specJournal = SpecRestoreJournal(dataFolder.toPath().resolve("spec-restore-journal.json"), io)
+            specJournal.load()
+            val specEffects = FoliaSpecEffects(this, BukkitHiddenObserver(this), specJournal, logger)
+            val specCoordinator = SessionCoordinator(specEffects, specAudit)
+            val specService = SpecService(
+                plugin = this,
+                config = specConfig,
+                policy = specPolicy,
+                luckPerms = luckPerms,
+                coordinator = specCoordinator,
+                effects = specEffects,
+                journal = specJournal,
+                audit = specAudit,
+                i18n = i18n,
+            )
+            spec = specService
+
+            server.pluginManager.registerEvents(
+                object : Listener {
+                    @EventHandler(priority = EventPriority.LOWEST)
+                    fun onJoin(event: PlayerJoinEvent) = specService.onJoin(event.player)
+
+                    @EventHandler(priority = EventPriority.MONITOR)
+                    fun onQuit(event: PlayerQuitEvent) = specService.onQuit(event.player.uniqueId)
+                },
+                this,
+            )
+
+            lifecycleManager.registerEventHandler(LifecycleEvents.COMMANDS) { event ->
+                SpecCommand(specService).register(event.registrar())
+            }
+        }
+
         // heartbeat keeps the backend's liveness picture fresh
         presenceService.startHeartbeat()
         client.start()
@@ -430,6 +510,9 @@ class ServerCorePlugin : JavaPlugin() {
         }
         // detach our listener first, the shared packetevents instance must outlive us
         packetService?.stop()
+        // sessions never survive a restart: end them, restore what can be
+        // restored live, journal the rest for the next join
+        spec?.shutdown()
         wsGateway?.stop()
         esp?.stop()
         updater?.stop()
