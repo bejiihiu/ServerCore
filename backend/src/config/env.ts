@@ -29,12 +29,6 @@ const envSchema = z.object({
   // closed telegram group the voting runs in and approved members join.
   // empty until the group exists — the group flow degrades gracefully
   GROUP_CHAT_ID: optionalInt(),
-  // admin chat that receives duplicates of key events (approvals, anomalies)
-  ADMIN_CHAT_ID: optionalInt(),
-
-  // default interface language for group/admin messages, per-user language
-  // overrides this for personal messages
-  DEFAULT_LANGUAGE: z.enum(["ru", "en"]).default("ru"),
 
   // questionnaire questions as json arrays, one entry per question.
   // ru and en lists must have the same length
@@ -121,7 +115,7 @@ export type AppConfig = {
   wsNonceTtlMs: number
   authRequestTtlSeconds: number
   groupChatId: number | null
-  adminChatId: number | null
+  /** interface language for group/admin-facing messages, per-user overrides */
   defaultLanguage: "ru" | "en"
   questions: { ru: string[]; en: string[] }
   votingDurationMs: number
@@ -221,8 +215,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     wsNonceTtlMs: result.data.WS_NONCE_TTL_MS,
     authRequestTtlSeconds: result.data.AUTH_REQUEST_TTL_SECONDS,
     groupChatId: result.data.GROUP_CHAT_ID ?? null,
-    adminChatId: result.data.ADMIN_CHAT_ID ?? null,
-    defaultLanguage: result.data.DEFAULT_LANGUAGE,
+    defaultLanguage: result.data.OPS_LOCALE,
     questions: { ru: questionsRu, en: questionsEn },
     votingDurationMs: result.data.VOTING_DURATION_MINUTES * 60_000,
     votingScanIntervalMs: result.data.VOTING_SCAN_INTERVAL_MS,

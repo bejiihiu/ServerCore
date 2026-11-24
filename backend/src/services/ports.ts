@@ -4,9 +4,10 @@ import type {
   UserStatus,
   VoteDecision,
 } from "../database/models/index.js"
+import type { Locale } from "./i18n.js"
 
-/** supported interface languages */
-export type Lang = "ru" | "en"
+/** supported interface languages — the shared i18n locale union */
+export type Lang = Locale
 
 /** a single questionnaire answer, keyed by question order */
 export type AnswerPair = { question: string; answer: string }

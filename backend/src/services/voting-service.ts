@@ -10,6 +10,7 @@ import type {
   VotingMessageRepository,
   VoteRepository,
 } from "./ports.js"
+import type { AdmissionNotifier } from "./admission-notifier.js"
 import { t } from "./i18n.js"
 import { formatMoscowTime } from "./moscow-time.js"
 import { decideOutcome, hasQuorum, MAX_VOTING_EXTENSIONS } from "./voting-math.js"
@@ -71,6 +72,7 @@ export class VotingService {
       messages: VotingMessageRepository
       audit: AuditSink
       telegram: TelegramApi
+      notifier: AdmissionNotifier
       clock: Clock
       /** closed group chat id, null disables group publication + membership check */
       groupChatId: number | null
@@ -129,9 +131,8 @@ export class VotingService {
         publishedInGroup: message !== null,
       },
     })
-    await this.deps.telegram.sendAdminNotification(
-      `${text}\n\n#voting:${application.id}`,
-    )
+    // key event fan-out: dm to every linked account + admin chat copy
+    await this.deps.notifier.voteOpened({ username })
   }
 
   /** verifies the voter actually sits in the managed group */
@@ -326,10 +327,15 @@ export class VotingService {
     })
     await this.closeVoterMessages(application.id, `${announcement}\n\n${resultLine}`)
 
-    // admin chat always gets the outcome
-    await this.deps.telegram.sendAdminNotification(
-      `${announcement}\n\n${resultLine}\n\n#voting:${application.id}`,
-    )
+    // key event fan-out: result dm to every linked account + admin verdict
+    await this.deps.notifier.voteDecided({
+      username: applicant?.username ?? application.minecraftUuid,
+      status: outcome,
+      votesFor: counts.votesFor,
+      votesAgainst: counts.votesAgainst,
+      votesCast,
+      eligibleVoters: application.voting.eligibleVoters,
+    })
 
     if (outcome === "EXPIRED") {
       await this.deps.telegram.sendUserMessage(

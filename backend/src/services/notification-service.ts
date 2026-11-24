@@ -98,6 +98,27 @@ export class NotificationService {
     return { recipients: result.recipients, sent: result.sent, failed: result.failed.length }
   }
 
+  /**
+   * sends the text to the admin chat ids only, no user fan-out. same
+   * rate-limited loop, same resilience as broadcast.
+   */
+  async notifyAdmins(text: string, adminChatIds: readonly string[]): Promise<void> {
+    if (adminChatIds.length === 0) return
+    if (this.sender === null) {
+      this.logger.debug({ wouldReceive: adminChatIds.length }, "no sender configured, admin notify skipped")
+      return
+    }
+    const result = await this.sendToAll(adminChatIds, text)
+    if (result.failed.length > 0) {
+      const retry = await this.sendToAll(result.failed, text)
+      result.sent += retry.sent
+      result.failed = retry.failed
+    }
+    if (result.failed.length > 0) {
+      this.logger.warn({ failed: result.failed.length }, "admin notify finished with failures")
+    }
+  }
+
   /** rate-limited loop; returns per-chat outcome split into sent/failed */
   private async sendToAll(chatIds: readonly string[], text: string): Promise<{
     recipients: number

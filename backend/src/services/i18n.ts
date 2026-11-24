@@ -296,6 +296,10 @@ const messages = {
   },
 
   // admission: admin-only duplicates (locale follows the backend default)
+  "admission.dm.vote_opened": {
+    ru: "Новая анкета на голосовании: {username}. Голосование идёт в закрытой группе.",
+    en: "A new application is being voted on: {username}. The vote runs in the closed group.",
+  },
   "admission.admin.vote_opened": {
     ru: "Новая заявка на голосовании: {username} ({for} за / {against} против на данный момент).",
     en: "New application is being voted on: {username} ({for} for / {against} against so far).",

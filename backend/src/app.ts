@@ -12,13 +12,13 @@ import { registerLifecycleHandlers, ServerDirectory } from "./websocket/handlers
 import { createAdmissionBot } from "./bot/admission-bot.js"
 import { createAdmissionRepositories, syncAdmissionIndexes } from "./database/repos.js"
 import { VotingScheduler } from "./services/voting-scheduler.js"
-import { createBot } from "./bot/bot.js"
 import { LinkedTelegramRecipients } from "./services/recipients.js"
 import { NotificationService } from "./services/notification-service.js"
 import { GrammySender } from "./services/telegram-sender.js"
 import { OpsNotifier, eventForState } from "./services/ops-notifier.js"
 import { OfflineWatcher } from "./services/offline-watcher.js"
 import { SessionCounters, StatsService } from "./services/runtime-stats.js"
+import type { Bot } from "grammy"
 
 // chat_member events must be requested explicitly, telegram does not send
 // them by default
@@ -83,8 +83,12 @@ async function main(): Promise<void> {
     logger,
   })
 
-  const bot: Bot | null = createBot(config, logger, { stats: statsService, admission: admissionBot })
-  // grammy api is ready the moment the Bot exists, swap the real sender in
+  const repos = createAdmissionRepositories()
+
+  // admission-bot wires the grammY instance with admission commands,
+  // conversations and vote callbacks on top of the shared bot
+  const admission = createAdmissionBot(config, logger, repos)
+  const bot = admission?.bot ?? null
   notifications.attachSender(bot !== null ? new GrammySender(bot.api) : null)
 
   // crash detection: ws gone for N minutes => presumed offline
@@ -117,14 +121,12 @@ async function main(): Promise<void> {
 
   const repos = createAdmissionRepositories()
 
-  const admissionBot = createAdmissionBot(config, logger, repos, bot)
-
   // durable catch-up scan on boot: votings that expired while we were down
   // (including already-extended ones) are processed by the first sweep
-  const scheduler = admissionBot
+  const scheduler = admission
     ? new VotingScheduler({
-        voting: admissionBot.voting,
-        group: admissionBot.group,
+        voting: admission.voting,
+        group: admission.group,
         logger,
         intervalMs: config.votingScanIntervalMs,
       })
