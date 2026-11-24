@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import {
+  accountKeyboard,
+  deleteConfirmKeyboard,
+  toggleKey,
+  CALLBACK,
+} from "../src/bot/keyboards.js"
+import {
   actionRow,
   backButton,
   backRow,
@@ -188,5 +194,35 @@ describe("cancelButton", () => {
   test("default and custom label", () => {
     expect(cancelButton("a:cancel")).toEqual({ text: "✕ Отмена", callback_data: "a:cancel" })
     expect(cancelButton("a:cancel", "Не сейчас")).toEqual({ text: "Не сейчас", callback_data: "a:cancel" })
+  })
+})
+
+describe("account keyboard", () => {
+  test("toggle button invites the other language, not the current one", () => {
+    const ru = accountKeyboard((key) => key, "ru")
+    const en = accountKeyboard((key) => key, "en")
+    // raw keys are the labels here; the toggle row must follow the locale
+    expect(ru.inline_keyboard.flat().some((b) => b.text === "bot.kb.toggle_to_en")).toBe(true)
+    expect(en.inline_keyboard.flat().some((b) => b.text === "bot.kb.toggle_to_ru")).toBe(true)
+    expect(toggleKey("ru")).toBe("bot.kb.toggle_to_en")
+    expect(toggleKey("en")).toBe("bot.kb.toggle_to_ru")
+  })
+
+  test("delete button carries the account callback", () => {
+    const kb = accountKeyboard((key) => key, "ru")
+    expect(kb.inline_keyboard[0]?.[0]).toEqual({ text: "bot.kb.delete", callback_data: CALLBACK.accountDelete })
+  })
+})
+
+describe("delete confirmation uses its own callback namespace", () => {
+  test("stale linking keyboard cannot confirm a deletion", () => {
+    const kb = deleteConfirmKeyboard((key) => key)
+    const datas = kb.inline_keyboard.flat().map((b) => (b as { callback_data?: string }).callback_data)
+    expect(datas).toContain(CALLBACK.deleteConfirm)
+    expect(datas).toContain(CALLBACK.deleteCancel)
+    // the linking conversation waits on link:* — the two flows must never share data
+    expect(datas).not.toContain(CALLBACK.linkConfirm)
+    expect(datas).not.toContain(CALLBACK.linkCancel)
+    expect(CALLBACK.deleteConfirm).not.toBe(CALLBACK.linkConfirm)
   })
 })

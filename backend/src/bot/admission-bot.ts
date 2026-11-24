@@ -56,6 +56,7 @@ export function registerAdmissionFlows(
     notifications: deps.notifications,
     adminChatIds,
     locale: config.defaultLanguage,
+    logger,
   })
 
   const applications = new ApplicationService({

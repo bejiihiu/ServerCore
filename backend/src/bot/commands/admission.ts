@@ -3,7 +3,7 @@ import type { BotContext } from "../context.js"
 import type { ApplicationService } from "../../services/application-service.js"
 import type { Lang, UserRepository } from "../../services/ports.js"
 import { formatApplicationView } from "../../services/voting-format.js"
-import { langOf, statusLabel, t } from "../../services/i18n.js"
+import { langOf, t } from "../../services/i18n.js"
 
 export type CommandDeps = {
   applications: ApplicationService
@@ -18,9 +18,10 @@ async function userLanguage(deps: CommandDeps, telegramId: string): Promise<Lang
 }
 
 /**
- * bot commands: /application (questionnaire), /myapplication, /status,
- * /cancel, /language, /help. /start lives in commands/start.ts — the
- * account linking flow.
+ * bot commands: /application (questionnaire), /myapplication, /cancel,
+ * /language. /start /status /help /stats live in routes.ts — registering them
+ * twice would leave one handler dead and the other unreachable, so the
+ * account routes own them exclusively.
  */
 export function registerAdmissionCommands(bot: Bot<BotContext>, deps: CommandDeps): void {
   bot.command("application", async (ctx) => {
@@ -59,27 +60,6 @@ export function registerAdmissionCommands(bot: Bot<BotContext>, deps: CommandDep
     await ctx.reply(formatApplicationView(outcome.application, lang, questions))
   })
 
-  bot.command("status", async (ctx) => {
-    const telegramId = String(ctx.from?.id ?? "")
-    if (telegramId.length === 0) return
-    const user = await deps.users.findByTelegramId(telegramId)
-    if (!user) {
-      await ctx.reply(t(deps.defaultLanguage, "status.notFound"))
-      return
-    }
-    const lang = langOf(user.language, deps.defaultLanguage)
-    if (user.telegramId.length === 0) {
-      await ctx.reply(t(lang, "status.notLinked"))
-      return
-    }
-    await ctx.reply(
-      t(lang, "status.reply", {
-        username: user.username,
-        status: statusLabel(lang, user.status),
-      }),
-    )
-  })
-
   bot.command("cancel", async (ctx) => {
     const telegramId = String(ctx.from?.id ?? "")
     if (telegramId.length === 0) return
@@ -112,9 +92,5 @@ export function registerAdmissionCommands(bot: Bot<BotContext>, deps: CommandDep
       return
     }
     await ctx.answerCallbackQuery({ text: t(deps.defaultLanguage, "status.notFound") })
-  })
-
-  bot.command("help", (ctx) => {
-    void userLanguage(deps, String(ctx.from?.id ?? "")).then((lang) => ctx.reply(t(lang, "help.text")))
   })
 }

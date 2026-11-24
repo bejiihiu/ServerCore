@@ -172,6 +172,18 @@ const messages = {
     ru: "Анкета уже заполняется — продолжай отвечать на вопросы или отмени её.",
     en: "Your application is already in progress — keep answering the questions or cancel it.",
   },
+  "app.answerNonText": {
+    ru: "Пришли ответ текстовым сообщением.",
+    en: "Send your answer as a text message.",
+  },
+  "app.commandHint": {
+    ru: "Команды сейчас не работают — отвечай на вопрос текстом или нажми «Отменить».",
+    en: "Commands are off while the questionnaire is open — answer with text or press Cancel.",
+  },
+  "app.buttonHint": {
+    ru: "Используй кнопки под сообщением: «Отправить анкету» или «Отменить».",
+    en: "Use the buttons below: Submit application or Cancel.",
+  },
 
   // admission: language picker
   "lang.choose": {
@@ -299,8 +311,8 @@ const messages = {
     en: "Minecraft: {username}\nStatus: {status}\nTelegram: connected",
   },
   "help.text": {
-    ru: "Команды:\n/application — заполнить заявку на вступление\n/myapplication — посмотреть последнюю заявку\n/status — статус аккаунта\n/help — эта справка",
-    en: "Commands:\n/application — fill in the membership application\n/myapplication — view your latest application\n/status — account status\n/help — this help",
+    ru: "Команды:\n/application — заполнить заявку на вступление\n/myapplication — посмотреть последнюю заявку\n/language — сменить язык интерфейса\n/status — статус аккаунта\n/help — эта справка",
+    en: "Commands:\n/application — fill in the membership application\n/myapplication — view your latest application\n/language — switch the interface language\n/status — account status\n/help — this help",
   },
   "error.generic": {
     ru: "Что-то пошло не так, попробуй позже.",
@@ -340,12 +352,20 @@ const messages = {
     ru: "Подозрительное событие в группе: {kind}, telegram {telegram}{invite}",
     en: "Suspicious group event: {kind}, telegram {telegram}{invite}",
   },
+  "admission.admin.yes": {
+    ru: "да",
+    en: "yes",
+  },
+  "admission.admin.no": {
+    ru: "нет",
+    en: "no",
+  },
 
   // account module: telegram linking flow, account screen, deletion.
   // user-facing, every key exists in both locales
   "bot.help": {
-    ru: "Команды бота:\n\n/status — мой аккаунт и его статус\n/help — эта справка\n\nРегистрация начинается в игре: зайди на сервер, и в чате появится персональная ссылка.",
-    en: "Bot commands:\n\n/status — my account and its status\n/help — this help\n\nRegistration starts in-game: join the server and your personal link will appear in the chat.",
+    ru: "Команды бота:\n\n/status — мой аккаунт и его статус\n/application — заполнить заявку на вступление\n/myapplication — посмотреть последнюю заявку\n/language — сменить язык интерфейса\n/help — эта справка\n\nРегистрация начинается в игре: зайди на сервер, и в чате появится персональная ссылка.",
+    en: "Bot commands:\n\n/status — my account and its status\n/application — fill in the membership application\n/myapplication — view your latest application\n/language — switch the interface language\n/help — this help\n\nRegistration starts in-game: join the server and your personal link will appear in the chat.",
   },
   "bot.start.no_token": {
     ru: "Привет! Это бот доступа на сервер.\n\nПерсональную ссылку для регистрации бот выдаёт в игре — зайди на сервер, и в игровом чате появится твоя ссылка для запуска регистрации.",
@@ -368,7 +388,7 @@ const messages = {
     en: "Linking cancelled. The link stays valid — you can continue later via /start.",
   },
   "bot.link.success": {
-    ru: "Аккаунт привязан!\n\nMinecraft: {username}\n\nТеперь этот Telegram-аккаунт подтверждает вход на сервер и управляет вашим аккаунтом.",
+    ru: "Аккаунт привязан!\n\nMinecraft: {username}\n\nТеперь этот Telegram-аккаунт подтверждает вход на сервер и управляет твоим аккаунтом.",
     en: "Account linked!\n\nMinecraft: {username}\n\nThis Telegram account now confirms server logins and manages the account.",
   },
   "bot.link.fail_token": {
@@ -434,6 +454,10 @@ const messages = {
   "bot.error.generic": {
     ru: "Что-то пошло не так. Попробуй ещё раз позже.",
     en: "Something went wrong. Please try again later.",
+  },
+  "bot.conversation.busy": {
+    ru: "Сейчас активен другой диалог с ботом. Заверши его и попробуй снова.",
+    en: "Another bot dialog is already active. Finish it and try again.",
   },
   "bot.kb.delete": {
     ru: "Удалить аккаунт",
