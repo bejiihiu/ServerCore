@@ -9,6 +9,8 @@ import { createGateway, type Gateway } from "./websocket/gateway.js"
 import { HandlerRegistry } from "./websocket/handlers/registry.js"
 import { registerLifecycleHandlers, ServerDirectory } from "./websocket/handlers/server-lifecycle.js"
 import { registerAccountHandlers } from "./websocket/handlers/account-handlers.js"
+import { registerSpecHandlers } from "./websocket/handlers/spec-handlers.js"
+import { SpecAuditService } from "./modules/audit/spec-audit-service.js"
 import { InMemoryTokenStore, TokenService } from "./services/token-service.js"
 import {
   MongoAuditRepository,
@@ -232,6 +234,14 @@ async function main(): Promise<void> {
   })
 
   registerAccountHandlers(handlers, { accounts, verifier, logger })
+
+  // spec audit trail: every observation start/end the plugin reports lands in
+  // audit_logs (kind "spec"). the collection has no ttl index — the retention
+  // job below purges it together with the rest of the audit rows at 90d
+  registerSpecHandlers(handlers, {
+    audit: new SpecAuditService({ sink: new MongoAuditRepository(), logger }),
+    logger,
+  })
 
   // retention: the backend owns the database, so it does the housekeeping.
   // audit/server_events 90d, closed sessions 60d, orphaned guest snapshots —

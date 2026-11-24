@@ -36,7 +36,7 @@ The `hmac` is computed over the **canonical json** of the envelope without the h
 | Type | Direction | Purpose |
 |---|---|---|
 | `SERVER_STATUS` | plugin → backend | Initial hello and registration; carries server identity, version, current load. The payload also carries an optional `state` — the ops lifecycle: `STARTING`, `RUNNING`, `RESTARTING`, `STOPPING`, `OFFLINE`, `UPDATE_READY`. Backend fans these out to telegram (users + admins). |
-| `SERVER_HEARTBEAT` | plugin → backend | Periodic liveness and metrics snapshot |
+| `SERVER_HEARTBEAT` | plugin → backend | Periodic liveness and metrics snapshot; carries optional `activeSpecSessions` from the plugin's own registry, surfaced to admins in `/stats` |
 | `SERVER_STATUS` (response) | backend → plugin | Registration acknowledgement, expected heartbeat cadence |
 
 ### Player presence
@@ -78,8 +78,8 @@ The `hmac` is computed over the **canonical json** of the envelope without the h
 
 | Type | Direction | Purpose |
 |---|---|---|
-| `SPEC_STARTED` | backend → plugin | Audit notification that an observation session started |
-| `SPEC_ENDED` | backend → plugin | Observation ended; recorded in audit logs |
+| `SPEC_STARTED` | plugin → backend | An observation session started; backend records it in `audit_logs` (`kind: "spec"`). Payload: `adminUuid`, `targetUuid`, optional `sessionId`, `adminUsername`, `targetUsername`. |
+| `SPEC_ENDED` | plugin → backend | Observation ended; backend closes the audit trail with `durationSec` and a `reason` (`NORMAL`, `FORCED`, `TARGET_DISCONNECTED`, `ADMIN_DISCONNECTED`, `ERROR`). |
 
 ### Localization
 

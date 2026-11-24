@@ -154,6 +154,10 @@ export async function handleStatsCommand(ctx: BotContext, deps: BotDeps): Promis
         guests: snap.counters.guestSessions,
         pending: snap.counters.pendingAuths,
       }),
+      // live spec counter comes from the plugin's own registry via heartbeats
+      t(locale, "ops.stats.spec", {
+        count: snap.servers.reduce((sum, server) => sum + (server.activeSpecSessions ?? 0), 0),
+      }),
     )
     if (snap.servers.length === 0) {
       lines.push(t(locale, "ops.stats.no_servers"))

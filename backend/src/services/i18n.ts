@@ -74,6 +74,10 @@ const messages = {
     ru: "👥 Сессии: активных {active}, гостевых {guests}, ожидают авторизации {pending}",
     en: "👥 Sessions: active {active}, guest {guests}, pending auth {pending}",
   },
+  "ops.stats.spec": {
+    ru: "👁 Наблюдения: активных {count}",
+    en: "👁 Observations: active {count}",
+  },
   "ops.stats.no_servers": {
     ru: "🎮 Игровые серверы: ни одного подключения",
     en: "🎮 Game servers: none connected",
