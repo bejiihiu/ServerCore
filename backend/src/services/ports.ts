@@ -123,6 +123,21 @@ export interface AuditSink {
   record(event: AuditEvent): Promise<void>
 }
 
+/**
+ * pushes admission verdicts to the connected game plugin over the gateway, so
+ * in-game placeholders show the real application status. purely informational
+ * — a failed push must never break the admission flow, implementations catch
+ * their own errors and never throw.
+ */
+export interface ApplicationWireFanout {
+  submitted(event: { applicationId: string; minecraftUuid: string; telegramId: string }): Promise<void>
+  decided(event: {
+    applicationId: string
+    minecraftUuid: string
+    outcome: "APPROVED" | "REJECTED" | "EXPIRED"
+  }): Promise<void>
+}
+
 export interface Clock {
   nowMs(): number
 }

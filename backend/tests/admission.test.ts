@@ -21,14 +21,32 @@ import { RateLimiter } from "../src/services/rate-limiter.js"
 import { NotificationService } from "../src/services/notification-service.js"
 import { AdmissionNotifier } from "../src/services/admission-notifier.js"
 import { StaticRecipients } from "../src/services/recipients.js"
+import type { ApplicationWireFanout } from "../src/services/ports.js"
 import { QUESTIONNAIRE_DEFAULTS_MUTABLE } from "./helpers/config.js"
 const HOUR = 3_600_000
 const THREE_MONTHS = 90 * 24 * HOUR
 const VOTING_MS = 3 * HOUR
 const ADMIN_IDS = ["777", "778"]
 
+/** records the plugin-bound admission pushes; can be told to fail */
+class RecordingFanout implements ApplicationWireFanout {
+  submittedCalls: { applicationId: string; minecraftUuid: string; telegramId: string }[] = []
+  decidedCalls: { applicationId: string; minecraftUuid: string; outcome: string }[] = []
+  fail = false
+
+  async submitted(event: { applicationId: string; minecraftUuid: string; telegramId: string }): Promise<void> {
+    if (this.fail) throw new Error("link down")
+    this.submittedCalls.push(event)
+  }
+
+  async decided(event: { applicationId: string; minecraftUuid: string; outcome: "APPROVED" | "REJECTED" | "EXPIRED" }): Promise<void> {
+    if (this.fail) throw new Error("link down")
+    this.decidedCalls.push(event)
+  }
+}
+
 /** wires the whole admission stack over in-memory seams */
-function build(opts: { groupChatId?: number | null; linkedRecipients?: string[] } = {}) {
+function build(opts: { groupChatId?: number | null; linkedRecipients?: string[]; fanout?: ApplicationWireFanout } = {}) {
   const clock = new FixedClock()
   const users = new InMemoryUserRepository()
   const applications = new InMemoryApplicationRepository()
@@ -68,6 +86,7 @@ function build(opts: { groupChatId?: number | null; linkedRecipients?: string[] 
     votingDurationMs: VOTING_MS,
     questions: QUESTIONNAIRE_DEFAULTS_MUTABLE,
     defaultLanguage: "ru",
+    ...(opts.fanout !== undefined ? { pluginFanout: opts.fanout } : {}),
   })
 
   const voting = new VotingService({
@@ -83,6 +102,7 @@ function build(opts: { groupChatId?: number | null; linkedRecipients?: string[] 
     defaultLanguage: "ru",
     voteButtonIcons: { acceptId: null, rejectId: null },
     approvalEffectId: "effect-1",
+    ...(opts.fanout !== undefined ? { pluginFanout: opts.fanout } : {}),
   })
 
   const group = new GroupService({
@@ -651,5 +671,67 @@ describe("audit trail", () => {
       decision: "ACCEPT",
     })
     expect(deps.audit.actionsOf("voting.vote_cast")).toHaveLength(1)
+  })
+})
+
+describe("plugin fan-out", () => {
+  test("submit pushes APPLICATION_SUBMITTED to the plugin", async () => {
+    const fanout = new RecordingFanout()
+    const deps = build({ fanout })
+    deps.users.add(user({ uuid: "applicant", status: "UNREGISTERED" }))
+    await fillDraft(deps, "tg-applicant")
+    const result = await deps.applications_.submit("tg-applicant")
+    expect(result.ok).toBe(true)
+    expect(fanout.submittedCalls).toEqual([
+      { applicationId: (result as { ok: true; application: { id: string } }).application.id, minecraftUuid: "applicant", telegramId: "tg-applicant" },
+    ])
+  })
+
+  test("a decided voting pushes its verdict to the plugin", async () => {
+    const fanout = new RecordingFanout()
+    const deps = build({ fanout })
+    const app = await seedVotingApplication(deps.applications, { eligibleVoters: 3, quorumState: { votesFor: 2, votesAgainst: 0 }, votes: deps.votes })
+    deps.users.add(user({ uuid: "applicant", status: "UNREGISTERED" }))
+    await deps.users.setStatus("applicant", ["UNREGISTERED"], "VOTING")
+    deps.clock.advance(VOTING_MS + 1)
+    await deps.voting.decideExpired()
+    expect(fanout.decidedCalls).toEqual([
+      { applicationId: app.id, minecraftUuid: "applicant", outcome: "APPROVED" },
+    ])
+  })
+
+  test("a quorum-shortfall voting pushes APPLICATION_EXPIRED", async () => {
+    const fanout = new RecordingFanout()
+    const deps = build({ fanout })
+    const app = await seedVotingApplication(deps.applications, { eligibleVoters: 4, quorumState: { votesFor: 1, votesAgainst: 0 }, votes: deps.votes })
+    deps.users.add(user({ uuid: "applicant", status: "UNREGISTERED" }))
+    await deps.users.setStatus("applicant", ["UNREGISTERED"], "VOTING")
+    deps.clock.advance(VOTING_MS + 1)
+    await deps.voting.decideExpired() // extends once
+    deps.clock.advance(VOTING_MS + 1)
+    const second = await deps.voting.decideExpired()
+    expect(second.decisions[0]?.status).toBe("EXPIRED")
+    expect(fanout.decidedCalls).toEqual([
+      { applicationId: app.id, minecraftUuid: "applicant", outcome: "EXPIRED" },
+    ])
+  })
+
+  test("a failing fan-out never breaks the admission flow", async () => {
+    const fanout = new RecordingFanout()
+    fanout.fail = true
+    const deps = build({ fanout })
+    deps.users.add(user({ uuid: "applicant", status: "UNREGISTERED" }))
+    await fillDraft(deps, "tg-applicant")
+    const submitted = await deps.applications_.submit("tg-applicant")
+    expect(submitted.ok).toBe(true)
+    const app = await seedVotingApplication(deps.applications, { uuid: "applicant2", eligibleVoters: 3, quorumState: { votesFor: 2, votesAgainst: 0 }, votes: deps.votes })
+    deps.users.add(user({ uuid: "applicant2", status: "UNREGISTERED" }))
+    await deps.users.setStatus("applicant2", ["UNREGISTERED"], "VOTING")
+    deps.clock.advance(VOTING_MS + 1)
+    const result = await deps.voting.decideExpired()
+    // both votings expire after the advance; the seeded one decides APPROVED
+    const decided2 = result.decisions.find((d) => d.minecraftUuid === "applicant2")
+    expect(decided2?.status).toBe("APPROVED")
+    expect((await deps.applications.findById(app.id))?.status).toBe("APPROVED")
   })
 })

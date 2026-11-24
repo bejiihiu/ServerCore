@@ -15,7 +15,7 @@ import { t } from "./i18n.js"
 import { formatMoscowTime } from "./moscow-time.js"
 import { isDraftComplete, validateAnswer } from "./questionnaire.js"
 import type { RateLimiter } from "./rate-limiter.js"
-import type { Clock } from "./ports.js"
+import type { ApplicationWireFanout, Clock } from "./ports.js"
 
 export type StartBlockReason =
   | "NO_USER"
@@ -65,6 +65,8 @@ export class ApplicationService {
       questions: { ru: string[]; en: string[] }
       /** language for group/admin-facing texts */
       defaultLanguage: Lang
+      /** optional: pushes APPLICATION_SUBMITTED to the game plugin (placeholders) */
+      pluginFanout?: ApplicationWireFanout
     },
   ) {}
 
@@ -243,6 +245,13 @@ export class ApplicationService {
       targetId: inserted.id,
       details: { eligibleVoters: voters.length },
     })
+    // best effort: the plugin shows the application status in placeholders;
+    // implementations never throw, but a failure must not fail the submit
+    await this.deps.pluginFanout?.submitted({
+      applicationId: inserted.id,
+      minecraftUuid: check.user.uuid,
+      telegramId,
+    }).catch(() => {})
 
     const application = await this.deps.applications.findById(inserted.id)
     if (!application) return { ok: false, reason: "NO_DRAFT" }

@@ -15,6 +15,7 @@ import { t } from "./i18n.js"
 import { formatMoscowTime } from "./moscow-time.js"
 import { decideOutcome, hasQuorum, MAX_VOTING_EXTENSIONS } from "./voting-math.js"
 import { formatAnnouncement, formatResultLine, voteKeyboard } from "./voting-format.js"
+import type { ApplicationWireFanout } from "./ports.js"
 
 export type CastVoteReason =
   | "VOTER_NOT_FOUND"
@@ -82,6 +83,8 @@ export class VotingService {
       voteButtonIcons: { acceptId: string | null; rejectId: string | null }
       /** message effect id played on the approval celebration message */
       approvalEffectId: string | null
+      /** optional: pushes APPLICATION_APPROVED/REJECTED/EXPIRED to the game plugin */
+      pluginFanout?: ApplicationWireFanout
     },
   ) {}
 
@@ -365,6 +368,11 @@ export class VotingService {
       targetId: application.id,
       details: { votesFor: counts.votesFor, votesAgainst: counts.votesAgainst, votesCast, quorumReached },
     })
+    // best effort: the plugin shows the verdict in placeholders; a failed
+    // push must never fail the decision itself
+    await this.deps.pluginFanout
+      ?.decided({ applicationId: application.id, minecraftUuid: application.minecraftUuid, outcome })
+      .catch(() => {})
 
     return {
       applicationId: application.id,
