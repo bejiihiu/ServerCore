@@ -64,16 +64,30 @@ Located at `plugins/ServerCore/config.yml`, generated on first start. The plugin
 
 | Key | Default | Description |
 |---|---|---|
-| `guest.enabled` | `true` | Master switch. When disabled, unauthenticated players are disconnected instead of entering guest mode |
+| `guest.enabled` | `true` | Master switch. When disabled, unauthenticated players are kicked with the register message instead of entering guest mode |
 | `guest.restore-on-restart` | `true` | Rebuild guest sessions and restore snapshots after a server restart |
+| `guest.resolve-timeout-milliseconds` | `4000` | How long the backend-backed account check may take before the plugin falls back to local state (fail closed to guest) |
+| `guest.session-limit` | `3` | Maximum guest sessions per player. Every join without authorization burns one; successful authorization resets the budget |
+| `guest.kick-after-limit` | `true` | Past the limit: `true` kicks with a register-now screen, `false` lets the player keep exploring with a loud warning |
+| `guest.reminder-interval-seconds` | `60` | Cadence of the subtle actionbar reminder shown while a guest waits for authorization |
+| `guest.lang` | `ru` | UI language, selects `messages_<lang>.yml` from the plugin data folder (`en` and `ru` are bundled) |
+| `guest.bot-username` | `ServerCoreBot` | Telegram bot username, used for the fallback deep link when no personal one-time link has been handed out |
+| `guest.link-ttl-milliseconds` | `90000` | Personal deep links carry one-time tokens; they stop being shown after this window |
+| `guest.snapshot-storage-path` | `guest-snapshots.json` | Durable snapshot storage file, relative to `plugins/ServerCore/` |
+| `guest.command-whitelist` | `help, rules, link` | Command names (no slash) a guest may still run. `/link` is answered by the plugin itself with the registration prompt |
+| `guest.local-accounts` | — | Optional `uuid: authorized\|banned` overrides that work while the backend is down. On this offline-mode server a UUID is only a nickname derivative, so these are convenience bookkeeping — the backend Telegram binding is the identity authority |
 
 ### guest.restrictions
 
 Per-guest interaction toggles. Each defaults to `true` (restricted):
 
-`guest.restrictions.block-interaction`, `block-break`, `block-place`, `item-pickup`, `item-use`, `container-interaction`, `entity-damage`, `commands`, `gamemode-change`, `portals`, `inventory-edit`
+`guest.restrictions.block-interaction`, `block-break`, `block-place`, `item-pickup`, `item-use`, `container-interaction`, `entity-damage`, `commands`, `gamemode-change`, `portals`, `inventory-edit`, `chat`
 
-Only free flight and world observation are guaranteed to guests; everything above is denied by design.
+`chat` is full isolation: a guest neither sees nor writes chat, and the suppression runs before other chat plugins see the event. Only free flight and world observation are guaranteed to guests; everything above is denied by design.
+
+### guest messages
+
+Player-facing text lives in `messages_en.yml` / `messages_ru.yml` (bundled, then copied to the plugin data folder on first start where admins can edit them). Missing keys fall back to the bundled English file. Keys use the `guest.*`, `auth.*` naming and support MiniMessage tags.
 
 ### anti-esp
 
