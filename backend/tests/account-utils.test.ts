@@ -68,8 +68,8 @@ describe("zoned iso timestamps", () => {
 
 describe("i18n", () => {
   test("parameter substitution works in both locales", () => {
-    const ru = t("ru", "bot.link.success", { username: "steve" })
-    const en = t("en", "bot.link.success", { username: "steve" })
+    const ru = t("ru", "account.linked", { username: "steve" })
+    const en = t("en", "account.linked", { username: "steve" })
     expect(ru).toContain("steve")
     expect(en).toContain("steve")
     expect(ru).not.toBe(en)
@@ -93,14 +93,13 @@ describe("i18n", () => {
     }
   })
 
-  test("account screen keys leave no placeholders behind", () => {
+  test("status change notice leaves no placeholders behind", () => {
     for (const locale of ["ru", "en"] as const) {
-      const screen = t(locale, "bot.account.screen", {
-        username: "x",
-        status: statusLabel(locale, "ACTIVE"),
-        telegram: t(locale, "bot.account.telegram_linked"),
+      const notice = t(locale, "account.status_changed", {
+        from: statusLabel(locale, "VOTING"),
+        to: statusLabel(locale, "ACTIVE"),
       })
-      expect(screen).not.toMatch(/\{\{?\w+\}?\}/)
+      expect(notice).not.toMatch(/\{\{?\w+\}?\}/)
     }
   })
 })

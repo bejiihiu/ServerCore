@@ -5,7 +5,7 @@ import type { Logger } from "../logging/logger.js"
 import type { BotDeps, BotContext } from "./context.js"
 import { MongoConversationStorage } from "../database/conversation-storage.js"
 import { registerBotRoutes } from "./routes.js"
-import { EmojiRegistry } from "../i18n/emoji.js"
+import { emojiRegistry, tr } from "./ui/runtime.js"
 
 /**
  * builds the one and only telegram bot instance and registers every flow on
@@ -28,8 +28,16 @@ export function createBot(config: AppConfig, logger: Logger, deps: BotDeps): Bot
   }
 
   const bot: Bot<BotContext> = new Bot<BotContext>(config.botToken)
-  bot.catch((error) => {
+  bot.catch(async (error) => {
     logger.error({ err: error.error }, "telegram bot error")
+    // a callback press that blew up would leave the button spinning forever:
+    // answer it with the one line the user can act on
+    if (error.ctx.callbackQuery === undefined) return
+    try {
+      await error.ctx.answerCallbackQuery({ text: tr(config.opsLocale).t("common.error") })
+    } catch {
+      // the query may already be answered or too old — nothing to do
+    }
   })
 
   // chat_member updates must be requested explicitly or telegram never sends
@@ -44,11 +52,13 @@ export function createBot(config: AppConfig, logger: Logger, deps: BotDeps): Bot
     }),
   )
 
+  // one registry for the whole process: screens render from it and, with the
+  // flag on, the pack loader fills the custom ids into the same instance
+  emojiRegistry.setCustomAllowed(config.botCustomEmoji)
   if (config.botCustomEmoji) {
-    const registry = new EmojiRegistry(config.botCustomEmoji)
     void import("../i18n/emoji-pack.js")
       .then(({ applyEmojiPack }) =>
-        applyEmojiPack(registry, bot.api, "tgiosicons", [
+        applyEmojiPack(emojiRegistry, bot.api, "tgiosicons", [
           "status.active",
           "status.pending",
           "status.attention",

@@ -7,21 +7,30 @@ import type { ScreenMessage } from "./types.js"
 export type StatusScreenParams = {
   t: Translator
   e: EmojiRenderer
-  server: { online: boolean; players: number }
+  /** online = the server answered; null = the backend has no live link to say */
+  server: { online: boolean | null; players: number }
   account: { linked: boolean; nickname?: string }
+  /** callback for the refresh button, menu:status by default */
+  refreshData?: string
+  back?: string
 }
 
 /**
  * status screen — the whole message answers one question: is the server up
- * and can this user play. the opening dot carries the verdict.
+ * and can this user play. the opening dot carries the verdict: green when the
+ * server answers, red when it reports down, neutral when nothing is known.
  */
 export function statusScreen(params: StatusScreenParams): ScreenMessage {
   const { t, e, server, account } = params
 
-  const dotKey: EmojiKey = server.online ? "status.active" : "status.attention"
-  const serverLine = server.online
-    ? t.t("status.serverOnline")
-    : t.t("status.unknown")
+  const dotKey: EmojiKey =
+    server.online === true ? "status.active" : server.online === false ? "status.attention" : "status.neutral"
+  const serverLine =
+    server.online === true
+      ? t.t("status.serverOnline")
+      : server.online === false
+        ? t.t("status.serverDown")
+        : t.t("status.unknown")
 
   const accountLine = account.linked && account.nickname !== undefined
     ? t.t("status.accountLinked", { nickname: account.nickname })
@@ -31,15 +40,15 @@ export function statusScreen(params: StatusScreenParams): ScreenMessage {
     `${e.token(dotKey)} ${bold(t.t("status.title"))}`,
     "",
     kv(t.t("status.server"), serverLine),
-    kv(t.t("status.playersLabel"), t.tPlural("status.players", server.players)),
+    server.online === null ? false : kv(t.t("status.playersLabel"), t.tPlural("status.players", server.players)),
     kv(t.t("status.account"), accountLine),
   )
 
   return {
     text,
     markup: inlineKeyboard([
-      actionRow([{ label: t.t("common.refresh"), callbackData: MENU_CALLBACK.status }]),
-      [backButton(MENU_CALLBACK.back)],
+      actionRow([{ label: t.t("common.refresh"), callbackData: params.refreshData ?? MENU_CALLBACK.status }]),
+      [backButton(params.back ?? MENU_CALLBACK.back, t.t("common.back"))],
     ]),
   }
 }

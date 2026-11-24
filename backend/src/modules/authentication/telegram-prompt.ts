@@ -2,11 +2,14 @@ import type { Api } from "grammy"
 import type { Logger } from "../../logging/logger.js"
 import { i18n } from "../../i18n/instance.js"
 import type { Translator } from "../../bot/ui/text/index.js"
-import { bold, expandableQuote, joinLines } from "../../bot/ui/text/index.js"
+import { bold, expandableQuote, joinLines, kv } from "../../bot/ui/text/index.js"
 import { actionRow, callbackData, type InlineKeyboardMarkup } from "../../bot/ui/keyboards/index.js"
 import { createTranslator } from "../../bot/ui/text/index.js"
 import { editScreen, sendScreen } from "../../bot/ui/sending.js"
+import { dotFor } from "../../bot/ui/screens/notice.js"
+import { emoji } from "../../bot/ui/runtime.js"
 import type { ScreenMessage } from "../../bot/ui/screens/types.js"
+import type { EmojiRenderer } from "../../i18n/emoji.js"
 import type { PromptRequest, PromptSender } from "./auth-service.js"
 
 /** callback scheme <ns>:<action>:<arg>, see the bot-ui design doc */
@@ -87,7 +90,7 @@ export class TelegramAuthUi {
       if (now - entry.sentAt > SENT_PROMPT_TTL_MS) this.sent.delete(id)
     }
 
-    const screen = promptScreen(request, this.serverName, this.translator)
+    const screen = promptScreen(request, this.serverName, this.translator, emoji)
     const message = await sendScreen(api, {
       chatId: request.telegramId,
       screen,
@@ -155,7 +158,12 @@ export function outcomeText(key: AuthOutcomeKey, player: string, t: Translator):
 }
 
 /** the rich prompt: title, player/server facts, window, expandable info block */
-export function promptScreen(request: PromptRequest, serverName: string, t: Translator): ScreenMessage {
+export function promptScreen(
+  request: PromptRequest,
+  serverName: string,
+  t: Translator = createTranslator(i18n),
+  e: EmojiRenderer = emoji,
+): ScreenMessage {
   const markup: InlineKeyboardMarkup = {
     inline_keyboard: [
       actionRow([
@@ -174,10 +182,10 @@ export function promptScreen(request: PromptRequest, serverName: string, t: Tran
   }
   return {
     text: joinLines(
-      bold(t.t("auth.title")),
+      `${dotFor(e, "pending")} ${bold(t.t("auth.title"))}`,
       "",
-      t.t("auth.player", { player: request.username }),
-      t.t("auth.server", { server: serverName }),
+      kv(t.t("auth.player"), request.username),
+      kv(t.t("auth.server"), serverName),
       "",
       t.t("auth.detected"),
       t.t("auth.window", { seconds: request.expiresInSeconds }),

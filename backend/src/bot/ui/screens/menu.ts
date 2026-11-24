@@ -6,6 +6,8 @@ import type { ScreenMessage } from "./types.js"
 /** callback namespaces owned by the main menu */
 export const MENU_CALLBACK = {
   status: "menu:status",
+  account: "menu:account",
+  help: "menu:help",
   back: "menu:back",
 } as const
 

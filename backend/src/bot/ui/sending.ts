@@ -51,6 +51,28 @@ export function withoutCustomEmoji(screen: ScreenMessage): ScreenMessage {
   }
 }
 
+/**
+ * minimal context shape the interactive flows reply through. keeping it
+ * structural (instead of importing grammY's Context) lets conversations and
+ * plain handlers share one call site: ctx.reply records the api call for the
+ * conversation replay log exactly like any other reply.
+ */
+export type ScreenReplyTarget = {
+  reply(text: string, other?: Parameters<Api["sendMessage"]>[2]): Promise<unknown>
+}
+
+/** replies with a screen: html, no link previews, markup when the screen has one */
+export async function replyScreen(
+  ctx: ScreenReplyTarget,
+  screen: ScreenMessage,
+  options: { replyToMessageId?: number } = {},
+): Promise<void> {
+  const other: Parameters<Api["sendMessage"]>[2] = { ...composeText() }
+  if (screen.markup !== undefined) other.reply_markup = screen.markup
+  if (options.replyToMessageId !== undefined) other.reply_parameters = { message_id: options.replyToMessageId }
+  await ctx.reply(screen.text, other)
+}
+
 type SendMessageOther = Parameters<Api["sendMessage"]>[2]
 
 function sendMessageOther(args: SendTextArgs, screen: ScreenMessage): SendMessageOther {

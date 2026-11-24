@@ -268,8 +268,8 @@ describe("auth ↔ ops ↔ spec ↔ stats integration seams", () => {
 
     await ops.serverBack("game-1")
     expect(sent).toEqual([
-      { chatId: "777", text: "✅ Server game-1 is back online." },
-      { chatId: "777", text: "✅ The server is up and running. Have fun!" },
+      { chatId: "777", text: "Server game-1 is back online" },
+      { chatId: "777", text: "The server is up" },
     ])
   })
 })

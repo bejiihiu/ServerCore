@@ -22,14 +22,21 @@ export type ResolvedEmoji =
 
 export class EmojiRegistry {
   private readonly entries: Record<EmojiKey, EmojiEntry>
+  private allowCustom: boolean
 
-  constructor(private readonly allowCustom: boolean) {
+  constructor(allowCustom: boolean) {
+    this.allowCustom = allowCustom
     this.entries = structuredClone(entries) as Record<EmojiKey, EmojiEntry>
   }
 
   /** whether custom emoji entities are allowed at all (config flag) */
   get customAllowed(): boolean {
     return this.allowCustom
+  }
+
+  /** flips the flag after boot config is known (one registry per process) */
+  setCustomAllowed(allow: boolean): void {
+    this.allowCustom = allow
   }
 
   resolve(key: EmojiKey): ResolvedEmoji {
