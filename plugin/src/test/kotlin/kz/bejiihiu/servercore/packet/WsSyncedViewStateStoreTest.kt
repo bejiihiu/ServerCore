@@ -29,7 +29,7 @@ class WsSyncedViewStateStoreTest {
 
     @Test
     fun `reads and writes delegate to the backing store`() {
-        val backing = CachedViewStateStore(60_000L, 16, 16)
+        val backing = CachedViewStateStore(16, 16)
         val store = WsSyncedViewStateStore(backing)
 
         store.set(viewer, target, EntityViewState.DISGUISED)
@@ -41,7 +41,7 @@ class WsSyncedViewStateStoreTest {
 
     @Test
     fun `every local mutation is offered to the sink`() {
-        val backing = CachedViewStateStore(60_000L, 16, 16)
+        val backing = CachedViewStateStore(16, 16)
         val sink = RecordingSink()
         val store = WsSyncedViewStateStore(backing, sink)
 
@@ -63,7 +63,7 @@ class WsSyncedViewStateStoreTest {
 
     @Test
     fun `removing a target is announced once, not per viewer`() {
-        val backing = CachedViewStateStore(60_000L, 16, 16)
+        val backing = CachedViewStateStore(16, 16)
         val sink = RecordingSink()
         val store = WsSyncedViewStateStore(backing, sink)
         val otherViewer = UUID.randomUUID()
@@ -80,7 +80,7 @@ class WsSyncedViewStateStoreTest {
     fun `backend never sends view state - reads never touch the network`() {
         // the sink only ever sees writes; a store with a sink that records reads
         // would violate the local-only read contract, so reads stay in backing
-        val backing = CachedViewStateStore(60_000L, 16, 16)
+        val backing = CachedViewStateStore(16, 16)
         val sink = RecordingSink()
         val store = WsSyncedViewStateStore(backing, sink)
         store.set(viewer, target, EntityViewState.VISIBLE)

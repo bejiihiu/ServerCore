@@ -45,7 +45,7 @@ class UnifiedChainTest {
     fun `decider verdict lands as a policy row and death invalidates it into packets`() {
         val states = InMemoryViewStateRegistry()
         val packets = PacketStateRegistry(
-            CachedViewStateStore(ttlMillis = 60_000, maxViewers = 64, maxTargetsPerViewer = 64),
+            CachedViewStateStore(64, 64),
         )
         val disguise = RecordingDisguise()
         val bridge = PacketResyncExecutor(packets, states, disguise, Logger.getGlobal())
@@ -94,7 +94,7 @@ class UnifiedChainTest {
     fun `respawn re-applies policy through the bridge after the dead pin clears`() {
         val states = InMemoryViewStateRegistry()
         val packets = PacketStateRegistry(
-            CachedViewStateStore(ttlMillis = 60_000, maxViewers = 64, maxTargetsPerViewer = 64),
+            CachedViewStateStore(64, 64),
         )
         val disguise = RecordingDisguise()
         val bridge = PacketResyncExecutor(packets, states, disguise)
@@ -119,7 +119,7 @@ class UnifiedChainTest {
     fun `reconnect resends the viewer view as real packet-side re-assertions`() {
         val states = InMemoryViewStateRegistry()
         val packets = PacketStateRegistry(
-            CachedViewStateStore(ttlMillis = 60_000, maxViewers = 64, maxTargetsPerViewer = 64),
+            CachedViewStateStore(64, 64),
         )
         val disguise = RecordingDisguise()
         val bridge = PacketResyncExecutor(packets, states, disguise)
@@ -141,7 +141,7 @@ class UnifiedChainTest {
     fun `full reload restore walks every pair back to vanilla through the bridge`() {
         val states = InMemoryViewStateRegistry()
         val packets = PacketStateRegistry(
-            CachedViewStateStore(ttlMillis = 60_000, maxViewers = 64, maxTargetsPerViewer = 64),
+            CachedViewStateStore(64, 64),
         )
         val disguise = RecordingDisguise()
         val bridge = PacketResyncExecutor(packets, states, disguise)

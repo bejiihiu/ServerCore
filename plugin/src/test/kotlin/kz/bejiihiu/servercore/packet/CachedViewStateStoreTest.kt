@@ -19,22 +19,21 @@ class CachedViewStateStoreTest {
 
     private fun store(
         clock: FakeClock,
-        ttl: Long = 60_000,
         maxViewers: Int = 16,
         maxPerViewer: Int = 16,
-    ) = CachedViewStateStore(ttl, maxViewers, maxPerViewer, { clock() })
+    ) = CachedViewStateStore(maxViewers, maxPerViewer, { clock() })
 
     @Test
-    fun `entries expire after the ttl and stay expired`() {
+    fun `state never expires on a timer, quiet rows stay applied`() {
         val clock = FakeClock()
-        val store = store(clock, ttl = 100)
+        val store = store(clock)
         store.set(viewer, target, EntityViewState.HIDDEN)
 
-        clock.advance(99)
+        // an hour of silence: an expired hidden row would flash the player
+        // back visible - the applied picture cannot be recomputed, so it must
+        // persist until an explicit removal
+        clock.advance(3_600_000)
         assertEquals(EntityViewState.HIDDEN, store.get(viewer, target))
-        // the read refreshed the entry, so the next span starts from here
-        clock.advance(101)
-        assertNull(store.get(viewer, target))
     }
 
     @Test
@@ -105,23 +104,6 @@ class CachedViewStateStoreTest {
         store.set(other, target, EntityViewState.VISIBLE)
         store.removeViewer(viewer)
         assertEquals(EntityViewState.VISIBLE, store.get(other, target))
-        assertNull(store.get(viewer, target))
-    }
-
-    @Test
-    fun `expired entries are swept during eviction, not counted as capacity`() {
-        val clock = FakeClock()
-        val store = store(clock, ttl = 100, maxPerViewer = 2)
-        store.set(viewer, target, EntityViewState.VISIBLE)
-        clock.advance(200) // target expired
-        store.set(viewer, other, EntityViewState.DISGUISED)
-        clock.advance(10)
-        val third = UUID.randomUUID()
-        store.set(viewer, third, EntityViewState.HIDDEN)
-
-        // the sweep had room for all three: expired target didn't occupy a slot
-        assertEquals(EntityViewState.DISGUISED, store.get(viewer, other))
-        assertEquals(EntityViewState.HIDDEN, store.get(viewer, third))
         assertNull(store.get(viewer, target))
     }
 }

@@ -171,7 +171,7 @@ class ServerCorePlugin : JavaPlugin() {
         // bundle — pre-flight just checks it is on the server, the shared
         // instance boots with its own plugin lifecycle
         saveDefaultConfig()
-        val packetConfig = PacketConfig.load(config, logger)
+        val packetConfig = PacketConfig.load(config)
         if (packetConfig.enabled && server.pluginManager.getPlugin("PacketEvents") == null) {
             logger.warning("packetevents plugin not found on this server, packet layer will idle")
         }
@@ -399,13 +399,12 @@ class ServerCorePlugin : JavaPlugin() {
         // packetevents layer: personal entity view foundation. attaches its
         // listener to the shared PE instance only when packetevents is
         // reachable, otherwise idles without breaking boot
-        val packetConfig = PacketConfig.load(config, logger)
+        val packetConfig = PacketConfig.load(config)
         val packets = PacketService(
             plugin = this,
             config = packetConfig,
             store = WsSyncedViewStateStore(
                 CachedViewStateStore(
-                    ttlMillis = packetConfig.cacheTtlMillis,
                     maxViewers = 1024,
                     maxTargetsPerViewer = 512,
                 ),
