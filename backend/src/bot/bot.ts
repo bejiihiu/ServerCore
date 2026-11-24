@@ -1,32 +1,27 @@
 import { Bot } from "grammy"
+import { conversations } from "@grammyjs/conversations"
 import type { AppConfig } from "../config/env.js"
 import type { Logger } from "../logging/logger.js"
 import type { BotDeps, BotContext } from "./context.js"
-import type { StatsService } from "../services/runtime-stats.js"
+import { MongoConversationStorage } from "../database/conversation-storage.js"
 import { registerBotRoutes } from "./routes.js"
-import { registerStartCommand } from "./commands/start.js"
-import { registerStatsCommand } from "./commands/stats.js"
-import { i18n as i18nInstance } from "../i18n/instance.js"
-import { EmojiRegistry, createEmojiRenderer } from "../i18n/emoji.js"
-import { createTranslator, type Translator } from "./ui/text/index.js"
-import type { EmojiRenderer } from "../i18n/emoji.js"
-
-export type BotOpsDeps = {
-  stats: StatsService
-}
-
-/** optional telegram handlers contributed by feature modules */
-export type BotModuleDeps = {
-  /** login confirmation buttons, wired by the authentication module */
-  registerCallbacks?: (bot: Bot<BotContext>) => void
-}
+import { EmojiRegistry } from "../i18n/emoji.js"
 
 /**
- * builds the telegram bot with all routes registered. returns null when no
- * token is configured — the backend then runs without the bot instead of
- * crashing. the caller owns start/stop lifecycle.
+ * builds the one and only telegram bot instance and registers every flow on
+ * it: account routes, admission (questionnaire/voting/invites) and the auth
+ * login callbacks ride this same instance — separate bots would silently
+ * discard each other's handlers.
+ *
+ * the conversations plugin is installed exactly once, here, with the
+ * mongo-backed storage: the plugin throws on a second install, and every
+ * conversation (linking, delete-account, application) must register into the
+ * same index anyway.
+ *
+ * returns null when no token is configured — the backend then runs without
+ * the bot instead of crashing. the caller owns start/stop lifecycle.
  */
-export function createBot(config: AppConfig, logger: Logger, deps: BotDeps, ops?: BotOpsDeps, modules?: BotModuleDeps): Bot<BotContext> | null {
+export function createBot(config: AppConfig, logger: Logger, deps: BotDeps): Bot<BotContext> | null {
   if (!config.botToken) {
     logger.warn("no bot token configured, telegram bot disabled")
     return null
@@ -37,12 +32,20 @@ export function createBot(config: AppConfig, logger: Logger, deps: BotDeps, ops?
     logger.error({ err: error.error }, "telegram bot error")
   })
 
-  const i18n = i18nInstance
-  const registry = new EmojiRegistry(config.botCustomEmoji)
-  const renderer = createEmojiRenderer(registry)
-  const ui: { t: Translator; e: EmojiRenderer } = { t: createTranslator(i18n), e: renderer }
+  // chat_member updates must be requested explicitly or telegram never sends
+  // them; the allowed_updates list goes to bot.start() in app.ts
+  bot.use(
+    conversations({
+      storage: {
+        type: "key",
+        version: 0, // bump when the conversation code changes
+        adapter: new MongoConversationStorage(),
+      },
+    }),
+  )
 
   if (config.botCustomEmoji) {
+    const registry = new EmojiRegistry(config.botCustomEmoji)
     void import("../i18n/emoji-pack.js")
       .then(({ applyEmojiPack }) =>
         applyEmojiPack(registry, bot.api, "tgiosicons", [
@@ -55,12 +58,9 @@ export function createBot(config: AppConfig, logger: Logger, deps: BotDeps, ops?
       .catch((err: unknown) => logger.warn({ err }, "custom emoji pack unavailable, using unicode fallbacks"))
   }
 
+  // /start /status /help /stats and the account conversations all live here;
+  // admission and auth register onto this same instance from app.ts
   registerBotRoutes(bot, deps)
-  registerStartCommand(bot, ui)
-  if (ops) {
-    registerStatsCommand(bot, { stats: ops.stats, adminIds: config.adminTelegramIds, locale: config.opsLocale })
-  }
-  modules?.registerCallbacks?.(bot)
 
   return bot
 }

@@ -21,7 +21,7 @@ import { AccountService } from "./modules/account/account-service.js"
 import { AccountDeletionService, BotApiTelegramGroupPort, GatewaySessionRevoker } from "./modules/account/deletion.js"
 import { GatewayOwnershipVerifier } from "./modules/account/session-probe.js"
 import type { NotificationFanout } from "./modules/notification/notification-port.js"
-import { createAdmissionBot } from "./bot/admission-bot.js"
+import { registerAdmissionFlows, type AdmissionServices } from "./bot/admission-bot.js"
 import { createAdmissionRepositories, syncAdmissionIndexes } from "./database/repos.js"
 import { LinkedTelegramRecipients } from "./services/recipients.js"
 import { NotificationService } from "./services/notification-service.js"
@@ -192,14 +192,6 @@ async function main(): Promise<void> {
     logger,
   })
 
-  // admission bot: questionnaire + group voting, riding the shared
-  // notification engine and the ops stats snapshot
-  const admission = createAdmissionBot(config, logger, createAdmissionRepositories(), {
-    notifications,
-    stats: statsService,
-  })
-  const admissionBot = admission?.bot ?? null
-
   // account module wiring: token service on a process-local store for now
   // (single instance), repositories on mongo
   const tokenStore = new InMemoryTokenStore()
@@ -258,8 +250,9 @@ async function main(): Promise<void> {
   })
   const stopRetention = retention.start()
 
-  // the routed bot: account screens + stats + help. admission commands are
-  // registered inside createAdmissionBot on the same bot instance
+  // the one and only bot instance: account routes + admission flows + auth
+  // callbacks all register on it. a second bot would silently discard the
+  // other side's handlers, so createAdmissionFlows receives this instance.
   const bot = createBot(config, logger, {
     accounts,
     deletion,
@@ -268,13 +261,20 @@ async function main(): Promise<void> {
     stats: statsService,
     collectionStats: databaseReady() ? new MongoCollectionStats() : null,
   })
-  const finalBot = bot ?? admissionBot
-  // auth approve/reject buttons ride whichever bot instance actually runs
-  if (finalBot !== null) {
-    registerAuthCallbacks(finalBot, { auth: authService, ui: authUi, logger })
+
+  let admission: AdmissionServices | null = null
+  if (bot !== null) {
+    // admission: questionnaire + group voting, riding the shared notification
+    // engine; /start /status /help /stats are owned by the account routes
+    admission = registerAdmissionFlows(bot, config, logger, createAdmissionRepositories(), {
+      notifications,
+    })
+    // auth approve/reject buttons ride the same instance
+    registerAuthCallbacks(bot, { auth: authService, ui: authUi, logger })
   }
+
   // grammy api is ready the moment the Bot exists, swap the real senders in
-  const api = finalBot !== null ? finalBot.api : null
+  const api = bot !== null ? bot.api : null
   notifications.attachSender(api !== null ? new GrammySender(api) : null)
   authUi.attachApi(api)
 
@@ -328,8 +328,8 @@ async function main(): Promise<void> {
   await app.listen({ port: config.port, host: config.host })
   logger.info({ port: config.port, host: config.host }, "http listening")
 
-  if (finalBot !== null) {
-    void finalBot.start({
+  if (bot !== null) {
+    void bot.start({
       allowed_updates: ALLOWED_UPDATES,
       onStart: (me) => logger.info({ username: me.username }, "bot polling started"),
     })
@@ -364,7 +364,7 @@ async function main(): Promise<void> {
       authService.stop()
       offlineWatcher.stop()
       stopRetention()
-      await finalBot?.stop()
+      await bot?.stop()
       gateway.stop()
       await app.close()
       await disconnectDatabase(logger)

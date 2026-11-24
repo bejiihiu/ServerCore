@@ -1,10 +1,9 @@
 import { Bot } from "grammy"
-import { conversations, createConversation } from "@grammyjs/conversations"
+import { createConversation } from "@grammyjs/conversations"
 import type { BotContext } from "./context.js"
 import type { AppConfig } from "../config/env.js"
 import type { Logger } from "../logging/logger.js"
 import type { AdmissionRepositories } from "../database/repos.js"
-import { MongoConversationStorage } from "../database/conversation-storage.js"
 import { systemClock } from "../services/clock.js"
 import { RateLimiter } from "../services/rate-limiter.js"
 import { ApplicationService } from "../services/application-service.js"
@@ -12,20 +11,13 @@ import { VotingService } from "../services/voting-service.js"
 import { GroupService } from "../services/group-service.js"
 import type { NotificationService } from "../services/notification-service.js"
 import { AdmissionNotifier } from "../services/admission-notifier.js"
-import type { StatsService } from "../services/runtime-stats.js"
 import { GrammYTelegramApi } from "./telegram-api.js"
 import { createApplicationConversation } from "./conversations/application-questionnaire.js"
 import { registerVoteCallbacks } from "./handlers/vote-callbacks.js"
 import { registerChatMemberHandler } from "./handlers/chat-member.js"
 import { registerAdmissionCommands } from "./commands/admission.js"
-import { registerStartCommand } from "./commands/start.js"
-import { registerStatsCommand } from "./commands/stats.js"
-import { i18n as i18nInstance } from "../i18n/instance.js"
-import { EmojiRegistry, createEmojiRenderer } from "../i18n/emoji.js"
-import { createTranslator } from "./ui/text/index.js"
 
-export type AdmissionBot = {
-  bot: Bot<BotContext>
+export type AdmissionServices = {
   applications: ApplicationService
   voting: VotingService
   group: GroupService
@@ -34,30 +26,23 @@ export type AdmissionBot = {
 export const APPLICATION_CONVERSATION_ID = "application"
 
 /**
- * builds the telegram bot with the full admission flow plus the ops /stats
- * command: questionnaire conversation, group voting, invites, join tracking.
- * returns null when no token is configured — the backend then runs without
- * the bot instead of crashing. the caller owns start/stop lifecycle.
+ * registers the admission flow (questionnaire conversation, group voting,
+ * invites, join tracking) on the SHARED bot instance. creates no bot of its
+ * own: two bot instances would silently discard each other's handlers, so
+ * everything must ride the one bot built in createBot.
+ *
+ * the conversations plugin is also already installed on the shared bot (mongo
+ * storage); the application conversation registers into that shared index.
  */
-export function createAdmissionBot(
+export function registerAdmissionFlows(
+  bot: Bot<BotContext>,
   config: AppConfig,
   logger: Logger,
   repos: AdmissionRepositories,
   deps: {
     notifications: NotificationService
-    stats: StatsService
   },
-): AdmissionBot | null {
-  if (!config.botToken) {
-    logger.warn("no bot token configured, telegram bot disabled")
-    return null
-  }
-
-  const bot = new Bot<BotContext>(config.botToken)
-  bot.catch((error) => {
-    logger.error({ err: error.error }, "telegram bot error")
-  })
-
+): AdmissionServices {
   const telegram = new GrammYTelegramApi(bot, {
     groupChatId: config.groupChatId,
   })
@@ -119,24 +104,13 @@ export function createAdmissionBot(
     defaultLanguage: config.defaultLanguage,
   })
 
-  // chat_member updates must be requested explicitly or telegram never
-  // sends them; that list goes to bot.start() in app.ts
-  bot.use(conversations({
-    storage: {
-      type: "key",
-      version: 0, // bump when the conversation code changes
-      adapter: new MongoConversationStorage(),
-    },
-  }))
+  // the application conversation rides the shared conversations plugin
+  // installed in createBot (mongo-backed); only the registration happens here
   bot.use(createConversation(
     createApplicationConversation({ applications, voting }),
     { id: APPLICATION_CONVERSATION_ID },
   ))
 
-  registerStartCommand(bot, {
-    t: createTranslator(i18nInstance),
-    e: createEmojiRenderer(new EmojiRegistry(config.botCustomEmoji)),
-  })
   registerAdmissionCommands(bot, {
     applications,
     users: repos.users,
@@ -145,11 +119,6 @@ export function createAdmissionBot(
   })
   registerVoteCallbacks(bot, { voting, defaultLanguage: config.defaultLanguage })
   registerChatMemberHandler(bot, { group, logger })
-  registerStatsCommand(bot, {
-    stats: deps.stats,
-    adminIds: config.adminTelegramIds,
-    locale: config.opsLocale,
-  })
 
-  return { bot, applications, voting, group }
+  return { applications, voting, group }
 }

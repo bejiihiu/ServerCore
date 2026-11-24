@@ -1,5 +1,5 @@
 import type { Bot } from "grammy"
-import { conversations, createConversation } from "@grammyjs/conversations"
+import { createConversation } from "@grammyjs/conversations"
 import { parseStartPayload } from "./commands/start-payload.js"
 import { t, statusLabel, type Locale } from "../services/i18n.js"
 import { accountKeyboard, CALLBACK } from "./keyboards.js"
@@ -18,10 +18,8 @@ import { deleteAccountConversation } from "./conversations/delete-account.js"
  * ctx.conversation.enter(name, ...args) — v2 serializes and replays them.
  */
 export function registerBotRoutes(bot: Bot<BotContext>, deps: BotDeps): void {
-  // conversations plugin with in-memory storage; multi-step flows replay
-  // correctly, a process restart simply drops active conversations
-  bot.use(conversations<BotContext, BotContext>())
-
+  // the conversations plugin itself is installed exactly once in createBot
+  // (mongo-backed); these two conversations register into that shared index
   bot.use(
     createConversation<BotContext, BotContext>(
       (conversation, ctx, token?: string, username?: string) => {
