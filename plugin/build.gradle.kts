@@ -41,6 +41,8 @@ dependencies {
     // tests need the adventure + snakeyaml transitives on the classpath;
     // pure-logic tests also touch bukkit enums (GameMode), the api jar is enough
     testImplementation(libs.folia.api)
+    // the fp api surface is exercised directly in tests via its real interfaces
+    testImplementation(libs.flectonepulse.api)
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)
 }

@@ -218,6 +218,25 @@ placeholders:
   # suffix appended to stale backend-derived values
   stale-suffix: " (stale)"
 
+# flectonepulse is the moderation and chat authority on this server.
+# servercore never issues bans/mutes/warns/kicks, never formats chat and
+# never ships prefixes - it only reads the public flectonepulse api artifact
+# (net.flectone.pulse:api, compile-only) and consults punishment state when a
+# decision needs it. flectonepulse itself must be installed for any of this
+# to be active; without it servercore simply runs without punishment lookups.
+flectonepulse:
+  # telegram de-duplication. flectonepulse ships its own telegram module, and
+  # when that module is enabled it is the one announcing events - servercore
+  # then keeps its ops notifications out of telegram so nothing is announced
+  # twice. true (recommended) = suppress servercore's telegram announcements
+  # whenever flectonepulse's telegram module is active. false = servercore
+  # announces regardless of what flectonepulse does.
+  disable-tg: true
+  # how long a punishment lookup answer stays cached, seconds. the cache is
+  # invalidated early by flectonepulse player events, so this is just the
+  # safety net.
+  punishment-cache-ttl-seconds: 30
+
 # ops configuration
 # every knob lives under ops:; secrets never go here - the panel api key and
 # the github token are read from environment variables named below.

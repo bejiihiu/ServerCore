@@ -12,6 +12,8 @@ export type ServerRuntimeStatus = {
   detail?: string
   /** live count of administrative observation sessions from the plugin registry */
   activeSpecSessions?: number
+  /** last frame said flectonepulse owns telegram announcements for this server */
+  telegramSuppressed?: boolean
   lastSeenAt: number
 }
 
@@ -44,7 +46,12 @@ type PlayerCountPatch = Pick<ServerRuntimeStatus, "onlinePlayers" | "maxPlayers"
 
 export type LifecycleHooks = {
   /** fires only when the explicit ops state actually changes, not on every status frame */
-  onStateChange?: (serverId: string, state: ServerState, previous: ServerState | undefined) => void
+  onStateChange?: (
+    serverId: string,
+    state: ServerState,
+    previous: ServerState | undefined,
+    options?: { telegramSuppressed?: boolean },
+  ) => void
   /** player lifecycle events, consumed by the authentication module */
   onPlayerJoined?: (event: { minecraftUuid: string; username: string; serverId: string }) => void
   onPlayerLeft?: (event: { minecraftUuid: string; username?: string; reason: string }) => void
@@ -74,23 +81,24 @@ export function registerLifecycleHandlers(
       state: extra.state ?? existing?.state,
       detail: extra.detail ?? existing?.detail,
       activeSpecSessions: patch.activeSpecSessions ?? existing?.activeSpecSessions,
+      telegramSuppressed: extra.telegramSuppressed ?? existing?.telegramSuppressed,
       lastSeenAt: Date.now(),
     })
   }
 
   registry.register("SERVER_STATUS", (envelope: Envelope<"SERVER_STATUS">, connection) => {
-    const { state, detail, activeSpecSessions } = envelope.payload
+    const { state, detail, activeSpecSessions, telegramSuppressed } = envelope.payload
     const previousState = directory.get(connection.serverId)?.state
     mergeCounts(
       connection.serverId,
       { ...envelope.payload, activeSpecSessions },
-      { version: envelope.payload.version, state, detail },
+      { version: envelope.payload.version, state, detail, telegramSuppressed },
     )
     if (state !== undefined && previousState !== state) {
       // status frames fire on every heartbeat-style push; only a real state
       // flip is interesting for notifications
       logger.info({ serverId: connection.serverId, state, previous: previousState }, "server state changed")
-      hooks.onStateChange?.(connection.serverId, state, previousState)
+      hooks.onStateChange?.(connection.serverId, state, previousState, { telegramSuppressed })
     }
   })
 

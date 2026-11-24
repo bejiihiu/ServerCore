@@ -38,6 +38,16 @@ describe("ops states in the wire protocol", () => {
     expect(payloadSchemas.SERVER_STATUS.safeParse({ onlinePlayers: 1, maxPlayers: 2, detail: "x".repeat(513) }).success).toBe(false)
   })
 
+  test("telegramSuppressed flag is optional and boolean-typed", () => {
+    // flectonepulse de-duplication: the plugin tags frames when its fp bridge
+    // says fp's own telegram module owns announcements
+    expect(payloadSchemas.SERVER_STATUS.safeParse({ onlinePlayers: 1, maxPlayers: 2, telegramSuppressed: true }).success).toBe(true)
+    expect(payloadSchemas.SERVER_STATUS.safeParse({ onlinePlayers: 1, maxPlayers: 2, telegramSuppressed: false }).success).toBe(true)
+    // old plugin builds never send it
+    expect(payloadSchemas.SERVER_STATUS.safeParse({ onlinePlayers: 1, maxPlayers: 2 }).success).toBe(true)
+    expect(payloadSchemas.SERVER_STATUS.safeParse({ onlinePlayers: 1, maxPlayers: 2, telegramSuppressed: "yes" }).success).toBe(false)
+  })
+
   test("envelope meta still validates with the untouched shape", () => {
     const result = envelopeMetaSchema.safeParse({ id: "msg_12345678", type: "SERVER_STATUS", timestamp: 1 })
     expect(result.success).toBe(true)
@@ -104,5 +114,31 @@ describe("lifecycle state-change hook", () => {
     const status = directory.get("game-1")
     expect(status?.state).toBe("UPDATE_READY")
     expect(status?.detail).toBe("build-42-abc")
+  })
+
+  test("state-change hook carries the telegram suppression flag", async () => {
+    const registry = new HandlerRegistry(silentLogger())
+    const directory = new ServerDirectory()
+    const changes: { state: string; telegramSuppressed?: boolean }[] = []
+    registerLifecycleHandlers(registry, directory, silentLogger(), {
+      onStateChange: (_serverId, state, _previous, options) => changes.push({ state, telegramSuppressed: options?.telegramSuppressed }),
+    })
+
+    const conn = fakeConnection("game-1")
+    await registry.dispatch(
+      { id: "msg_12345678", type: "SERVER_STATUS", timestamp: Date.now(), payload: { onlinePlayers: 1, maxPlayers: 2, state: "STARTING", telegramSuppressed: true } },
+      conn,
+    )
+    await registry.dispatch(
+      { id: "msg_12345679", type: "SERVER_STATUS", timestamp: Date.now(), payload: { onlinePlayers: 1, maxPlayers: 2, state: "RUNNING" } },
+      conn,
+    )
+
+    expect(changes).toEqual([
+      { state: "STARTING", telegramSuppressed: true },
+      { state: "RUNNING", telegramSuppressed: undefined },
+    ])
+    // the directory remembers the last declared suppression across frames
+    expect(directory.get("game-1")?.telegramSuppressed).toBe(true)
   })
 })

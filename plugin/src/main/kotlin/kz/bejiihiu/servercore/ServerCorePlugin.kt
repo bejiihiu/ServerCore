@@ -19,6 +19,8 @@ import kz.bejiihiu.servercore.guest.LocalAccountResolver
 import kz.bejiihiu.servercore.guest.SnapshotStore
 import kz.bejiihiu.servercore.guest.WsAccountResolver
 import kz.bejiihiu.servercore.disguise.DisguiseStack
+import kz.bejiihiu.servercore.integration.flectonepulse.FlectonePulseBridge
+import kz.bejiihiu.servercore.integration.flectonepulse.FlectonePulseConfig
 import kz.bejiihiu.servercore.integration.luckperms.GroupsDebugHandler
 import kz.bejiihiu.servercore.integration.luckperms.LuckPermsConfig
 import kz.bejiihiu.servercore.integration.luckperms.PermissionSource
@@ -155,6 +157,7 @@ class ServerCorePlugin : JavaPlugin() {
     private var specRegistry: SpecSessionRegistry? = null
     private var specHider: ObserverHider? = null
     private var specTraceListener: com.github.retrooper.packetevents.event.PacketListenerCommon? = null
+    private lateinit var flectonePulse: FlectonePulseBridge
 
     override fun onLoad() {
         // packetevents is a server-installed plugin we attach to, not one we
@@ -175,6 +178,13 @@ class ServerCorePlugin : JavaPlugin() {
         locale = LocaleService(dataFolder.toPath(), logger)
         ui = UiKit(this, locale)
 
+        // flectonepulse bridge goes up before the ops bus: status frames carry
+        // its telegram suppression flag, and the guest flow reads punishments
+        // through it once connected
+        val fpConfig = FlectonePulseConfig.load(config, logger)
+        val fpBridge = FlectonePulseBridge(this, fpConfig, logger)
+        flectonePulse = fpBridge
+
         // ops first: the bus is the seam the ws client hooks into (SERVER_STATUS
         // frames), and the updater needs the plugin meta version before anything else
         val ops = OpsConfig.load(config, logger)
@@ -183,7 +193,9 @@ class ServerCorePlugin : JavaPlugin() {
             onlinePlayers = { Bukkit.getOnlinePlayers().size },
             maxPlayers = { Bukkit.getMaxPlayers() },
             version = { pluginMeta.version },
+            telegramSuppressed = { fpBridge.telegramSuppressed() },
         )
+        fpBridge.start()
 
         // graceful restart stack (shared by cron + updater triggers)
         val executor = RestartExecutor(this, ops.restart.pterodactyl, logger)
@@ -352,6 +364,7 @@ class ServerCorePlugin : JavaPlugin() {
         val messages = GuestMessageService(guestConfig, wsResolver, i18n)
         sessions = GuestSessionService(
             this, guestConfig, accounts, wsResolver, snapshots, counter, backendGateway, messages,
+            punishmentQuery = { fpBridge.punishmentQuery() },
         )
 
         // backend confirmed a login -> ungate the player
@@ -552,7 +565,11 @@ class ServerCorePlugin : JavaPlugin() {
         opsBus.publish(ServerState.STARTING)
         server.globalRegionScheduler.runDelayed(this, { _ -> opsBus.publish(ServerState.RUNNING) }, 100L)
 
-        logger.info("servercore ${pluginMeta.version} enabled (guest mode: ${if (guestConfig.enabled) "on" else "off"})")
+        logger.info(
+            "servercore ${pluginMeta.version} enabled " +
+                "(guest mode: ${if (guestConfig.enabled) "on" else "off"}, " +
+                "flectonepulse: ${fpBridge.currentState().name.lowercase()})",
+        )
     }
 
     /**
