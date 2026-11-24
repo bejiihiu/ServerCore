@@ -20,14 +20,10 @@ export type HandleJoinOutcome =
   | { ok: true; activated: boolean; userUuid: string }
   | { ok: false; reason: "GROUP_NOT_CONFIGURED" | "FOREIGN_CHAT" | "NO_INVITE_NAME" | "INVITE_NOT_FOUND" | "INVITE_MISMATCH" | "INVITE_ALREADY_USED" }
 
-export type RemoveMemberOutcome =
-  | { ok: true; kicked: boolean; revokedInvites: number }
-  | { ok: false; reason: "GROUP_NOT_CONFIGURED" | "NO_USER" }
-
 /**
  * telegram group integration: one-time invites after approval, join tracking
- * via chat_member updates, activation, and the kick helper used by account
- * deletion (ban + unban pair, unused invites revoked).
+ * via chat_member updates, activation. account deletion kicks through its own
+ * fail-closed port in modules/account/deletion.ts.
  */
 export class GroupService {
   constructor(
@@ -196,56 +192,5 @@ export class GroupService {
       details: inviteName === undefined ? {} : { inviteName },
     })
     await this.deps.notifier.anomaly({ kind, telegramId, inviteName })
-  }
-
-  /**
-   * kick helper for account deletion: ban + immediate unban (the canonical
-   * telegram kick pattern), then revoke every invite of this user that is
-   * still unused. the ban/unban pair is required — telegram has no plain
-   * "remove member" method for bots.
-   */
-  async removeMember(uuid: string): Promise<RemoveMemberOutcome> {
-    const chatId = this.deps.groupChatId
-    if (chatId === null) return { ok: false, reason: "GROUP_NOT_CONFIGURED" }
-    const user = await this.deps.users.findByUuid(uuid)
-    if (!user) return { ok: false, reason: "NO_USER" }
-
-    let kicked = false
-    if (user.groupLinkedAt) {
-      try {
-        await this.deps.telegram.banChatMember(chatId, user.telegramId)
-        await this.deps.telegram.unbanChatMember(chatId, user.telegramId)
-        kicked = true
-      } catch {
-        kicked = false
-      }
-    }
-
-    const issued = await this.deps.invites.listIssuedByUuid(uuid)
-    let revoked = 0
-    for (const invite of issued) {
-      try {
-        await this.deps.telegram.revokeChatInviteLink(chatId, invite.url)
-      } catch {
-        // link may already be gone; the db status is still flipped below
-      }
-      await this.deps.invites.markRevoked(invite.name, new Date(this.deps.clock.nowMs()))
-      revoked += 1
-    }
-
-    await this.deps.audit.record({
-      actorType: "SYSTEM",
-      actorId: "group",
-      action: "group.member_kicked",
-      targetType: "user",
-      targetId: uuid,
-      details: { kicked, revokedInvites: revoked },
-    })
-    await this.deps.notifier.memberKicked({
-      username: user.username,
-      kicked,
-      revoked,
-    })
-    return { ok: true, kicked, revokedInvites: revoked }
   }
 }
