@@ -144,7 +144,10 @@ class GuestProtectionListener(
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     fun onDamage(event: EntityDamageByEntityEvent) {
         if (!config.restrictions.entityDamage) return
-        val damager = event.damager as? org.bukkit.entity.Player ?: return
+        val damager = event.damager as? org.bukkit.entity.Player
+            // arrows, tridents and the like carry the shooter as their damager
+            ?: (event.damager as? org.bukkit.entity.Projectile)?.shooter as? org.bukkit.entity.Player
+            ?: return
         if (restricted(damager.uniqueId)) {
             event.isCancelled = true
             hint(damager)
