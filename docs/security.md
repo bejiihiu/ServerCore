@@ -30,18 +30,21 @@ Security is a design constraint, not a retrofit. This page documents the threat 
 ## WebSocket channel security
 
 - WSS/TLS mandatory; the plugin is the connecting side.
-- Handshake verifies the server identity with an HMAC over the hello frame (timestamp + nonce included).
-- Critical messages are individually signed.
-- Nonces are tracked; duplicate nonces and stale timestamps are rejected — replay is not an option.
+- Handshake authentication happens **before the upgrade**: the plugin signs `server|ts|nonce` with its per-server secret in the upgrade request, and the backend verifies it — plus the replay window and a burned-nonce check — before the socket exists.
+- Every frame in both directions is individually HMAC-signed over its canonical json; unsigned or stale frames are dropped.
+- Per-frame envelope ids are tracked; duplicate ids are re-acked but never reprocessed, so a lost ack cannot turn into double execution.
 - Every message body passes runtime schema validation on the receiving side; malformed frames are dropped, not interpreted.
-- Frame size is capped; oversized input is rejected before parsing.
+- Frame size is capped (`WS_MAX_PACKET_BYTES`); oversized input is rejected before parsing.
 
 ## Command protection approach
 
 The goal: no game account, including an operator-flagged one, can alter server or world state through administrative commands.
 
 - **Baseline blacklist** applied to every game account: `/op`, `/deop`, `/fill`, `/clone`, `/setblock`, `/summon`, `/gamemode`, `/tp`, `/teleport`, `/give`, `/item`, `/execute`, `/effect`, `/attribute`, `/kill`, `/difficulty`, `/time`, `/weather`, `/gamerule`, `/worldborder`, `/stop`, `/reload`.
-- **Aliases and namespaces blocked too** — blocking the literal command name is not enough; alternative execution paths are enumerated and covered.
+- **Aliases and namespaces blocked too** — the matcher resolves each blocked name against the live command tree, so one name covers its whole alias group, and namespace prefixes (`minecraft:tp`) match the same command.
+- **Datapack paths denied** — `/function`, `/schedule` and `/datapack` are blocked as well, because a datapack function can carry any blocked command inside.
+- **Tab completion stripped** — blocked commands are removed from the client command list; display only, enforcement happens at execution time.
+- **Command blocks audited** — loaded chunks are periodically scanned for command blocks carrying a denied command (no execution event exists for blocks); finds are logged and can be neutralized in place.
 - **Alternative sources audited:** plugin-registered commands, command blocks, datapack functions, RCON, the console, and calls from other plugins' APIs. The console is the one trusted administrative channel.
 - **Gamemode enforcement:** Survival is the only player-facing mode. Creative, Adventure or Spectator outside sanctioned scenarios (Guest Mode, `/spec`, explicitly permitted system states) is reverted. Sanctioned states are tracked by ServerCore's internal state machine — the mere presence of OP decides nothing.
 - **PlayerCommandPreprocessEvent alone is not trusted** as protection — a command may be invoked through other plugins or mechanisms. Blocking is layered at the command source level.

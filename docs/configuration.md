@@ -4,50 +4,90 @@ ServerCore is configured in two places: the backend's environment file and the p
 
 ## Backend — environment variables
 
-All variables come from `.env` (copy `.env.example` as the starting point). Placeholder names below are the real keys.
+All variables come from `.env` (copy `.env.example` as the starting point). Every key below is read and validated by the backend's Zod config at boot; an invalid value aborts the start with a summary of what is wrong.
 
-### Database
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `DATABASE_URI` | yes | — | MongoDB connection string, including credentials and database name |
-| `DATABASE_NAME` | yes | `servercore` | Database name. Must match the name embedded in `DATABASE_URI` |
-
-### Telegram bot
+### Runtime and storage
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `BOT_TOKEN` | yes | — | Token issued by [@BotFather](https://t.me/BotFather) |
-| `TELEGRAM_BOT_USERNAME` | no | `ServerCoreBot` | Bot username used in deep links |
-| `GROUP_CHAT_ID` | no | — | Numeric chat ID of the closed community group (voting + membership). Empty disables the group flow |
-| `ADMIN_CHAT_ID` | no | — | Chat that receives duplicates of key events (approvals, anomalies, expired votes) |
-| `DEFAULT_LANGUAGE` | no | `ru` | Interface language for group and admin messages (`ru` / `en`) |
-
-### WebSocket gateway
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `WS_HOST` | yes | `0.0.0.0` | Bind address for the gateway |
-| `WS_PORT` | yes | `8443` | Port the plugin connects to |
-| `WS_PATH` | no | `/gateway` | WebSocket endpoint path |
-| `WS_MAX_PAYLOAD_BYTES` | no | `65536` | Hard limit on incoming message size; larger frames are rejected |
-| `SERVER_SECRET_<ID>` | yes (per server) | — | Per-server HMAC secret, shared with that server's plugin config. One entry per registered Minecraft server |
-
-### Runtime behaviour
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
+| `NODE_ENV` | no | `development` | `development` / `production` / `test` |
+| `PORT` | no | `8080` | HTTP port; serves the `/health` endpoint (Fastify) |
+| `HOST` | no | `0.0.0.0` | Bind address, shared by the HTTP server and the WebSocket gateway |
+| `WS_PORT` | no | `8081` | Port of the native WebSocket gateway — a separate listener, not part of the HTTP server |
+| `MONGODB_URI` | no | `mongodb://localhost:27017/servercore` | MongoDB connection string, database name included (`mongodb+srv://…` for Atlas) |
 | `LOG_LEVEL` | no | `info` | Pino level: `trace`, `debug`, `info`, `warn`, `error`, `fatal` |
-| `APPLICATION_QUESTIONS_RU` | no | spec defaults | Questionnaire questions (Russian), json array of 1–10 strings |
-| `APPLICATION_QUESTIONS_EN` | no | spec defaults | Questionnaire questions (English), must match the RU list length |
+| `LOG_TIMEZONE` | no | `Europe/Moscow` | Timezone for log timestamps and schedules |
+
+### Server credentials
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `SERVERCORE_SERVER_CREDENTIALS` | yes | `{}` | JSON object mapping server id → per-server HMAC secret: `{"game-1": "…"}`. Secrets must be at least 32 characters (`openssl rand -hex 32`). Each game server's plugin config carries the matching id and secret |
+| `SERVER_NAME` | no | `ServerCore` | Pretty server name shown in Telegram authentication prompts |
+
+### Telegram
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `BOT_TOKEN` | no | — | Token from [@BotFather](https://t.me/BotFather). Leave empty to run without the bot — the backend then runs bot-less instead of crashing |
+| `GROUP_CHAT_ID` | no | — | Numeric chat ID of the closed community group where voting runs and approved members join. Empty degrades the group flow gracefully |
+| `TELEGRAM_GROUP_CHAT_ID` | no | — | Group chat id used for kick/invite management (string form). Empty until the group exists |
+| `ADMIN_TELEGRAM_IDS` | no | — | Comma-separated Telegram user ids that receive copies of key events and may call the admin-only `/stats` bot command |
+| `OPS_LOCALE` | no | `ru` | Default interface language for group/admin and ops messages (`ru` / `en`); per-account overrides apply |
+| `BOT_CUSTOM_EMOJI` | no | `false` | Custom emoji entities in bot messages (Bot API 9.4, needs Telegram Premium on the bot owner). Off keeps unicode fallbacks everywhere |
+
+### Admission
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `APPLICATION_QUESTIONS_RU` | no | 4 default questions | Questionnaire questions (Russian), json array of 1–10 strings |
+| `APPLICATION_QUESTIONS_EN` | no | 4 default questions | Questionnaire questions (English), must match the RU list length |
 | `VOTING_DURATION_MINUTES` | no | `180` | Voting window duration |
 | `VOTING_SCAN_INTERVAL_MS` | no | `60000` | How often the scheduler sweeps for expired votings |
 | `GROUP_INVITE_TTL_HOURS` | no | `48` | Lifetime of a one-time group invite |
+| `APPLICATION_START_LIMIT` / `APPLICATION_START_WINDOW_MS` | no | `3` / `60000` | Rate limit on questionnaire starts per account |
 | `VOTE_BUTTON_ICONS_ENABLED` | no | `false` | Custom emoji icons on vote buttons (needs Premium on the bot owner) |
 | `VOTE_BUTTON_ICON_ACCEPT_ID` / `VOTE_BUTTON_ICON_REJECT_ID` | no | — | Custom emoji ids for the vote buttons |
 | `APPROVAL_MESSAGE_EFFECT_ID` | no | confetti | Message effect played on the approval notification |
-| `APPLICATION_START_LIMIT` / `APPLICATION_START_WINDOW_MS` | no | `3` / `60000` | Rate limit on questionnaire starts per account |
+
+### Authentication
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
 | `AUTH_REQUEST_TTL_SECONDS` | no | `75` | One-time login token lifetime (allowed range 60–90) |
+| `AUTH_SWEEP_INTERVAL_MS` | no | `1000` | Cadence of the auth sweep: expiry enforcement and undelivered prompt retries |
+| `AUTH_RATE_LIMIT_WINDOW_SECONDS` | no | `300` | Sliding window for the auth rate limits below |
+| `AUTH_RATE_LIMIT_REQUESTS_PER_PLAYER` | no | `5` | Auth requests per player per window |
+| `AUTH_RATE_LIMIT_REQUESTS_PER_TELEGRAM` | no | `10` | Auth requests per Telegram account per window |
+| `AUTH_RATE_LIMIT_APPROVALS_PER_TELEGRAM` | no | `30` | Approvals per Telegram account per window |
+| `AUTH_MESSAGE_EFFECT_ID` | no | — | Optional Telegram message effect on the auth prompt |
+
+### WebSocket gateway tuning
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `WS_HEARTBEAT_INTERVAL_MS` | no | `15000` | Expected heartbeat cadence, echoed to the plugin at registration |
+| `WS_HEARTBEAT_TIMEOUT_MS` | no | `10000` | Heartbeat tolerance on the backend side |
+| `WS_MAX_PACKET_BYTES` | no | `262144` | Hard limit on incoming frame size; larger frames are rejected |
+| `WS_REPLAY_WINDOW_MS` | no | `30000` | Timestamp tolerance for signed frames and the handshake |
+| `WS_NONCE_TTL_MS` | no | `120000` | How long a used handshake nonce stays burned |
+| `WS_DRAIN_TIMEOUT_MS` | no | `5000` | Graceful shutdown: in-flight handler waits get this long before sockets close |
+
+### Notifications and server watch
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `SERVER_OFFLINE_ALERT_MINUTES` | no | `5` | WebSocket silent this long → the server is presumed offline; admins get a crash alert |
+| `NOTIFY_USERS_ON_OFFLINE` | no | `false` | Crash alert also DM-ed to all linked users, not just admins |
+| `NOTIFICATION_RATE_PER_SECOND` | no | `30` | Outbound broadcast rate ceiling (Telegram allows ~30/s) |
+
+### Retention
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `RETENTION_AUDIT_DAYS` | no | `90` | Lifetime of audit and server-event records |
+| `RETENTION_SESSION_DAYS` | no | `60` | Lifetime of closed sessions |
+| `RETENTION_INITIAL_DELAY_MINUTES` | no | `5` | First cleanup pass after boot, then daily |
 
 Secrets never belong in the repository or in logs — keep them only in the environment.
 
@@ -59,11 +99,17 @@ Located at `plugins/ServerCore/config.yml`, generated on first start. The plugin
 
 | Key | Default | Description |
 |---|---|---|
-| `backend.url` | — | Full WebSocket URL of the backend gateway, `wss://…` |
-| `backend.secret` | — | The per-server HMAC secret matching `SERVER_SECRET_<ID>` on the backend |
+| `backend.url` | — | Full WebSocket URL of the backend gateway, `wss://host:port/path` (`ws://` for local development; TLS terminates at the proxy) |
+| `backend.server-id` | `game-1` | Unique id of this game server; must match a key in the backend's `SERVERCORE_SERVER_CREDENTIALS` |
+| `backend.secret` | — | The per-server HMAC secret matching the same key on the backend |
 | `backend.reconnect.initial-delay-seconds` | `2` | First reconnect delay after a disconnect |
 | `backend.reconnect.max-delay-seconds` | `120` | Cap for exponential backoff |
 | `backend.heartbeat-interval-seconds` | `15` | Interval between heartbeat frames |
+| `backend.ack-timeout-milliseconds` | `10000` | How long an unacknowledged frame waits before the first retry |
+| `backend.ack-max-retries` | `2` | Retries after the first ack timeout; durable frames then park on disk until the link returns, the rest are dropped |
+| `backend.liveness-timeout-milliseconds` | `45000` | No inbound frame for this long on a "connected" socket = half-open link, forced reconnect |
+| `backend.dedupe-ttl-milliseconds` | `600000` | How long a processed backend push is remembered; a redelivered copy inside the window is acked but never applied twice |
+| `backend.outbox-max-entries` | `500` | Hard cap of the durable outbox file (guest lifecycle frames) |
 
 ### guest
 
@@ -75,12 +121,13 @@ Located at `plugins/ServerCore/config.yml`, generated on first start. The plugin
 | `guest.session-limit` | `3` | Maximum guest sessions per player. Every join without authorization burns one; successful authorization resets the budget |
 | `guest.kick-after-limit` | `true` | Past the limit: `true` kicks with a register-now screen, `false` lets the player keep exploring with a loud warning |
 | `guest.reminder-interval-seconds` | `60` | Cadence of the subtle actionbar reminder shown while a guest waits for authorization |
+| `guest.gamemode-sweep-seconds` | `2` | How often the sweep re-checks that a guest is still in Spectator (another plugin may force a different mode); corrections are throttled so it never becomes a per-tick fight |
 | `guest.lang` | `ru` | UI language, selects `messages_<lang>.yml` from the plugin data folder (`en` and `ru` are bundled) |
 | `guest.bot-username` | `ServerCoreBot` | Telegram bot username, used for the fallback deep link when no personal one-time link has been handed out |
 | `guest.link-ttl-milliseconds` | `90000` | Personal deep links carry one-time tokens; they stop being shown after this window |
 | `guest.snapshot-storage-path` | `guest-snapshots.json` | Durable snapshot storage file, relative to `plugins/ServerCore/` |
 | `guest.command-whitelist` | `help, rules, link` | Command names (no slash) a guest may still run. `/link` is answered by the plugin itself with the registration prompt |
-| `guest.local-accounts` | — | Optional `uuid: authorized\|banned` overrides that work while the backend is down. On this offline-mode server a UUID is only a nickname derivative, so these are convenience bookkeeping — the backend Telegram binding is the identity authority |
+| `guest.local-accounts` | — | Optional `uuid: authorized` or `uuid: banned` overrides that work while the backend is down. On this offline-mode server a UUID is only a nickname derivative, so these are convenience bookkeeping — the backend Telegram binding is the identity authority |
 
 ### guest.restrictions
 
@@ -112,14 +159,71 @@ Player-facing text lives in `messages_en.yml` / `messages_ru.yml` (bundled, then
 |---|---|---|
 | `spec.enabled` | `true` | Master switch for `/spec` |
 | `spec.live-inventory` | `true` | Real-time read-only inventory viewer while observing |
-| `spec.log-to-audit` | `true` | Every session start/end is written to `audit_logs` |
+| `spec.live-inventory-push-milliseconds` | `500` | Minimum gap between live inventory view updates |
+| `spec.live-inventory-full-resync-seconds` | `5` | Periodic full re-sync of the live view; catches changes no event reported (e.g. plugin-side inventory edits) |
+| `spec.log-to-audit` | `true` | Every session start/end is written to `audit_logs` (backend) and the local audit trail |
+| `spec.permission.use-luckperms` | `true` | LuckPerms is the permission backend when installed, vanilla checks otherwise |
+| `spec.permission.levels` | `[owner, admin, moderator, helper]` | Access levels, highest first: membership in a listed group grants that level |
+| `spec.permission.spec-permission` | `servercore.spec` | The standalone node that also grants access |
+| `spec.permission.fallback-level` | `helper` | Level index granted by `spec-permission` alone when no listed group matches |
+| `spec.audit.directory` | `audit` | Local append-only audit trail (jsonl), relative to `plugins/ServerCore/`; files rotate daily as `spec-audit-YYYY-MM-DD.jsonl` |
+| `spec.audit.retention-days` | `30` | Rotated files older than this are deleted |
+| `spec.audit.max-entries-per-session` | `64` | Audit rows allowed per single session, overflow is dropped |
+| `spec.audit.queue-capacity` | `1024` | Bounded write buffer; a full buffer drops entries instead of blocking |
+| `spec.hidden.trace-radius` | `1.5` | How a trace packet (particle/sound aimed at the observed player) gets attributed to the watching admin, by proximity. Keep small — a bigger radius starts eating the target's own effects |
+| `spec.hidden.suppress-action-bar` | `true` | Drop every actionbar line toward an observed player during a session. Actionbar packets carry no origin, so this is all-or-nothing per session |
 
 ### protection
 
 | Key | Default | Description |
 |---|---|---|
-| `protection.blocked-commands` | built-in list | Extra command names to block for all game accounts. The built-in list (`/op`, `/deop`, `/fill`, `/clone`, `/setblock`, `/summon`, `/gamemode`, `/tp`, `/teleport`, `/give`, `/item`, `/execute`, `/effect`, `/attribute`, `/kill`, `/difficulty`, `/time`, `/weather`, `/gamerule`, `/worldborder`, `/stop`, `/reload`) always applies and cannot be removed here |
-| `protection.enforce-gamemode` | `true` | Force players back to Survival when a non-sanctioned gamemode change is detected |
+| `protection.enabled` | `true` | Master switch for the whole stack: command denial, gamemode guard, command block audit |
+| `protection.blocked-commands` | built-in list | Command names players may never run, op or not. The list ships with the full baseline in `config.yml`; if the key is deleted entirely the built-in baseline applies, an explicitly empty list disables the block. Aliases are resolved against the live command tree (one name covers its whole alias group), namespace prefixes are ignored when matching |
+| `protection.blocked-datapack-commands` | `function, schedule, datapack` | Commands that hand execution to datapack code — a function can carry any blocked command inside, so its invocation paths are denied for players too |
+| `protection.enforce-gamemode` | `true` | Non-survival gamemodes are only allowed through sanctioned ServerCore flows (guest sessions, `/spec`, the override registry); everything else is cancelled and drifted modes are reverted by a periodic sweep |
+| `protection.gamemode-sweep-interval-seconds` | `30` | How often the drift sweep runs; `0` = off |
+| `protection.command-block-audit-interval-seconds` | `600` | How often loaded chunks are scanned for command blocks carrying a denied command (no execution event exists for blocks); `0` = audit off. Chunk load events are always audited |
+| `protection.command-block-neutralize` | `false` | Clear a denied command from the block itself, not only log it |
+| `protection.hide-from-tab-complete` | `true` | Strip denied commands from the client command list (tab completion) — display only, enforcement happens at execution time |
+
+### luckperms.fallback
+
+Permissions live in LuckPerms (soft-depend). When LuckPerms is installed on the server, everything in this section is ignored — groups and nodes are managed through LuckPerms itself. The section is only read without LuckPerms: a static, config-driven stand-in so the plugin still boots and admins keep access. It is never a replacement for real group management.
+
+| Key | Default | Description |
+|---|---|---|
+| `luckperms.fallback.default-group` | `default` | Group handed to every player the static map knows nothing about |
+| `luckperms.fallback.groups` | — | Static group overrides, `uuid: group name` (rank ordering only) |
+| `luckperms.fallback.permissions.everyone` | `[]` | Nodes granted to every player |
+| `luckperms.fallback.permissions.players` | — | Per-player nodes: exact nodes or prefix wildcards (`servercore.*`) |
+
+### flectonepulse
+
+FlectonePulse is the moderation and chat authority on this server; ServerCore never issues bans/mutes/warns/kicks, never formats chat and never ships prefixes — it only reads the public FlectonePulse API and consults punishment state when a decision needs it. FlectonePulse must be installed for any of this to be active.
+
+| Key | Default | Description |
+|---|---|---|
+| `flectonepulse.disable-tg` | `true` | De-duplication: FlectonePulse ships its own Telegram module, and when that module is active it is the one announcing events — ServerCore then keeps its ops notifications out of Telegram so nothing is announced twice. `false` = ServerCore announces regardless |
+| `flectonepulse.punishment-cache-ttl-seconds` | `30` | How long a punishment lookup answer stays cached; invalidated early by FlectonePulse player events, so this is just the safety net |
+
+### ops
+
+Ops knobs: self-update from GitHub releases, scheduled restarts, and the Pterodactyl panel integration. Secrets never go in this file — the panel API key and the GitHub token are read from the environment variables named below.
+
+| Key | Default | Description |
+|---|---|---|
+| `ops.update.enabled` | `true` | Self-update from GitHub releases (tags `build-*`) |
+| `ops.update.repo` | `bejiihiu/ServerCore` | Owner/repo to poll for the latest `build-*` release |
+| `ops.update.check-interval-minutes` | `30` | How often to check |
+| `ops.update.auto-restart` | `true` | Restart automatically after a verified swap; `false` = install and wait for a manual/scheduled restart |
+| `ops.update.github-token-env` | `GITHUB_TOKEN` | Env var holding a GitHub token (optional, lifts the API rate limit) |
+| `ops.restart.pterodactyl.panel-url` | — | Base url, e.g. `https://panel.example.com`. All three pterodactyl values empty = feature off; restarts then fall back to a console `stop` (which only acts like a restart when the panel has AUTO-RESTART enabled) |
+| `ops.restart.pterodactyl.server-id` | — | Identifier of this server in the panel (the short id from the url) |
+| `ops.restart.pterodactyl.api-key-env` | `PTERO_API_KEY` | Env var with a Pterodactyl **client** API key (`ptlc_…`) |
+| `ops.restart.daily-times` | `["05:00"]` | Daily restart times, wall clock `hh:mm` |
+| `ops.restart.grace-seconds` | `60` | Seconds of in-game warning (title + actionbar countdown) before kick |
+| `ops.restart.locale` | `ru` | Player-facing texts: `ru` / `en` |
+| `ops.restart.timezone` | `Europe/Moscow` | Timezone for `daily-times` and logs (any Java zone id) |
 
 ### placeholders
 
@@ -141,9 +245,21 @@ Provided placeholders (read-only, fed by websocket events and player lifecycle):
 | `%servercore_last_seen%` | Relative time of the last join/quit |
 | `%servercore_session_duration%` | Live session time of an online player |
 
+## Plugin commands
+
+| Command | Access | Description |
+|---|---|---|
+| `/spec` | `spec.permission.*` policy (LuckPerms groups or the standalone node) | Leave the current observation session |
+| `/spec <player>` | same | Start a hidden observation session on a player; tab completion suggests online names |
+| `/servercore groups <player>` | `servercore.admin` (console always allowed) | Debug output listing a player's groups from the active permission source |
+| `/servercore deop-all` | `servercore.admin` (console always allowed) | Remove operator status from every account holding it |
+| `/link` | guests | Not a registered command — a guest typing `/link` gets the registration prompt in chat instead of "unknown command" |
+
+The Telegram bot's command set is separate and lives entirely in the backend: `/start`, `/status`, `/application`, `/myapplication`, `/cancel`, `/language`, `/help`, plus the admin-only `/stats` (restricted to `ADMIN_TELEGRAM_IDS`).
+
 ## Configuration principles
 
 - **Fail closed.** If the backend is unreachable, new logins are refused — never auto-approved.
 - **Secrets stay out of the repo.** The `backend.secret` and all tokens exist only on the hosts that need them.
 - **Least privilege.** Plugin permissions mirror LuckPerms groups; nothing is granted "just in case".
-- **Restart-safe.** Guest snapshots and session state are persisted in MongoDB and survive both server restarts and backend outages.
+- **Restart-safe.** Guest snapshots are persisted by the plugin locally (and mirrored to the backend), and session state lives in MongoDB — both survive restarts and backend outages.

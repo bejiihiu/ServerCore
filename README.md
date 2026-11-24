@@ -18,6 +18,7 @@ ServerCore is the infrastructure behind a closed-community Minecraft Survival se
 - **Cheat clients get less.** An anti-ESP layer controls what each individual client sees about every other player, down to per-viewer disguises and synthetic attributes.
 - **Admins can watch without being seen.** A hidden observation command lets staff follow a player invisibly, with a read-only live inventory view, fully audit-logged.
 - **The server is locked down.** Dangerous commands are blocked for everyone, OP is never used for day-to-day administration, and gamemode changes outside sanctioned scenarios are reverted.
+- **Server upkeep is built in.** The plugin self-updates from GitHub releases, schedules daily restarts (optionally through the Pterodactyl panel), and reports its live state — players, TPS, active observation sessions — to the backend and the bot's `/stats`.
 
 It is deliberately *not* a generic "everything-core" plugin. Moderation and chat stay with [FlectonePulse](https://github.com/FlectonePulse/FlectonePulse), permissions stay with [LuckPerms](https://luckperms.net/), and ServerCore does the rest without duplicating either.
 
@@ -30,7 +31,7 @@ Two independent applications — a Bun/TypeScript backend with a Telegram bot, a
                     |
                 grammY bot
                     |
-             Fastify backend
+             Bun backend
                     |
           application services
                     |
@@ -58,7 +59,7 @@ Two independent applications — a Bun/TypeScript backend with a Telegram bot, a
 | Component | Stack | Responsibility |
 |---|---|---|
 | Backend | Bun, TypeScript, Fastify, grammY, Zod, Pino | Telegram bot, admission, voting, account lifecycle, auth tokens, notifications, data storage |
-| Plugin | Kotlin, Java 25, PacketEvents | Guest mode, auth enforcement, anti-ESP, hidden observation, command protection, session tracking |
+| Plugin | Kotlin, Java 25, PacketEvents | Guest mode, auth enforcement, anti-ESP, hidden observation, command protection, session tracking, self-update and restarts |
 | Database | MongoDB + Mongoose | All persistent data: accounts, applications, votes, sessions, snapshots, audit logs |
 | Transport | WebSocket (WSS) | The single channel between backend and plugin, signed and replay-protected |
 | Integrations | FlectonePulse, LuckPerms, PlaceholderAPI | Chat & moderation, permissions, public status placeholders |
@@ -81,7 +82,7 @@ Installation is done from Releases only — do not build from source unless you 
 3. **Configure the backend environment** — copy the provided example env file next to the backend and fill in the values. Every variable is documented in [docs/configuration.md](docs/configuration.md).
 4. **Set up MongoDB.** Provision a standalone or replica-set instance, create a database for ServerCore, and put its connection string into the backend environment. Recommended indexes are created automatically on first start.
 5. **Create the Telegram bot** via [@BotFather](https://t.me/BotFather): `/newbot`, save the token, and disable privacy mode (`/setprivacy` → Disable) so the bot can confirm group joins.
-6. **Prepare the Folia server.** Install [FlectonePulse](https://github.com/FlectonePulse/FlectonePulse) and [LuckPerms](https://luckperms.net/) if you want the full feature set, make sure no game accounts hold OP, and start the server once so the plugin generates its configuration.
+6. **Prepare the Folia server.** Install [PacketEvents](https://packetevents.com/) (required — the packet layer depends on it), plus [FlectonePulse](https://github.com/FlectonePulse/FlectonePulse) and [LuckPerms](https://luckperms.net/) if you want the full feature set. Make sure no game accounts hold OP, and start the server once so the plugin generates its configuration.
 7. **Place the plugin configuration.** Edit `plugins/ServerCore/config.yml` on the server — backend URL, server secret, guest mode and anti-ESP tuning live there. All keys are documented in [docs/configuration.md](docs/configuration.md).
 
 A detailed, step-by-step walkthrough with real configuration examples lives in [docs/installation.md](docs/installation.md).

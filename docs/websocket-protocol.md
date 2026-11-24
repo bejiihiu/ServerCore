@@ -6,11 +6,11 @@ The WebSocket channel is the only transport between the backend and the Minecraf
 
 - **WSS only.** Connections ride TLS; plaintext upgrades are rejected.
 - **Per-server secret.** Each registered Minecraft server has its own HMAC secret, configured identically on both ends.
-- **Handshake authentication.** The plugin's first frame is a `SERVER_STATUS` (hello) message carrying the server identity, a timestamp and a nonce. The backend verifies the HMAC signature over the frame body before accepting anything else.
-- **Message signing.** Critical messages (auth decisions, commands, state changes) carry an HMAC signature computed over the serialized payload plus timestamp plus nonce.
-- **Replay protection.** Timestamps must fall within a tolerance window; nonces are tracked and duplicates rejected.
-- **Schema validation.** Every inbound message is validated against its type's schema — Zod on the backend, typed DTOs with kotlinx.serialization on the plugin.
-- **Size limit.** Oversized frames are rejected outright (`WS_MAX_PAYLOAD_BYTES`).
+- **Handshake authentication.** Connection auth happens **before the upgrade**: the plugin appends `?server=<id>&ts=<ms>&nonce=<n>&sig=<hmac>` to the upgrade request, and the backend verifies the HMAC over `server|ts|nonce` before the socket ever exists. A stale timestamp or a replayed nonce is rejected outright. Legacy `SERVER_HELLO` frames after an upgrade are refused.
+- **Message signing.** Every frame in both directions carries an HMAC signature computed over the canonical json of the envelope (id, type, timestamp, payload) minus the hmac field.
+- **Replay protection.** Timestamps must fall within a tolerance window; per-frame envelope ids are tracked and duplicates are re-acked but never reprocessed.
+- **Schema validation.** Every inbound message is validated against its type's schema — Zod on the backend, typed DTOs with kotlinx.serialization on the plugin. A type an old build does not know decodes to a raw passthrough instead of killing the connection.
+- **Size limit.** Oversized frames are rejected outright (`WS_MAX_PACKET_BYTES`, default 262144).
 
 ## Message envelope
 
@@ -35,9 +35,9 @@ The `hmac` is computed over the **canonical json** of the envelope without the h
 
 | Type | Direction | Purpose |
 |---|---|---|
-| `SERVER_STATUS` | plugin → backend | Initial hello and registration; carries server identity, version, current load. The payload also carries an optional `state` — the ops lifecycle: `STARTING`, `RUNNING`, `RESTARTING`, `STOPPING`, `OFFLINE`, `UPDATE_READY`. Backend fans these out to telegram (users + admins). |
-| `SERVER_HEARTBEAT` | plugin → backend | Periodic liveness and metrics snapshot; carries optional `activeSpecSessions` from the plugin's own registry, surfaced to admins in `/stats` |
-| `SERVER_STATUS` (response) | backend → plugin | Registration acknowledgement, expected heartbeat cadence |
+| `SERVER_STATUS` | plugin → backend | Registration and status pushes; carries `onlinePlayers`/`maxPlayers`, optional `tps`, `version`, and the ops lifecycle `state` — `STARTING`, `RUNNING`, `RESTARTING`, `STOPPING`, `OFFLINE`, `UPDATE_READY`. Optional `activeSpecSessions` comes from the plugin's own spec registry and surfaces to admins in `/stats`; optional `telegramSuppressed` tells the backend that FlectonePulse's own Telegram module is announcing right now, so the bot stays quiet for this event |
+| `SERVER_HEARTBEAT` | plugin → backend | Periodic liveness and metrics snapshot; carries optional `activeSpecSessions`. Heartbeats are deliberately ACK-expected — the ack is the plugin's read-side liveness signal |
+| `SERVER_READY` | backend → plugin | Registration acknowledgement carrying the expected heartbeat cadence (`heartbeatIntervalMs`, `heartbeatTimeoutMs`). Defined in the protocol but **not emitted yet** — today the ack of the registration `SERVER_STATUS` is the effective "you are registered" signal |
 
 ### Player presence
 
@@ -111,32 +111,37 @@ The `hmac` is computed over the **canonical json** of the envelope without the h
 
 Semantics:
 
-- The plugin never fetches locale files itself; there is no HTTP path. The backend renders the current canonical content (hosted on GitHub) and pushes it to every connected server.
+- The plugin never fetches locale files itself; there is no HTTP path. The intended backend flow renders the current canonical content (hosted on GitHub) and pushes it to every connected server.
 - Pushes are **full-file**: the plugin replaces its whole locale store for that language. Partial merges are not attempted.
 - The plugin validates the payload (yaml parses, locale matches the canonical tag, store is non-empty) before swapping the live store atomically; a rejected push leaves the running locale untouched and is reported back with a `reason`.
 - On success the plugin persists the file to its data folder; the persisted file wins over the bundled seed on boot, so locale state survives restarts. After a restart the revision is reported as unknown, and the backend may re-push the current revision.
 - Re-delivery of the same `revision` is safe: the plugin re-parses and re-applies it idempotently.
+
+> **Implementation note.** The plugin side of this exchange is fully implemented and live (`LOCALE_PUSH` is accepted and answered with `LOCALE_ACK`). The backend currently does **not** originate `LOCALE_PUSH` frames — the GitHub-based distribution flow has no sender yet, so in practice the plugin runs on its bundled/editable locale files.
 
 ## Handshake flow
 
 ```text
 plugin                              backend
   | --- WS connect (WSS) -----------> |
-  |      ?server=<id>&ts=<ms>&nonce=<n>&sig=<hmac>
+  |      /ws?server=<id>&ts=<ms>&nonce=<n>&sig=<hmac>
   |                                  verifies hmac over server|ts|nonce
   |                                  BEFORE upgrade (replay-guarded nonce)
-  | --- SERVER_STATUS (hello) -----> |  identity + current load
-  | <--- ACK ----------------------- |
-  | --- SERVER_HEARTBEAT (periodic) ->|
+  | <--- 101 upgrade accepted ------- |   socket now exists
+  | --- SERVER_STATUS (register) ---> |  identity + current load + ops state
+  | <--- ACK ------------------------ |
+  | --- SERVER_HEARTBEAT (periodic) ->|  acked by the backend
 ```
 
-Until the handshake is acknowledged, the backend ignores every other message type from that connection.
+The handshake has no in-band hello: the query-string signature is the whole authentication, and a `SERVER_HELLO` frame arriving after the upgrade is refused as a downgrade attempt. `SERVER_READY` exists in the protocol but is not emitted yet; the ack of the registration `SERVER_STATUS` is the effective registration signal.
+
+Until the connection passes the pre-upgrade handshake, the backend never even creates the socket — there is no unauthenticated frame window to exploit.
 
 ## Heartbeat and liveness
 
-- The plugin sends `SERVER_HEARTBEAT` on a fixed cadence (default 15 s).
+- The plugin sends `SERVER_HEARTBEAT` on a fixed cadence (default 15 s) and expects an ack for each one.
 - The backend tracks last-seen per connection and flags stale servers.
-- Missed heartbeats eventually close the connection from the backend side.
+- The plugin runs the mirror check: no inbound frame for `backend.liveness-timeout-milliseconds` on a "connected" socket is treated as a half-open link and forces a reconnect.
 
 ## Reconnect semantics
 
@@ -144,8 +149,8 @@ Disconnections are expected and handled on both sides:
 
 1. The plugin reconnects with **exponential backoff**, starting at `backend.reconnect.initial-delay-seconds` and capped at `backend.reconnect.max-delay-seconds`.
 2. After a successful reconnect, the plugin re-handshakes and **reconciles state** — live sessions are re-announced so both sides agree on reality.
-3. Events that must not be lost are queued in a durable local outbox while the connection is down and replayed once the connection returns, preserving order per player.
-4. Command handling is **idempotent**: a replayed command must not produce a duplicated game effect; message IDs allow the receiver to drop duplicates.
+3. Events are classified by durability: heartbeats/acks are stale-by-definition and dropped on a blip; presence, status and spec events are queued in memory; guest lifecycle frames (with snapshots) are **durable** and parked on disk in a bounded outbox (`backend.outbox-max-entries`), replayed once the connection returns, preserving order.
+4. Redelivery is safe on both ends: the plugin remembers processed backend pushes for `backend.dedupe-ttl-milliseconds` and acks-but-ignores duplicates; the backend re-acks replayed frames without reprocessing them.
 
 ## Failure posture
 
