@@ -156,6 +156,25 @@ class GatewayClientResilienceTest {
     }
 
     @Test
+    fun `an ack retires the parked frame even when it is not in flight`() {
+        // regression: a retry tick used to remove the in-flight entry before
+        // re-adding it, and an ack landing in that window found nothing to
+        // remove, so the durable copy was never unparked and replayed on
+        // every reconnect forever. the ack is authoritative either way.
+        val h = harness()
+        h.client.sendRaw("guestfrm003", "GUEST_STARTED", h.guestPayload("guest-c"), null)
+        assertEquals(1, h.outbox.size())
+
+        // frame is parked but never sent, so no in-flight entry exists; the
+        // ack must still retire the parked copy
+        val socket = FakeWebSocket()
+        h.client.attachForTest(socket)
+        val ack = h.backendFrame(MessageType.ACK, Payload.Ack("guestfrm003"), "ackmsg00003")
+        h.client.onText(socket, ack, true)
+        assertEquals(0, h.outbox.size())
+    }
+
+    @Test
     fun `presence frames queue in memory, heartbeat frames are not parked at all`() {
         val h = harness()
         h.client.send(MessageType.PLAYER_JOINED, Payload.PlayerJoined("11111111-1111-4111-8111-111111111111", "steve"))

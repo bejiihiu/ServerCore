@@ -5,6 +5,7 @@ import java.net.URLEncoder
 import java.net.http.HttpClient
 import java.net.http.WebSocket
 import java.nio.charset.StandardCharsets
+import java.time.Duration
 import java.util.ArrayDeque
 import java.util.concurrent.CompletionStage
 import java.util.concurrent.ConcurrentHashMap
@@ -128,7 +129,12 @@ class GatewayClient(
     private val now: () -> Long = { System.currentTimeMillis() },
 ) : WebSocket.Listener {
     private val codec = EnvelopeCodec(config.secret)
-    private val httpClient: HttpClient = HttpClient.newHttpClient()
+    private val httpClient: HttpClient = HttpClient.newBuilder()
+        // a hung tcp connect must die on its own, otherwise join() below waits
+        // forever and the reconnect loop stalls with no watchdog rescue (the
+        // liveness check only runs while connected=true)
+        .connectTimeout(Duration.ofSeconds(10))
+        .build()
     private val reconnectPolicy = ReconnectPolicy(config.reconnectInitialMs, config.reconnectMaxMs)
 
     private val webSocketRef = AtomicReference<WebSocket?>(null)
@@ -288,6 +294,9 @@ class GatewayClient(
         if (shuttingDown.get()) return
         try {
             val socket = httpClient.newWebSocketBuilder()
+                // same story for the ws handshake itself: bound it or a dead
+                // backend can freeze a scheduler thread indefinitely
+                .connectTimeout(java.time.Duration.ofSeconds(10))
                 .buildAsync(buildHandshakeUri(), this)
                 .join()
             webSocketRef.set(socket)
@@ -336,7 +345,11 @@ class GatewayClient(
         val t = now()
         for ((id, pending) in inFlight) {
             if (t < pending.deadline) continue
-            if (!inFlight.remove(id, pending)) continue
+            // the entry stays in the map for the retry itself: removing and
+            // re-adding it would open a window where an ack landing in between
+            // finds nothing to remove and the frame turns into an immortal
+            // zombie that re-parks forever. the ack thread wins the race by
+            // removing the entry first; we only take it out when parking.
             if (pending.attempts < config.ackMaxRetries) {
                 val socket = webSocketRef.get()
                 if (socket != null && connected.get()) {
@@ -345,12 +358,13 @@ class GatewayClient(
                     val retried = synchronized(sendLock) {
                         runCatching { socket.sendText(pending.frame.wire, true) }
                     }
-                    if (retried.isSuccess) inFlight[id] = pending
-                    else park(pending.frame, "retry send failed")
-                } else {
+                    if (!retried.isSuccess && inFlight.remove(id, pending)) {
+                        park(pending.frame, "retry send failed")
+                    }
+                } else if (inFlight.remove(id, pending)) {
                     park(pending.frame, "link gone before ack")
                 }
-            } else {
+            } else if (inFlight.remove(id, pending)) {
                 // bounded retries are over: durable frames park forever,
                 // the rest were best-effort anyway
                 park(pending.frame, "ack timeout after ${pending.attempts + 1} attempts")
@@ -429,9 +443,12 @@ class GatewayClient(
         when (envelope.type) {
             MessageType.ACK -> {
                 val acked = (envelope.payload as Payload.Ack).ackedId
-                inFlight.remove(acked)?.let { pending ->
-                    if (pending.frame.durability == Durability.DURABLE) durablePark.unpark(acked)
-                }
+                inFlight.remove(acked)
+                // retire the parked copy even when the in-flight entry is
+                // already gone (a concurrent retry tick removed it first) -
+                // otherwise an acked durable frame parks forever and replays
+                // on every reconnect
+                durablePark.unpark(acked)
             }
             MessageType.ERROR -> Unit // transport-level, nothing to do
             MessageType.SESSION_CHECK -> answerSessionCheck(webSocket, envelope)
