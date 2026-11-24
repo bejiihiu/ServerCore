@@ -1,11 +1,12 @@
 name: ServerCore
 version: ${version}
 main: kz.bejiihiu.servercore.ServerCorePlugin
-description: ${description}
+# quoted on purpose: the description is free text and a bare value with a
+# colon breaks yaml parsing, which kills plugin discovery before anything runs
+description: '${description}'
 api-version: '26.3'
 folia-supported: true
 load: POSTWORLD
-bootstrapper: kz.bejiihiu.servercore.boot.ServerCoreBootstrapper
 
 # packetevents must be up before us (its listeners hook the netty pipeline first).
 # flectonepulse and placeholderapi are soft pairs — moderation lives there, we
@@ -14,7 +15,9 @@ bootstrapper: kz.bejiihiu.servercore.boot.ServerCoreBootstrapper
 # back to the static config map); load-before so its api is present at enable.
 dependencies:
   server:
-    PacketEvents:
+    # the id must match packetevents' own plugin name exactly - paper resolves
+    # plugin dependencies case-sensitively, "PacketEvents" reads as missing
+    packetevents:
       load: BEFORE
       required: true
       join-classpath: true

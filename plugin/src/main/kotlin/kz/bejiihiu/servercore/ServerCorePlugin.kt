@@ -5,6 +5,7 @@ import kz.bejiihiu.servercore.boot.ConfigInstaller
 import kz.bejiihiu.servercore.boot.EspInstaller
 import kz.bejiihiu.servercore.boot.FlectonePulseInstaller
 import kz.bejiihiu.servercore.boot.GatewayInstaller
+import kz.bejiihiu.servercore.boot.GroupsDebugBasicCommand
 import kz.bejiihiu.servercore.boot.GuestInstaller
 import kz.bejiihiu.servercore.boot.I18nInstaller
 import kz.bejiihiu.servercore.boot.IntegrationInstaller
@@ -63,6 +64,12 @@ class ServerCorePlugin : JavaPlugin() {
 
     override fun onEnable() {
         saveDefaultConfig()
+
+        // registered here rather than from a bootstrapper: a command registered
+        // during bootstrap outlives a failed plugin load, and paper's help map
+        // then trips on the missing plugin instance and npes the whole server.
+        // an admin command does not need to be visible to datapack functions.
+        registerCommand("servercore", "servercore admin tools", emptyList<String>(), GroupsDebugBasicCommand())
 
         val ctx = PluginContext.create(this)
         this.ctx = ctx
