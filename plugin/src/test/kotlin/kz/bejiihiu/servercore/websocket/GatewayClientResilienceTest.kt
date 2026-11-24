@@ -324,4 +324,31 @@ class GatewayClientResilienceTest {
         assertFalse(h.client.sendRaw("rawmsg00001", "WARP_DRIVE", buildJsonObject { put("x", 1) }, null))
         assertEquals(0, h.outbox.size())
     }
+
+    @Test
+    fun `stop re-parks unacked durable frames and closes gracefully instead of aborting`() {
+        // regression: stop() used to abort the socket outright, discarding the
+        // pending writes and never parking the stranded in-flight frames - a
+        // GUEST_ENDED inside the ack window was lost for good on every restart
+        val h = harness()
+        val socket = FakeWebSocket()
+        h.client.attachForTest(socket)
+        h.client.onOpen(socket)
+
+        h.client.sendRaw("guestfrm009", "GUEST_ENDED", buildJsonObject {
+            put("minecraftUuid", "11111111-1111-4111-8111-111111111111")
+            put("sessionId", "guest-a")
+            put("reason", "LOGOUT")
+        }, null)
+        assertTrue(socket.sent.any { it.contains("GUEST_ENDED") })
+
+        h.client.stop()
+
+        // the stranded durable frame is back in the park for the next boot's
+        // replay, and the socket got a queued close (flush) rather than a bare
+        // abort
+        assertEquals(1, h.outbox.size())
+        assertEquals("GUEST_ENDED|guest-a", h.outbox.snapshot().single().key)
+        assertTrue(socket.closeRequested)
+    }
 }

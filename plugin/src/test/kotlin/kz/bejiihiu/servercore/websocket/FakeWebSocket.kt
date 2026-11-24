@@ -11,6 +11,7 @@ import java.util.concurrent.CompletableFuture
 class FakeWebSocket(private val failSends: Boolean = false) : WebSocket {
     val sent = mutableListOf<String>()
     var aborted = false
+    var closeRequested = false
 
     private fun completed(): CompletableFuture<WebSocket> = CompletableFuture.completedFuture(this)
 
@@ -23,7 +24,10 @@ class FakeWebSocket(private val failSends: Boolean = false) : WebSocket {
     override fun sendBinary(data: ByteBuffer, last: Boolean): CompletableFuture<WebSocket> = completed()
     override fun sendPing(message: ByteBuffer): CompletableFuture<WebSocket> = completed()
     override fun sendPong(message: ByteBuffer): CompletableFuture<WebSocket> = completed()
-    override fun sendClose(statusCode: Int, reason: String?): CompletableFuture<WebSocket> = completed()
+    override fun sendClose(statusCode: Int, reason: String?): CompletableFuture<WebSocket> {
+        closeRequested = true
+        return completed()
+    }
     override fun request(n: Long) {}
     override fun getSubprotocol(): String = ""
     override fun isOutputClosed(): Boolean = false

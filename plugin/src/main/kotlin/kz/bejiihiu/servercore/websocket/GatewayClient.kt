@@ -167,7 +167,25 @@ class GatewayClient(
 
     fun stop() {
         shuttingDown.set(true)
-        webSocketRef.getAndSet(null)?.abort()
+        val socket = webSocketRef.getAndSet(null)
+        if (socket != null) {
+            // whatever was sent but not acked yet goes back to the park, the
+            // abort below discards the socket's pending writes otherwise
+            val stranded = inFlight.values.map { it.frame }.sortedBy { it.enqueuedAt }
+            inFlight.clear()
+            stranded.filter { it.durability == Durability.DURABLE }.forEach { park(it, "shutdown before ack") }
+            // graceful close first: sendClose is queued behind the pending
+            // sends, so everything already written gets flushed before the
+            // close frame goes out. abort is the bounded fallback for a
+            // socket that never finishes flushing
+            val closed = runCatching { socket.sendClose(1000, null) }.isSuccess
+            if (closed) {
+                java.util.concurrent.CompletableFuture.delayedExecutor(500, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .execute { socket.abort() }
+            } else {
+                socket.abort()
+            }
+        }
         connected.set(false)
         durablePark.flushNow()
     }
