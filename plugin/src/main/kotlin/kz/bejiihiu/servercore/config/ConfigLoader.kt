@@ -20,8 +20,16 @@ object ConfigLoader {
         val url = config.getString("backend.url", "ws://127.0.0.1:8081/ws")!!.trim()
         val serverId = config.getString("backend.server-id", "game-1")!!.trim()
         val secret = config.getString("backend.secret", "")!!.trim()
-        val reconnectInitial = config.getLong("backend.reconnect-initial-seconds", 1L) * 1000
-        val reconnectMax = config.getLong("backend.reconnect-max-seconds", 60L) * 1000
+        // the shipped file nests these under backend.reconnect.*; the old flat
+        // keys keep working for configs written before the section existed
+        val reconnectInitial = (
+            config.getLong("backend.reconnect.initial-delay-seconds", -1L).takeIf { it >= 0 }
+                ?: config.getLong("backend.reconnect-initial-seconds", 2L)
+            ) * 1000
+        val reconnectMax = (
+            config.getLong("backend.reconnect.max-delay-seconds", -1L).takeIf { it >= 0 }
+                ?: config.getLong("backend.reconnect-max-seconds", 120L)
+            ) * 1000
         val heartbeat = config.getLong("backend.heartbeat-interval-seconds", 15L) * 1000
         val ackTimeout = config.getLong("backend.ack-timeout-milliseconds", 10_000L)
         val ackMaxRetries = config.getInt("backend.ack-max-retries", 2)

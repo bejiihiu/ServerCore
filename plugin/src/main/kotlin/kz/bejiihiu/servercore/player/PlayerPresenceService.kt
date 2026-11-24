@@ -40,8 +40,14 @@ class PlayerPresenceService(
 
     fun onlineCount(): Int = online.size
 
-    /** periodic SERVER_HEARTBEAT on the async scheduler: no world access involved */
-    fun startHeartbeat() {
+    /**
+     * periodic SERVER_HEARTBEAT on the async scheduler: no world access involved.
+     * [intervalSeconds] comes from the gateway config (backend.heartbeat-interval-seconds);
+     * it must stay below the liveness timeout or the watchdog starts killing
+     * healthy links, so anything below a second clamps to one
+     */
+    fun startHeartbeat(intervalSeconds: Long = 15) {
+        val period = intervalSeconds.coerceAtLeast(1)
         plugin.server.asyncScheduler.runAtFixedRate(
             plugin,
             { _ ->
@@ -51,7 +57,7 @@ class PlayerPresenceService(
                 )
             },
             1,
-            15,
+            period,
             TimeUnit.SECONDS,
         )
     }

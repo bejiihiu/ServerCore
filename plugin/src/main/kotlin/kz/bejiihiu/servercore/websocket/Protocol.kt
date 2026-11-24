@@ -81,6 +81,12 @@ sealed interface Payload {
         val maxPlayers: Int,
         val version: String,
         val activeSpecSessions: Int? = null,
+        /** ops lifecycle state name, see kz.bejiihiu.servercore.ops.ServerState */
+        val state: String? = null,
+        /** human-readable detail for the state, e.g. a restart reason */
+        val detail: String? = null,
+        /** true = fp's telegram module owns announcements right now, backend bot stays quiet */
+        val telegramSuppressed: Boolean? = null,
     ) : Payload
 
     data class ServerHeartbeat(
@@ -228,6 +234,12 @@ class EnvelopeCodec(private val secret: String) {
     private fun JsonObject.long(key: String): Long? =
         (this[key] as? JsonPrimitive)?.content?.toLongOrNull()
 
+    private fun JsonObject.int(key: String): Int? =
+        (this[key] as? JsonPrimitive)?.content?.toIntOrNull()
+
+    private fun JsonObject.bool(key: String): Boolean? =
+        (this[key] as? JsonPrimitive)?.content?.toBooleanStrictOrNull()
+
     /** payload as a json object; also the relay format for the ws layer */
     fun payloadAsJson(payload: Payload): JsonElement = when (payload) {
         is Payload.PlayerJoined -> buildJsonObject {
@@ -243,6 +255,9 @@ class EnvelopeCodec(private val secret: String) {
             put("maxPlayers", payload.maxPlayers)
             put("version", payload.version)
             payload.activeSpecSessions?.let { put("activeSpecSessions", it) }
+            payload.state?.let { put("state", it) }
+            payload.detail?.let { put("detail", it) }
+            payload.telegramSuppressed?.let { put("telegramSuppressed", it) }
         }
         is Payload.ServerHeartbeat -> buildJsonObject {
             put("onlinePlayers", payload.onlinePlayers)
@@ -308,6 +323,10 @@ class EnvelopeCodec(private val secret: String) {
                 obj.intOrThrow("onlinePlayers"),
                 obj.intOrThrow("maxPlayers"),
                 obj.stringOrThrow("version"),
+                obj.int("activeSpecSessions"),
+                obj.string("state"),
+                obj.string("detail"),
+                obj.bool("telegramSuppressed"),
             )
             MessageType.SERVER_HEARTBEAT -> Payload.ServerHeartbeat(
                 obj.intOrThrow("onlinePlayers"),
