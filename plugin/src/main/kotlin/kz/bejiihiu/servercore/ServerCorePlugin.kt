@@ -62,6 +62,7 @@ import kz.bejiihiu.servercore.sync.PacketStateListener
 import kz.bejiihiu.servercore.sync.PacketStateSync
 import kz.bejiihiu.servercore.sync.SyncReconciler
 import kz.bejiihiu.servercore.sync.VanillaOnlyResyncExecutor
+import kz.bejiihiu.servercore.ws.OpsStatusSink
 import kz.bejiihiu.servercore.spectator.InventoryViewerService
 import kz.bejiihiu.servercore.spectator.ObserverHider
 import kz.bejiihiu.servercore.spectator.SpecObserverConfig
@@ -328,6 +329,13 @@ class ServerCorePlugin : JavaPlugin() {
         )
         wsGateway = client
         gatewayLink = GatewayLink(client)
+
+        // ops state frames ride the same link: no sink registered meant every
+        // opsBus.publish (STARTING/RUNNING/RESTARTING/...) only hit the log
+        // and the backend never saw a state at all
+        opsBus.register(OpsStatusSink { id, type, payload, correlationId ->
+            client.sendRaw(id, type, payload, correlationId)
+        })
 
         val presenceService = PlayerPresenceService(this, client, { specRegistry?.activeCount() ?: 0 })
         presence = presenceService

@@ -11,6 +11,7 @@ import java.util.UUID
 object MessageTypes {
     const val PLAYER_JOINED = "PLAYER_JOINED"
     const val PLAYER_LEFT = "PLAYER_LEFT"
+    const val SERVER_STATUS = "SERVER_STATUS"
     const val AUTH_REQUEST = "AUTH_REQUEST"
     const val AUTH_APPROVED = "AUTH_APPROVED"
     const val AUTH_REJECTED = "AUTH_REJECTED"
