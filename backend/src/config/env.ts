@@ -42,6 +42,13 @@ const envSchema = z.object({
 
   // one-time login/link token lifetime, must stay in the 60-90 band
   AUTH_REQUEST_TTL_SECONDS: z.coerce.number().int().min(60).max(90).default(75),
+
+  // atlas m0 housekeeping: audit/server_events lifetime and closed-session
+  // lifetime in days; the daily cleanup task enforces both
+  RETENTION_AUDIT_DAYS: z.coerce.number().int().min(7).default(90),
+  RETENTION_SESSION_DAYS: z.coerce.number().int().min(7).default(60),
+  // first cleanup pass after boot, minutes (then daily)
+  RETENTION_INITIAL_DELAY_MINUTES: z.coerce.number().int().min(1).default(5),
 })
 
 export type AppConfig = {
@@ -64,6 +71,9 @@ export type AppConfig = {
   wsReplayWindowMs: number
   wsNonceTtlMs: number
   authRequestTtlSeconds: number
+  retentionAuditDays: number
+  retentionSessionDays: number
+  retentionInitialDelayMinutes: number
 }
 
 export class ConfigError extends Error {
@@ -123,5 +133,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     wsReplayWindowMs: result.data.WS_REPLAY_WINDOW_MS,
     wsNonceTtlMs: result.data.WS_NONCE_TTL_MS,
     authRequestTtlSeconds: result.data.AUTH_REQUEST_TTL_SECONDS,
+    retentionAuditDays: result.data.RETENTION_AUDIT_DAYS,
+    retentionSessionDays: result.data.RETENTION_SESSION_DAYS,
+    retentionInitialDelayMinutes: result.data.RETENTION_INITIAL_DELAY_MINUTES,
   }
 }

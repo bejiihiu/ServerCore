@@ -21,6 +21,14 @@ import { AccountService } from "./modules/account/account-service.js"
 import { AccountDeletionService, BotApiTelegramGroupPort, GatewaySessionRevoker } from "./modules/account/deletion.js"
 import { GatewayOwnershipVerifier } from "./modules/account/session-probe.js"
 import { NotificationService, TelegramNotificationPort, LogOnlyNotificationPort } from "./modules/notification/notification-service.js"
+import { RetentionService } from "./modules/retention/retention-service.js"
+import {
+  MongoAuditLogPurge,
+  MongoGuestSnapshotPurge,
+  MongoServerEventPurge,
+  MongoSessionPurge,
+} from "./modules/retention/repository-mongo.js"
+import { MongoCollectionStats } from "./modules/retention/collection-stats.js"
 import { createBot } from "./bot/bot.js"
 import type { BotDeps } from "./bot/context.js"
 
@@ -104,6 +112,25 @@ async function main(): Promise<void> {
 
   registerAccountHandlers(handlers, { accounts, verifier, logger })
 
+  // retention: the backend owns the database, so it does the housekeeping.
+  // audit/server_events 90d, closed sessions 60d, orphaned guest snapshots —
+  // atlas m0 has 512mb and they add up fast
+  const retention = new RetentionService({
+    audit: new MongoAuditLogPurge(),
+    serverEvents: new MongoServerEventPurge(),
+    sessions: new MongoSessionPurge(),
+    snapshots: new MongoGuestSnapshotPurge(),
+    options: {
+      auditDays: config.retentionAuditDays,
+      sessionDays: config.retentionSessionDays,
+      initialDelayMs: config.retentionInitialDelayMinutes * 60_000,
+    },
+    logger,
+  })
+  const stopRetention = retention.start()
+
+  const collectionStats = mongo.ready ? new MongoCollectionStats() : null
+
   const app = await buildHttpServer({
     config,
     logger,
@@ -121,6 +148,8 @@ async function main(): Promise<void> {
     accounts,
     deletion,
     defaultLanguage: config.defaultLanguage,
+    adminChatIds: config.adminChatIds,
+    collectionStats,
   }
   const bot = createBot(config, logger, botDeps)
   if (bot !== null) {
@@ -138,6 +167,7 @@ async function main(): Promise<void> {
     logger.info({ signal }, "shutting down")
     try {
       await bot?.stop()
+      stopRetention()
       gateway.stop()
       await app.close()
       await mongo.disconnect()
