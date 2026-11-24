@@ -47,3 +47,15 @@ auth:
     title: "<red>В авторизации отказано</red>"
   expired:
     actionbar: "<yellow>Запрос на вход истёк, используйте <bold>/link</bold>, чтобы повторить</yellow>"
+spec:
+  started: "<green>Наблюдение начато: <white>{target}</white>. Для выхода введите /spec</green>"
+  exited: "<green>Наблюдение завершено, ваше состояние восстановлено</green>"
+  aborted: "<red>Наблюдение за {target} не удалось начать</red>"
+  disabled: "<red>Наблюдение отключено на этом сервере</red>"
+  no-target: "<red>Игрок {target} не в сети</red>"
+  self: "<red>Нельзя наблюдать за собой</red>"
+  busy-admin: "<red>Вы уже наблюдаете за {target}. Сначала завершите текущую сессию</red>"
+  busy-target: "<red>За игроком {target} уже ведётся наблюдение</red>"
+  not-observing: "<red>Вы сейчас ни за кем не наблюдаете</red>"
+  denied-permission: "<red>У вас нет доступа к режиму наблюдения</red>"
+  denied-level: "<red>Нельзя наблюдать за {target}: его уровень доступа выше вашего</red>"

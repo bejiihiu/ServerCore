@@ -47,3 +47,15 @@ auth:
     title: "<red>Authorization denied</red>"
   expired:
     actionbar: "<yellow>Login request expired, use <bold>/link</bold> to try again</yellow>"
+spec:
+  started: "<green>Observation started: <white>{target}</white>. Run /spec to exit</green>"
+  exited: "<green>Observation ended, your state has been restored</green>"
+  aborted: "<red>Observation of {target} could not start</red>"
+  disabled: "<red>Spectator observation is disabled on this server</red>"
+  no-target: "<red>Player {target} is not online</red>"
+  self: "<red>You cannot observe yourself</red>"
+  busy-admin: "<red>You are already observing {target}. Finish the current session first</red>"
+  busy-target: "<red>{target} is already under observation by another staff member</red>"
+  not-observing: "<red>You are not observing anyone</red>"
+  denied-permission: "<red>You do not have access to spectator observation</red>"
+  denied-level: "<red>You cannot observe {target}: their access level is higher than yours</red>"
