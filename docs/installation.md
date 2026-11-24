@@ -73,17 +73,15 @@ bun run start
 Every variable is documented in [configuration.md](configuration.md). A minimal production `.env` looks like this (values are placeholders — generate your own):
 
 ```env
-DATABASE_URI=mongodb://servercore:CHANGE_ME_STRONG_PASSWORD@127.0.0.1:27017/servercore
-DATABASE_NAME=servercore
+MONGODB_URI=mongodb://servercore:CHANGE_ME_STRONG_PASSWORD@127.0.0.1:27017/servercore
 BOT_TOKEN=123456789:AA-placeholder-from-botfather
-TELEGRAM_GROUP_ID=-1001234567890
-WS_HOST=0.0.0.0
-WS_PORT=8443
-WS_PATH=/gateway
+GROUP_CHAT_ID=-1001234567890
+WS_PORT=8081
+SERVERCORE_SERVER_CREDENTIALS={"game-1":"replace-with-long-random-secret"}
 LOG_LEVEL=info
 ```
 
-Generate the per-server HMAC secret yourself and distribute it to the plugin configuration — it is the shared trust anchor between backend and plugin:
+Generate the per-server HMAC secret yourself and put it into `SERVERCORE_SERVER_CREDENTIALS` — it is the shared trust anchor between backend and plugin, and the same value goes into the plugin configuration:
 
 ```bash
 openssl rand -hex 32
@@ -91,19 +89,28 @@ openssl rand -hex 32
 
 ## 4. Plugin on the Folia server
 
+### Server plugins
+
+| Plugin | Required | Role |
+|---|---|---|
+| [PacketEvents](https://packetevents.com/) | **yes** | The entire packet layer (anti-ESP, disguises, live inventory view) rides on it; ServerCore refuses to enable without it |
+| [LuckPerms](https://luckperms.net/) | recommended | Permissions authority. Without it the plugin falls back to a static, config-driven map (`luckperms.fallback.*`) — enough to boot, not a real group manager |
+| [PlaceholderAPI](https://wiki.placeholderapi.com/) | optional | Exposes the `%servercore_…%` placeholders to other plugins; without it they are simply absent |
+| [FlectonePulse](https://github.com/FlectonePulse/FlectonePulse) | optional | Chat and moderation authority. Without it ServerCore runs without punishment lookups and announces its own ops events to Telegram |
+
+### Steps
+
 1. Download the plugin jar from [GitHub Releases](https://github.com/bejiihiu/ServerCore/releases).
-2. Place it into your Folia server's `plugins/` directory.
-3. Start the server once. The plugin generates `plugins/ServerCore/config.yml` and disables itself until the backend section is filled in.
+2. Install PacketEvents (and the optional plugins you want) into `plugins/`.
+3. Start the server once. The plugin generates `plugins/ServerCore/config.yml` and stays inert for account checks until the backend section is filled in.
 4. Edit the configuration:
 
 ```yaml
 # plugins/ServerCore/config.yml
 backend:
-  url: "wss://mc-api.example.com:8443/gateway"
-  secret: "the-64-hex-char-secret-you-generated"
-  reconnect:
-    initial-delay-seconds: 2
-    max-delay-seconds: 120
+  url: "wss://mc-api.example.com:8081/ws"
+  server-id: "game-1"          # must match SERVERCORE_SERVER_CREDENTIALS on the backend
+  secret: "the-hex-secret-you-generated"
 
 guest:
   enabled: true
@@ -130,7 +137,7 @@ ServerCore assumes a locked-down server. Before going live:
   - `servercore.spec.other`
   - `servercore.guest.manage`
   - `servercore.account.manage`
-- Install [FlectonePulse](https://github.com/FlectonePulse/FlectonePulse) for chat and moderation. If its Telegram modules are enabled, configure them so notifications do not duplicate the ServerCore bot.
+- Install [FlectonePulse](https://github.com/FlectonePulse/FlectonePulse) for chat and moderation. If its Telegram module is enabled, ServerCore detects it and keeps its own ops announcements out of Telegram (`flectonepulse.disable-tg`, on by default) so nothing is announced twice.
 - Optionally install PlaceholderAPI to expose ServerCore's placeholders to other plugins.
 
 ## 6. Verifying the deployment
@@ -143,5 +150,5 @@ ServerCore assumes a locked-down server. Before going live:
 
 ## Updating
 
-- Plugin: stop the server, replace the jar in `plugins/`, start again. Snapshots and sessions survive restarts by design.
+- Plugin: either replace the jar manually (stop, swap, start — snapshots and sessions survive restarts by design) or let the built-in updater do it: `ops.update.*` polls GitHub releases for `build-*` tags and swaps the jar in place, restarting automatically when `ops.update.auto-restart` is on.
 - Backend: stop the process, replace the bundle (or `git pull`), keep `.env`, start again. Running instances reconnect automatically once the backend returns.

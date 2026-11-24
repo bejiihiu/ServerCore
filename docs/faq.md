@@ -18,11 +18,11 @@ No. There is no password anywhere. Every session is confirmed by a single tap on
 
 ### What can an unregistered player do?
 
-They spawn into Guest Mode: spectator flight, free exploration, and nothing else — no block interaction, no item use, no commands, no portals. Their original location is snapshotted and restored when they leave and come back. Registering happens through a personal Telegram deep link shown in chat.
+They spawn into Guest Mode: spectator flight, free exploration, and little else — no block interaction, no item use, no portals, and only a tiny command whitelist (`/help`, `/rules`, `/link`). Their original location is snapshotted and restored when they leave and come back. Registering happens through a personal Telegram deep link shown in chat.
 
 ### How does admission work?
 
-The new player fills out an application in the Telegram bot. A 3-hour vote opens to existing members. Approval needs both a quorum (at least 50 % of the frozen eligible-voter count) and more than 50 % of valid votes in favour. Approved players get a single-use invite to the private Telegram group; only after the join is confirmed does the account become fully active. A rejected player can reapply after 3 months.
+The new player fills out an application in the Telegram bot. A 3-hour vote opens to existing members. Approval needs both a quorum (strictly more than 50 % of the frozen eligible-voter count) and more than 50 % of valid votes in favour. Approved players get a single-use invite to the private Telegram group; only after the join is confirmed does the account become fully active. A rejected player can reapply after 3 months.
 
 ### What happens if the backend goes down?
 

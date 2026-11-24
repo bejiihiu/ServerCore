@@ -26,9 +26,9 @@ Only when everything passes does the plugin create a session and trigger an auth
 
 ```text
 player joins
-   -> plugin sends PLAYER_JOINED (with session id)
+   -> plugin sends PLAYER_JOINED
    -> backend validates account status
-   -> backend creates an auth request:
+   -> backend creates the session (its own session id) and an auth request:
         - one-time token, stored as a hash
         - 60-90 second TTL
         - bound to this exact session id
@@ -49,7 +49,7 @@ player joins
    -> owner taps Confirm
    -> backend verifies telegram id, uuid, session id, expiry
    -> request status -> APPROVED
-   -> AUTH_APPROVED sent to the plugin
+   -> AUTH_APPROVED sent to the plugin (session id echoed back)
    -> plugin validates the event, hops to the player's EntityScheduler,
       restores normal gameplay
 ```
