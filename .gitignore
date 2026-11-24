@@ -24,3 +24,9 @@ run
 notes/
 notes.md
 IDEA.md
+
+# backend (bun)
+backend/node_modules/
+backend/.env
+backend/dist/
+
