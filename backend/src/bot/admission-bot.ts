@@ -13,6 +13,7 @@ import type { NotificationService } from "../services/notification-service.js"
 import type { PluginPushPort } from "../services/ports.js"
 import { AdmissionNotifier } from "../services/admission-notifier.js"
 import { GrammYTelegramApi } from "./telegram-api.js"
+import { MS_PER_DAY } from "../utils/time.js"
 import { createApplicationConversation } from "./conversations/application-questionnaire.js"
 import { registerVoteCallbacks } from "./handlers/vote-callbacks.js"
 import { registerChatMemberHandler } from "./handlers/chat-member.js"
@@ -71,7 +72,7 @@ export function registerAdmissionFlows(
       windowMs: config.applicationStartWindowMs,
     }),
     clock: systemClock,
-    cooldownMs: 90 * 24 * 3_600_000, // three months, per the re-application rule
+    cooldownMs: 90 * MS_PER_DAY, // three months, per the re-application rule
     votingDurationMs: config.votingDurationMs,
     questions: config.questions,
     defaultLanguage: config.defaultLanguage,

@@ -1,5 +1,6 @@
 import type { ServerDirectory } from "../websocket/handlers/server-lifecycle.js"
 import type { Logger } from "../logging/logger.js"
+import { MS_PER_MINUTE, MS_PER_SECOND } from "../utils/time.js"
 
 /** minimal gateway surface the watcher needs */
 export type WatchedGateway = {
@@ -47,7 +48,7 @@ export class OfflineWatcher {
     this.now = deps.now ?? (() => Date.now())
   }
 
-  start(intervalMs = 30_000): void {
+  start(intervalMs = 30 * MS_PER_SECOND): void {
     if (this.timer !== null) return
     this.timer = setInterval(() => {
       try {
@@ -87,7 +88,7 @@ export class OfflineWatcher {
       if (silenceMs < this.thresholdMs) continue
       if (this.alerted.has(server.serverId)) continue
 
-      const minutesUnreachable = Math.floor(silenceMs / 60_000)
+      const minutesUnreachable = Math.floor(silenceMs / MS_PER_MINUTE)
       this.alerted.add(server.serverId)
       const alert: OfflineAlert = { serverId: server.serverId, minutesUnreachable, lastSeenAt: server.lastSeenAt }
       alerts.push(alert)

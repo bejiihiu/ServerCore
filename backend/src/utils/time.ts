@@ -4,6 +4,15 @@
  * host default.
  */
 
+/** the one timezone the backend renders and schedules in */
+export const MOSCOW_TZ = "Europe/Moscow"
+
+/** ms in one second/minute/hour/day — keeps duration math readable */
+export const MS_PER_SECOND = 1_000
+export const MS_PER_MINUTE = 60 * MS_PER_SECOND
+export const MS_PER_HOUR = 60 * MS_PER_MINUTE
+export const MS_PER_DAY = 24 * MS_PER_HOUR
+
 const PARTS_CACHE = new Map<string, Intl.DateTimeFormat>()
 
 function zonedFormatter(timeZone: string): Intl.DateTimeFormat {

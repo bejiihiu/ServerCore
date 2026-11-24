@@ -3,6 +3,9 @@
  * sole db owner, so it is also the sole janitor. every purge target is a
  * port implemented by mongo for real and by in-memory fakes in tests.
  */
+
+import { MS_PER_DAY, MS_PER_MINUTE } from "../../utils/time.js"
+
 export type RetentionReport = {
   auditLogsDeleted: number
   serverEventsDeleted: number
@@ -155,7 +158,7 @@ export class RetentionService {
 
   /** one full cleanup pass; every step is independent, one failure never blocks the rest */
   async runOnce(now = new Date()): Promise<RetentionReport> {
-    const day = 86_400_000
+    const day = MS_PER_DAY
     const cut = (days: number): Date => new Date(now.getTime() - days * day)
     const auditCutoff = cut(this.options.auditDays)
     const sessionCutoff = cut(this.options.sessionDays)
@@ -208,8 +211,8 @@ export class RetentionService {
   /** starts the daily cadence; returns a stop function */
   start(): () => void {
     if (this.timer !== null) return () => undefined
-    const interval = this.options.intervalMs ?? 86_400_000
-    const initialDelay = this.options.initialDelayMs ?? 60_000
+    const interval = this.options.intervalMs ?? MS_PER_DAY
+    const initialDelay = this.options.initialDelayMs ?? MS_PER_MINUTE
     const initial = setTimeout(() => {
       void this.runOnce().catch((err: unknown) => this.logger.warn({ err }, "retention run failed"))
       this.timer = setInterval(() => {

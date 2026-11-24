@@ -1,13 +1,12 @@
 import type { Api } from "grammy"
 import type { Logger } from "../../logging/logger.js"
 import { i18n } from "../../i18n/index.js"
-import type { Translator } from "../../bot/ui/text/index.js"
-import { bold, expandableQuote, joinLines } from "../../bot/ui/text/index.js"
+import { bold, createTranslator, expandableQuote, joinLines, type Translator } from "../../bot/ui/text/index.js"
 import { actionRow, callbackData, type InlineKeyboardMarkup } from "../../bot/ui/keyboards/index.js"
-import { createTranslator } from "../../bot/ui/text/index.js"
 import { editScreen, sendScreen } from "../../bot/ui/sending.js"
 import type { ScreenMessage } from "../../bot/ui/screens/types.js"
 import type { PromptRequest, PromptSender } from "./auth-service.js"
+import { MS_PER_MINUTE } from "../../utils/time.js"
 
 /** callback scheme <ns>:<action>:<arg>, see the bot-ui design doc */
 const CALLBACK_PREFIX = "auth"
@@ -38,7 +37,7 @@ export function rejectCallbackData(token: string): string {
 type SentPrompt = { chatId: string; messageId: number; sentAt: number }
 
 /** prompt locations older than this can never conclude (request ttl is <=90s) */
-const SENT_PROMPT_TTL_MS = 15 * 60_000
+const SENT_PROMPT_TTL_MS = 15 * MS_PER_MINUTE
 
 /**
  * telegram side of the auth flow: renders the confirmation prompt through the

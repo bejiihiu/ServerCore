@@ -1,4 +1,5 @@
 import { randomToken, sha256Hex } from "../utils/crypto.js"
+import { MS_PER_SECOND } from "../utils/time.js"
 
 /** link tokens are 16 chars of [A-Za-z0-9], as the deep-link format requires */
 export const LINK_TOKEN_LENGTH = 16
@@ -42,7 +43,7 @@ export class TokenService {
 
   constructor(store: TokenStore, ttlSeconds: number) {
     this.store = store
-    this.ttlMs = ttlSeconds * 1000
+    this.ttlMs = ttlSeconds * MS_PER_SECOND
   }
 
   /** creates a one-time token. meta travels with it (uuid, session, ...) */

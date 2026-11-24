@@ -10,6 +10,7 @@ import type {
 } from "./ports.js"
 import type { AdmissionNotifier } from "./admission-notifier.js"
 import { t } from "./i18n.js"
+import { MS_PER_HOUR } from "../utils/time.js"
 
 export type IssueInviteOutcome =
   | { ok: true; invite: GroupInviteInfo }
@@ -89,7 +90,7 @@ export class GroupService {
         application.telegramId,
         t(langUser, "group.inviteText", {
           url: link.url,
-          hours: Math.round(this.deps.inviteTtlMs / 3_600_000),
+          hours: Math.round(this.deps.inviteTtlMs / MS_PER_HOUR),
         }),
       )
       await this.deps.notifier.inviteIssued({

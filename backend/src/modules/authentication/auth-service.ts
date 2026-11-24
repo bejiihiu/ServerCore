@@ -1,4 +1,5 @@
 import { randomHex, randomToken, sha256Hex } from "../../utils/crypto.js"
+import { MS_PER_MINUTE, MS_PER_SECOND } from "../../utils/time.js"
 import { LINK_TOKEN_LENGTH, isValidLinkTokenFormat } from "../../services/token-service.js"
 import type { Logger } from "../../logging/logger.js"
 import { RateLimiter } from "../../utils/rate-limiter.js"
@@ -66,7 +67,7 @@ type QueuedPush = {
 }
 
 /** how long a queued backend->plugin push waits for the link to come back */
-const OUTBOX_GIVE_UP_MS = 10 * 60_000
+const OUTBOX_GIVE_UP_MS = 10 * MS_PER_MINUTE
 
 export type AuthSessionStats = {
   activeSessions: number
@@ -469,7 +470,7 @@ export class AuthenticationService {
     session: SessionRecord,
     now: number,
   ): Promise<AuthRequestRecord> {
-    const expiresAt = now + this.config.requestTtlSeconds * 1000
+    const expiresAt = now + this.config.requestTtlSeconds * MS_PER_SECOND
     for (let attempt = 0; attempt < MAX_TOKEN_ISSUE_ATTEMPTS; attempt += 1) {
       const token = randomToken(LINK_TOKEN_LENGTH)
       const record: AuthRequestRecord = {

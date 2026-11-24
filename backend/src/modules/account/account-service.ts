@@ -6,6 +6,7 @@ import { t, statusLabel, type Locale } from "../../services/i18n.js"
 import type { NotificationFanout } from "../notification/notification-port.js"
 import type { Logger } from "../../logging/logger.js"
 import { RateLimiter } from "../../utils/rate-limiter.js"
+import { MS_PER_MINUTE } from "../../utils/time.js"
 
 /** how a status change came about, mirrors the audit actor types we care about */
 export type StatusActor = "PLAYER" | "ADMIN" | "TELEGRAM" | "SYSTEM"
@@ -36,8 +37,8 @@ export type LinkOutcome =
   | { linked: false; reason: LinkFailureReason }
 
 const LINK_ATTEMPT_LIMIT = 5
-const LINK_ATTEMPT_WINDOW_MS = 10 * 60 * 1000
-const TOKEN_ISSUE_WINDOW_MS = 60 * 1000
+const LINK_ATTEMPT_WINDOW_MS = 10 * MS_PER_MINUTE
+const TOKEN_ISSUE_WINDOW_MS = MS_PER_MINUTE
 
 /**
  * the account lifecycle: get-or-create by uuid, telegram linking through
