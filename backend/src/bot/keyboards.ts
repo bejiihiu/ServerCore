@@ -39,8 +39,6 @@ export const CALLBACK_NAMESPACES = {
   auth: "login confirmation",
 } as const
 
-export type CallbackNamespace = keyof typeof CALLBACK_NAMESPACES
-
 /** prefix of a callback payload, or null when it carries no namespace */
 export function namespaceOf(data: string): string | null {
   const index = data.indexOf(":")

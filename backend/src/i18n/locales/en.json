@@ -66,7 +66,6 @@
   },
   "link": {
     "confirmTitle": "Link account",
-    "confirmBody": "Link this Minecraft account to the current Telegram account?",
     "confirmFact": "Minecraft: {{username}}",
     "confirmAside": "Only this Telegram account will be able to confirm logins and manage the account.",
     "progress": "Checking that you are in game on this account…",
