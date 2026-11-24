@@ -51,7 +51,8 @@ data class OpsConfig(val update: UpdateConfig, val restart: RestartConfig) {
             val pterodactyl = PterodactylConfig(
                 panelUrl = config.getString("ops.restart.pterodactyl.panel-url", "") ?: "",
                 serverId = config.getString("ops.restart.pterodactyl.server-id", "") ?: "",
-                apiKeyEnv = config.getString("ops.restart.pterodactyl.api-key-env", "") ?: "",
+                apiKeyEnv = config.getString("ops.restart.pterodactyl.api-key-env", "PTERO_API_KEY")
+                    ?: "PTERO_API_KEY",
             )
 
             val zone = try {
@@ -61,7 +62,15 @@ data class OpsConfig(val update: UpdateConfig, val restart: RestartConfig) {
                 ZoneId.of(DEFAULT_ZONE_ID)
             }
 
-            val times = (config.getStringList("ops.restart.daily-times"))
+            // a missing schedule key means the shipped default (one 05:00
+            // restart); an explicitly empty list still means "no daily restart"
+            val rawTimes = if (config.isList("ops.restart.daily-times")) {
+                config.getStringList("ops.restart.daily-times")
+            } else {
+                logger.warning("ops.restart.daily-times missing from config, using [05:00]")
+                listOf("05:00")
+            }
+            val times = rawTimes
                 .mapNotNull { raw ->
                     val parsed = RestartTime.parse(raw)
                     if (parsed == null) logger.warning("[ops] bad daily restart time '$raw', skipped")

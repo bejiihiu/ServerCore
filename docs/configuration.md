@@ -48,7 +48,7 @@ All variables come from `.env` (copy `.env.example` as the starting point). Ever
 | `APPLICATION_START_LIMIT` / `APPLICATION_START_WINDOW_MS` | no | `3` / `60000` | Rate limit on questionnaire starts per account |
 | `VOTE_BUTTON_ICONS_ENABLED` | no | `false` | Custom emoji icons on vote buttons (needs Premium on the bot owner) |
 | `VOTE_BUTTON_ICON_ACCEPT_ID` / `VOTE_BUTTON_ICON_REJECT_ID` | no | — | Custom emoji ids for the vote buttons |
-| `APPROVAL_MESSAGE_EFFECT_ID` | no | confetti | Message effect played on the approval notification |
+| `APPROVAL_MESSAGE_EFFECT_ID` | no | `5104841245759776310` (confetti) | Message effect played on the approval notification |
 
 ### Authentication
 
@@ -93,23 +93,25 @@ Secrets never belong in the repository or in logs — keep them only in the envi
 
 ## Plugin — config.yml
 
-Located at `plugins/ServerCore/config.yml`, generated on first start. The plugin stays inert until the `backend` section is filled in.
+Located at `plugins/ServerCore/config.yml`, generated on first start. The shipped file is intentionally incomplete in two keys: `backend.url` and `backend.secret` are empty, and the plugin refuses to enable until both are filled in. A boot with an unusable `backend` block logs `config error: …` and disables itself instead of running half-connected. Once the plugin is enabled, an unreachable backend degrades gracefully: new logins fail closed and guests keep working from local state.
 
 ### backend
 
 | Key | Default | Description |
 |---|---|---|
-| `backend.url` | — | Full WebSocket URL of the backend gateway, `wss://host:port/path` (`ws://` for local development; TLS terminates at the proxy) |
-| `backend.server-id` | `game-1` | Unique id of this game server; must match a key in the backend's `SERVERCORE_SERVER_CREDENTIALS` |
-| `backend.secret` | — | The per-server HMAC secret matching the same key on the backend |
+| `backend.url` | — (required) | Full WebSocket URL of the backend gateway, `wss://host:port/path` (`ws://` for local development; TLS terminates at the proxy). Must start with `ws://` or `wss://` |
+| `backend.server-id` | `game-1` | Unique id of this game server; must match a key in the backend's `SERVERCORE_SERVER_CREDENTIALS`. Allowed characters: `a-z 0-9 . _ -` |
+| `backend.secret` | — (required) | The per-server HMAC secret matching the same key on the backend. At least 32 characters (`openssl rand -hex 32`) |
 | `backend.reconnect.initial-delay-seconds` | `2` | First reconnect delay after a disconnect |
 | `backend.reconnect.max-delay-seconds` | `120` | Cap for exponential backoff |
-| `backend.heartbeat-interval-seconds` | `15` | Interval between heartbeat frames |
+| `backend.heartbeat-interval-seconds` | `15` | Interval between heartbeat frames; must be positive |
 | `backend.ack-timeout-milliseconds` | `10000` | How long an unacknowledged frame waits before the first retry |
 | `backend.ack-max-retries` | `2` | Retries after the first ack timeout; durable frames then park on disk until the link returns, the rest are dropped |
 | `backend.liveness-timeout-milliseconds` | `45000` | No inbound frame for this long on a "connected" socket = half-open link, forced reconnect |
 | `backend.dedupe-ttl-milliseconds` | `600000` | How long a processed backend push is remembered; a redelivered copy inside the window is acked but never applied twice |
 | `backend.outbox-max-entries` | `500` | Hard cap of the durable outbox file (guest lifecycle frames) |
+
+Configs written before the nested `backend.reconnect.*` section existed may still carry the flat `backend.reconnect-initial-seconds` and `backend.reconnect-max-seconds` keys. They remain honored as a fallback when the nested keys are absent; new installs should use the nested form.
 
 ### guest
 
@@ -154,7 +156,7 @@ Templates are MiniMessage with the plugin's theme tags only (`<primary>`, `<seco
 | `anti-esp.check-interval-ticks` | `10` | Base evaluation cadence per viewer; movement may trigger earlier re-evaluation |
 | `anti-esp.sneak-hides` | `true` | Players currently sneaking resolve to `HIDDEN` for observers without line of sight |
 | `anti-esp.disguise.enabled` | `true` | Replace hidden players with a per-viewer synthetic entity instead of removing them outright |
-| `anti-esp.disguise.mobs` | `zombie, skeleton, spider, cow, pig, sheep` | Candidate disguise types, chosen randomly per pair |
+| `anti-esp.disguise.mobs` | `zombie, skeleton, spider, cow, pig, sheep` | Candidate disguise types, chosen randomly per pair. Comma-separated Bukkit entity type names; unknown names are dropped with a log line, and an empty result falls back to the default set (a YAML list is ignored by the loader) |
 | `anti-esp.cache.ttl-ticks` | `40` | How long a line-of-sight result is reused before re-evaluation |
 
 ### spec (hidden observation)
@@ -248,6 +250,22 @@ Provided placeholders (read-only, fed by websocket events and player lifecycle):
 | `%servercore_telegram_linked%` | Whether the account is bound to a Telegram identity |
 | `%servercore_last_seen%` | Relative time of the last join/quit |
 | `%servercore_session_duration%` | Live session time of an online player |
+
+### Validation and clamping
+
+The config is validated once at boot. These problems abort the boot with a `config error: <what>` log line and disable the plugin (fix the value, restart):
+
+- `backend.url` empty or not `ws://` / `wss://`; `backend.server-id` outside `a-z 0-9 . _ -`; `backend.secret` shorter than 32 characters
+- `backend.heartbeat-interval-seconds`, `ack-timeout-milliseconds`, `liveness-timeout-milliseconds`, `dedupe-ttl-milliseconds`, `outbox-max-entries` not positive; `ack-max-retries` negative
+- `spec.live-inventory-push-milliseconds` outside `50–10000`; `spec.live-inventory-full-resync-seconds` below the push interval
+- `spec.audit.directory` empty or containing `..`
+
+Everything else degrades instead of failing the boot:
+
+- **Clamped** to a safe band: `anti-esp.max-distance` `8–128`, `check-interval-ticks` `1–200`, `cache.ttl-ticks` `1–2000`, `spec.hidden.trace-radius` `0.5–16`, `guest.resolve-timeout-milliseconds` `250–30000`, `session-limit` `1–100`, `reminder-interval-seconds` `10–3600`, `gamemode-sweep-seconds` `1–60`, `link-ttl-milliseconds` `5000–600000`, audit `retention-days`/`max-entries-per-session`/`queue-capacity` (below 1 / 1 / 16), `flectonepulse.punishment-cache-ttl-seconds` `1–3600`, `ops.restart.grace-seconds` `0–600`, `ops.update.check-interval-minutes` at least `1`
+- **Dropped with a log line**: unknown `anti-esp.disguise.mobs` names, malformed `ops.restart.daily-times` entries, non-UUID keys in `guest.local-accounts` / `luckperms.fallback.groups` / `luckperms.fallback.permissions.players`, blank group names
+- **Fallen back**: an unknown `ops.restart.timezone` becomes `Europe/Moscow`; a `spec.permission.fallback-level` that is not one of `spec.permission.levels` becomes the lowest listed level; an empty `guest.command-whitelist` becomes `help, rules, link`; a missing `ops.restart.daily-times` becomes `["05:00"]` (an explicit `[]` still means no scheduled restart)
+- **Ignored without side effects**: every optional plugin section (`luckperms`, `placeholders`, `flectonepulse`) may be missing entirely; `anti-esp.enabled: false` parks both the visibility engine and the packet layer, and `spec.enabled: false` simply skips the `/spec` stack. The plugin still boots.
 
 ## Plugin commands
 

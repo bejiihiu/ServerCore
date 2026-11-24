@@ -1,17 +1,27 @@
 # servercore plugin configuration
-# fill in backend.* to link up with the backend gateway; the plugin stays
-# inert for account checks until then, guests still work locally (fail closed)
+#
+# the backend link is required to boot: an unusable backend block is a boot
+# blocker (the plugin logs "config error: ..." and disables itself instead of
+# running half-connected). fill in backend.url and backend.secret before the
+# first start. once enabled, an unreachable backend degrades gracefully:
+# new logins fail closed, guests keep working from local state.
 
 backend:
   # full websocket url of the backend gateway, wss://host:port/path
   # ws:// for local, wss:// in production (tls terminates at the proxy)
   url: ""
   # unique id of this game server, mirrors SERVERCORE_SERVER_CREDENTIALS key
+  # allowed characters: a-z 0-9 . _ -
   server-id: "game-1"
-  # per-server hmac secret, must match SERVER_SECRET_<ID> on the backend.
-  # never commit the real value, keep it in the server environment
+  # per-server hmac secret: at least 32 characters, matching the value stored
+  # for this server id in the backend's SERVERCORE_SERVER_CREDENTIALS
+  # (openssl rand -hex 32). never commit the real value, keep it in the
+  # server environment
   secret: ""
-  # reconnect backoff: starts at initial, doubles up to max, with jitter
+  # reconnect backoff: starts at initial, doubles up to max, with jitter.
+  # older configs may carry the flat backend.reconnect-initial-seconds and
+  # backend.reconnect-max-seconds keys instead; they stay honored as a
+  # fallback when the nested keys below are absent
   reconnect:
     initial-delay-seconds: 2
     max-delay-seconds: 120
@@ -99,6 +109,8 @@ anti-esp:
   sneak-hides: true
   disguise:
     enabled: true
+    # comma-separated bukkit entity type names; unknown names are dropped and
+    # an empty result falls back to the default set. a yaml list is not read.
     mobs: zombie, skeleton, spider, cow, pig, sheep
   cache:
     ttl-ticks: 40
