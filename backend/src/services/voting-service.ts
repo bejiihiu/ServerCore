@@ -276,7 +276,7 @@ export class VotingService {
     )
   }
 
-  /** re-renders [Принять (n)] [Отклонить (m)] on the group vote message */
+  /** re-renders the accept (n) / reject (m) buttons on the group vote message */
   async refreshKeyboards(
     applicationId: string,
     counters: { votesFor: number; votesAgainst: number },

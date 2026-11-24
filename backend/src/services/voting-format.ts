@@ -16,7 +16,7 @@ export function parseVoteCallbackData(
 }
 
 /**
- * [Принять (n)] [Отклонить (m)] with live counts. accept is styled success,
+ * accept (n) / reject (m) with live counts. accept is styled success,
  * reject danger (bot api 9.4); optional custom emoji icons when the bot
  * owner has premium (config flag).
  */
