@@ -357,25 +357,7 @@ export class VotingService {
       // a downed link is fine — the plugin re-seeds its cache on reconnect
     }
 
-    if (outcome === "EXPIRED") {
-      await this.deps.telegram.sendUserMessage(
-        application.telegramId,
-        t(lang, "result.expiredToApplicant"),
-      )
-    } else if (outcome === "REJECTED") {
-      await this.deps.telegram.sendUserMessage(
-        application.telegramId,
-        t(lang, "result.rejectedToApplicant", { for: counts.votesFor, against: counts.votesAgainst }),
-      )
-    } else {
-      // the celebration gets a message effect (bot api 7.4) when configured
-      await this.deps.telegram.sendUserMessage(
-        application.telegramId,
-        t(lang, "result.approvedToApplicant", { for: counts.votesFor, against: counts.votesAgainst }),
-        undefined,
-        this.deps.approvalEffectId ? { effectId: this.deps.approvalEffectId } : undefined,
-      )
-    }
+    await this.notifyApplicant(application, outcome, counts, lang)
 
     await this.deps.audit.record({
       actorType: "SYSTEM",
@@ -397,6 +379,31 @@ export class VotingService {
       eligibleVoters: application.voting.eligibleVoters,
       quorumReached,
     }
+  }
+
+  /** dm to the applicant: wording (and the celebration effect) follows the outcome */
+  private async notifyApplicant(
+    application: ApplicationInfo,
+    outcome: VotingDecision["status"],
+    counts: { votesFor: number; votesAgainst: number },
+    lang: Lang,
+  ): Promise<void> {
+    const params = { for: counts.votesFor, against: counts.votesAgainst }
+    if (outcome === "EXPIRED") {
+      await this.deps.telegram.sendUserMessage(application.telegramId, t(lang, "result.expiredToApplicant"))
+      return
+    }
+    if (outcome === "REJECTED") {
+      await this.deps.telegram.sendUserMessage(application.telegramId, t(lang, "result.rejectedToApplicant", params))
+      return
+    }
+    // the approval celebration gets a message effect (bot api 7.4) when configured
+    await this.deps.telegram.sendUserMessage(
+      application.telegramId,
+      t(lang, "result.approvedToApplicant", params),
+      undefined,
+      this.deps.approvalEffectId ? { effectId: this.deps.approvalEffectId } : undefined,
+    )
   }
 
   /**
