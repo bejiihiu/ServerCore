@@ -29,7 +29,7 @@ import { LinkedTelegramRecipients } from "./services/recipients.js"
 import { NotificationService } from "./services/notification-service.js"
 import { GrammySender } from "./services/telegram-sender.js"
 import { OpsNotifier, eventForState } from "./services/ops-notifier.js"
-import type { PluginPushPort } from "./services/ports.js"
+import { applicationDecisionMessageType, type PluginPushPort } from "./services/ports.js"
 import { MongoStatsCounts } from "./services/stats-counts.js"
 import { OfflineWatcher } from "./services/offline-watcher.js"
 import { SessionCounters, StatsService } from "./services/runtime-stats.js"
@@ -280,7 +280,7 @@ async function main(): Promise<void> {
       broadcastToAll(
         gateway,
         logger,
-        outcome === "APPROVED" ? "APPLICATION_APPROVED" : "APPLICATION_REJECTED",
+        applicationDecisionMessageType(outcome),
         { applicationId: application.id, minecraftUuid: application.minecraftUuid },
       )
     },

@@ -137,6 +137,15 @@ export interface PluginPushPort {
   ): void
 }
 
+/** wire message type for one admission verdict; each outcome has its own frame */
+export type ApplicationDecisionMessageType = "APPLICATION_APPROVED" | "APPLICATION_REJECTED" | "APPLICATION_EXPIRED"
+
+export function applicationDecisionMessageType(outcome: "APPROVED" | "REJECTED" | "EXPIRED"): ApplicationDecisionMessageType {
+  if (outcome === "APPROVED") return "APPLICATION_APPROVED"
+  if (outcome === "EXPIRED") return "APPLICATION_EXPIRED"
+  return "APPLICATION_REJECTED"
+}
+
 export interface Clock {
   nowMs(): number
 }
