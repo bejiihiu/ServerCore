@@ -13,7 +13,7 @@ import type {
 import type { AdmissionNotifier } from "./admission-notifier.js"
 import { formatMoscowTime } from "./moscow-time.js"
 import { isDraftComplete, validateAnswer } from "./questionnaire.js"
-import type { RateLimiter } from "./rate-limiter.js"
+import type { RateLimiter } from "../utils/rate-limiter.js"
 import type { Clock, PluginPushPort } from "./ports.js"
 
 export type StartBlockReason =
@@ -132,7 +132,7 @@ export class ApplicationService {
     const existing = await this.deps.drafts.findByTelegramId(telegramId)
     if (existing) return { ok: true, draft: existing, resumed: true }
 
-    if (!this.deps.rateLimiter.tryAcquire(telegramId)) {
+    if (!this.deps.rateLimiter.tryAcquire(telegramId, this.deps.clock.nowMs())) {
       return { ok: false, reason: "RATE_LIMITED" }
     }
 

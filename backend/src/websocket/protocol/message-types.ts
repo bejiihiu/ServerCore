@@ -68,26 +68,6 @@ export function isMessageType(type: string): type is MessageType {
   return KNOWN_MESSAGE_TYPES.has(type)
 }
 
-/** types the backend pushes to the plugin, everything else originates plugin-side */
-export const BACKEND_TO_PLUGIN_TYPES: readonly MessageType[] = [
-  "AUTH_REQUEST",
-  "AUTH_APPROVED",
-  "AUTH_REJECTED",
-  "AUTH_EXPIRED",
-  "APPLICATION_APPROVED",
-  "APPLICATION_REJECTED",
-  "APPLICATION_EXPIRED",
-  "ACCOUNT_DELETED",
-  "LINK_TOKEN",
-  "SESSION_CHECK",
-  "SPEC_STARTED",
-  "SPEC_ENDED",
-  "LOCALE_PUSH",
-  "SERVER_READY",
-  "ACK",
-  "ERROR",
-]
-
 /** these are fire-and-forget or answered by a dedicated reply, no ACK expected.
  * SERVER_HEARTBEAT acks on purpose: the ack is the plugin's read-side liveness
  * signal, a half-open connection stops producing them and gets reconnected. */
@@ -327,7 +307,6 @@ export const payloadSchemas = {
 } as const satisfies Record<MessageType, z.ZodType>
 
 export type PayloadOf<T extends MessageType> = z.output<(typeof payloadSchemas)[T]>
-export type EnvelopePayloads = { [T in MessageType]: PayloadOf<T> }
 
 /**
  * wire type names are open-ended on purpose: a newer plugin may send a type

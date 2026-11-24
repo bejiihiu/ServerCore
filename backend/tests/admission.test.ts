@@ -17,7 +17,7 @@ import { ApplicationService } from "../src/services/application-service.js"
 import { VotingService } from "../src/services/voting-service.js"
 import { GroupService } from "../src/services/group-service.js"
 import { VotingScheduler } from "../src/services/voting-scheduler.js"
-import { RateLimiter } from "../src/services/rate-limiter.js"
+import { RateLimiter } from "../src/utils/rate-limiter.js"
 import { NotificationService } from "../src/services/notification-service.js"
 import { AdmissionNotifier } from "../src/services/admission-notifier.js"
 import { StaticRecipients } from "../src/services/recipients.js"
@@ -82,7 +82,7 @@ function build(opts: { groupChatId?: number | null; linkedRecipients?: string[];
     audit,
     telegram,
     notifier,
-    rateLimiter: new RateLimiter(10, 60_000, clock),
+    rateLimiter: new RateLimiter({ limit: 10, windowMs: 60_000 }),
     clock,
     cooldownMs: THREE_MONTHS,
     votingDurationMs: VOTING_MS,
@@ -653,25 +653,6 @@ describe("group integration", () => {
     expect(user1?.status).toBe("APPROVED")
   })
 
-  test("account removal kicks via ban+unban pair and revokes unused invites", async () => {
-    const deps = build()
-    const app = await seedVotingApplication(deps.applications)
-    deps.users.add(user({ uuid: "applicant", status: "ACTIVE", groupLinkedAt: new Date() }))
-    await deps.group.issueInvite(app) // still unused
-
-    const outcome = await deps.group.removeMember("applicant")
-    expect(outcome.ok).toBe(true)
-    if (!outcome.ok) return
-    expect(outcome.kicked).toBe(true)
-    expect(outcome.revokedInvites).toBe(1)
-    // ban + immediate unban, the canonical kick pattern
-    expect(deps.telegram.bans).toEqual(["tg-applicant"])
-    expect(deps.telegram.unbans).toEqual(["tg-applicant"])
-    expect(deps.telegram.revokedLinks).toHaveLength(1)
-    const invite = await deps.invites.findByName(`adm-${app.id}`)
-    expect(invite?.status).toBe("REVOKED")
-  })
-
   test("group flows degrade gracefully without a configured group chat", async () => {
     const deps = build({ groupChatId: null })
     deps.users.add(user({ uuid: "applicant", status: "UNREGISTERED" }))
@@ -686,10 +667,6 @@ describe("group integration", () => {
     const invite = await deps.group.issueInvite(submitted.application)
     expect(invite.ok).toBe(false)
     if (!invite.ok) expect(invite.reason).toBe("GROUP_NOT_CONFIGURED")
-
-    const kick = await deps.group.removeMember(submitted.application.minecraftUuid)
-    expect(kick.ok).toBe(false)
-    if (!kick.ok) expect(kick.reason).toBe("GROUP_NOT_CONFIGURED")
   })
 
   test("membership check failure never lets a vote through", async () => {

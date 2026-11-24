@@ -1,8 +1,8 @@
-import { randomHex, sha256Hex } from "../../utils/crypto.js"
+import { randomHex, randomToken, sha256Hex } from "../../utils/crypto.js"
+import { MS_PER_MINUTE, MS_PER_SECOND } from "../../utils/time.js"
 import { LINK_TOKEN_LENGTH, isValidLinkTokenFormat } from "../../services/token-service.js"
-import { randomToken } from "../../utils/crypto.js"
 import type { Logger } from "../../logging/logger.js"
-import { SlidingWindowLimiter } from "./rate-limiter.js"
+import { RateLimiter } from "../../utils/rate-limiter.js"
 import type { AuthRequestRecord, AuthenticationStore, SessionRecord, SessionStatus } from "./persistence.js"
 import type { PayloadOf } from "../../websocket/protocol/message-types.js"
 
@@ -67,7 +67,7 @@ type QueuedPush = {
 }
 
 /** how long a queued backend->plugin push waits for the link to come back */
-const OUTBOX_GIVE_UP_MS = 10 * 60_000
+const OUTBOX_GIVE_UP_MS = 10 * MS_PER_MINUTE
 
 export type AuthSessionStats = {
   activeSessions: number
@@ -93,9 +93,9 @@ export class AuthenticationService {
   private readonly push: BackendPush
   private readonly sendPrompt: PromptSender | null
 
-  private readonly joinLimiter: SlidingWindowLimiter
-  private readonly promptLimiter: SlidingWindowLimiter
-  private readonly approvalLimiter: SlidingWindowLimiter
+  private readonly joinLimiter: RateLimiter
+  private readonly promptLimiter: RateLimiter
+  private readonly approvalLimiter: RateLimiter
 
   /** pushes that failed because the game server link was down, retried by sweep */
   private readonly outbox = new Map<string, QueuedPush>()
@@ -123,17 +123,17 @@ export class AuthenticationService {
     this.logger = deps.logger
     this.push = deps.push
     this.sendPrompt = deps.sendPrompt
-    this.joinLimiter = new SlidingWindowLimiter({
+    this.joinLimiter = new RateLimiter({
       windowMs: deps.config.rateLimitWindowMs,
-      maxEvents: deps.config.maxRequestsPerPlayer,
+      limit: deps.config.maxRequestsPerPlayer,
     })
-    this.promptLimiter = new SlidingWindowLimiter({
+    this.promptLimiter = new RateLimiter({
       windowMs: deps.config.rateLimitWindowMs,
-      maxEvents: deps.config.maxRequestsPerTelegram,
+      limit: deps.config.maxRequestsPerTelegram,
     })
-    this.approvalLimiter = new SlidingWindowLimiter({
+    this.approvalLimiter = new RateLimiter({
       windowMs: deps.config.rateLimitWindowMs,
-      maxEvents: deps.config.maxApprovalsPerTelegram,
+      limit: deps.config.maxApprovalsPerTelegram,
     })
   }
 
@@ -470,7 +470,7 @@ export class AuthenticationService {
     session: SessionRecord,
     now: number,
   ): Promise<AuthRequestRecord> {
-    const expiresAt = now + this.config.requestTtlSeconds * 1000
+    const expiresAt = now + this.config.requestTtlSeconds * MS_PER_SECOND
     for (let attempt = 0; attempt < MAX_TOKEN_ISSUE_ATTEMPTS; attempt += 1) {
       const token = randomToken(LINK_TOKEN_LENGTH)
       const record: AuthRequestRecord = {

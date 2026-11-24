@@ -5,7 +5,7 @@ import type { AppConfig } from "../config/env.js"
 import type { Logger } from "../logging/logger.js"
 import type { AdmissionRepositories } from "../database/repos.js"
 import { systemClock } from "../services/clock.js"
-import { RateLimiter } from "../services/rate-limiter.js"
+import { RateLimiter } from "../utils/rate-limiter.js"
 import { ApplicationService } from "../services/application-service.js"
 import { VotingService } from "../services/voting-service.js"
 import { GroupService } from "../services/group-service.js"
@@ -13,6 +13,7 @@ import type { NotificationService } from "../services/notification-service.js"
 import type { PluginPushPort } from "../services/ports.js"
 import { AdmissionNotifier } from "../services/admission-notifier.js"
 import { GrammYTelegramApi } from "./telegram-api.js"
+import { MS_PER_DAY } from "../utils/time.js"
 import { createApplicationConversation } from "./conversations/application-questionnaire.js"
 import { registerVoteCallbacks } from "./handlers/vote-callbacks.js"
 import { registerChatMemberHandler } from "./handlers/chat-member.js"
@@ -66,13 +67,12 @@ export function registerAdmissionFlows(
     audit: repos.audit,
     telegram,
     notifier,
-    rateLimiter: new RateLimiter(
-      config.applicationStartLimit,
-      config.applicationStartWindowMs,
-      systemClock,
-    ),
+    rateLimiter: new RateLimiter({
+      limit: config.applicationStartLimit,
+      windowMs: config.applicationStartWindowMs,
+    }),
     clock: systemClock,
-    cooldownMs: 90 * 24 * 3_600_000, // three months, per the re-application rule
+    cooldownMs: 90 * MS_PER_DAY, // three months, per the re-application rule
     votingDurationMs: config.votingDurationMs,
     questions: config.questions,
     defaultLanguage: config.defaultLanguage,

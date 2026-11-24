@@ -1,6 +1,5 @@
 import type { Api } from "grammy"
-import { loadConfig, ConfigError as EnvConfigError } from "./config/env.js"
-import type { AppConfig } from "./config/env.js"
+import { loadConfig, ConfigError as EnvConfigError, type AppConfig } from "./config/env.js"
 import { createLogger } from "./logging/logger.js"
 import type { Logger } from "./logging/logger.js"
 import { connectDatabase, databaseReady, disconnectDatabase } from "./database/connection.js"
@@ -52,6 +51,7 @@ import { MongoAuthenticationStore } from "./modules/authentication/mongo-store.j
 import { TelegramAuthUi } from "./modules/authentication/telegram-prompt.js"
 import { registerAuthCallbacks } from "./modules/authentication/bot-callbacks.js"
 import { LocaleService } from "./services/locale-service.js"
+import { MS_PER_MINUTE, MS_PER_SECOND } from "./utils/time.js"
 
 // chat_member events must be requested explicitly, telegram does not send
 // them by default
@@ -144,7 +144,7 @@ async function main(): Promise<void> {
     config: {
       requestTtlSeconds: config.authRequestTtlSeconds,
       serverName: config.serverName,
-      rateLimitWindowMs: config.authRateLimitWindowSeconds * 1000,
+      rateLimitWindowMs: config.authRateLimitWindowSeconds * MS_PER_SECOND,
       maxRequestsPerPlayer: config.authRateLimitRequestsPerPlayer,
       maxRequestsPerTelegram: config.authRateLimitRequestsPerTelegram,
       maxApprovalsPerTelegram: config.authRateLimitApprovalsPerTelegram,
@@ -225,9 +225,6 @@ async function main(): Promise<void> {
     logger,
   })
 
-  // spec audit trail: every observation start/end the plugin reports lands in
-  // audit_logs (kind "spec"). the collection has no ttl index — the retention
-  // job below purges it together with the rest of the audit rows at 90d
   // spec audit trail: every observation start/end the plugin reports lands in
   // audit_logs (kind "spec"). the collection has no ttl index — the retention
   // job below purges it together with the rest of the audit rows at 90d
@@ -339,7 +336,7 @@ async function main(): Promise<void> {
     options: {
       auditDays: config.retentionAuditDays,
       sessionDays: config.retentionSessionDays,
-      initialDelayMs: config.retentionInitialDelayMinutes * 60_000,
+      initialDelayMs: config.retentionInitialDelayMinutes * MS_PER_MINUTE,
     },
     logger,
   })
@@ -404,7 +401,7 @@ async function main(): Promise<void> {
     directory,
     gateway: { get connectedServers() { return gateway.connectedServers } },
     logger,
-    thresholdMs: config.serverOfflineAlertMinutes * 60_000,
+    thresholdMs: config.serverOfflineAlertMinutes * MS_PER_MINUTE,
   })
   offlineWatcher.onReconnect = (serverId) => {
     // the dedupe memory must go: the next state flip re-announces. and the

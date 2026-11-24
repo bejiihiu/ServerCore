@@ -21,15 +21,6 @@ export const ALLOWED_TRANSITIONS: Readonly<Record<UserStatus, readonly UserStatu
   DELETION_PENDING: [],
 }
 
-/** statuses a live session may exist in and that linking/admission can touch */
-export const LINKABLE_STATUSES: readonly UserStatus[] = [
-  "UNREGISTERED",
-  "APPLICATION_PENDING",
-  "VOTING",
-  "APPROVED",
-  "ACTIVE",
-]
-
 /** statuses that freeze the account: no linking, no admission, no sessions */
 export const FROZEN_STATUSES: readonly UserStatus[] = ["SUSPENDED", "BANNED", "DELETION_PENDING"]
 

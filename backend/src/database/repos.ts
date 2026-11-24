@@ -413,21 +413,6 @@ export class MongooseGroupInviteRepository implements GroupInviteRepository {
     const doc = await GroupInviteModel.findOne({ name }).lean()
     return doc ? "already-used" : "not-found"
   }
-
-  async listIssuedByUuid(uuid: string): Promise<GroupInviteInfo[]> {
-    const docs = (await GroupInviteModel.find({
-      minecraftUuid: uuid,
-      status: "ISSUED",
-    }).lean()) as unknown as InviteLean[]
-    return docs.map(toInviteInfo)
-  }
-
-  async markRevoked(name: string, at: Date): Promise<void> {
-    await GroupInviteModel.updateOne(
-      { name, status: "ISSUED" },
-      { $set: { status: "REVOKED", usedAt: at } },
-    )
-  }
 }
 
 export class MongooseApplicationDraftRepository implements ApplicationDraftRepository {

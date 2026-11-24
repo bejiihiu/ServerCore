@@ -1,4 +1,5 @@
 import type { Logger } from "../logging/logger.js"
+import { MS_PER_SECOND } from "../utils/time.js"
 
 /** how many messages telegram allows per second before throttling kicks in */
 export const TELEGRAM_MESSAGES_PER_SECOND = 30
@@ -25,8 +26,8 @@ export type RateLimitClock = {
   sleep(ms: number): Promise<void>
 }
 
-/** real clock: monotonic enough for 1s windows */
-export const systemClock: RateLimitClock = {
+/** real clock for the send window; monotonic enough for 1s windows */
+const defaultRateLimitClock: RateLimitClock = {
   now: () => Date.now(),
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 }
@@ -61,7 +62,7 @@ export class NotificationService {
     this.recipients = deps.recipients
     this.logger = deps.logger
     this.ratePerSecond = deps.options?.ratePerSecond ?? TELEGRAM_MESSAGES_PER_SECOND
-    this.clock = deps.options?.clock ?? systemClock
+    this.clock = deps.options?.clock ?? defaultRateLimitClock
   }
 
   /** swaps the sender after construction (bot is built late in app.ts) */
@@ -157,7 +158,7 @@ export class NotificationService {
     for (const chatId of chatIds) {
       if (sentInWindow >= this.ratePerSecond) {
         const elapsed = this.clock.now() - windowStart
-        if (elapsed < 1000) await this.clock.sleep(1000 - elapsed)
+        if (elapsed < MS_PER_SECOND) await this.clock.sleep(MS_PER_SECOND - elapsed)
         windowStart = this.clock.now()
         sentInWindow = 0
       }

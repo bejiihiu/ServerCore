@@ -230,9 +230,6 @@ export interface GroupInviteRepository {
   findByName(name: string): Promise<GroupInviteInfo | null>
   /** marks an invite used, atomically: "already-used" means somebody beat us to it */
   markUsed(name: string, usedAt: Date): Promise<"used" | "already-used" | "not-found">
-  /** issued but unused invites of a user, candidates for revocation */
-  listIssuedByUuid(uuid: string): Promise<GroupInviteInfo[]>
-  markRevoked(name: string, at: Date): Promise<void>
 }
 
 export interface ApplicationDraftRepository {

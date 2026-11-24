@@ -36,6 +36,9 @@ export const TRACKED_COLLECTIONS = [
  * real numbers off the live mongo deployment. counts via countDocuments,
  * sizes via the $collStats aggregation; atlas m0 serves both. a denied
  * $collStats degrades storageBytes to null instead of faking a number.
+ *
+ * storage view only: filtered domain counters (active users, open votings)
+ * live in services/stats-counts.ts and feed the same /stats screen.
  */
 export class MongoCollectionStats implements CollectionStatsSource {
   async collect(): Promise<CollectionStatsReport> {

@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { MOSCOW_TZ, MS_PER_HOUR, MS_PER_MINUTE } from "../utils/time.js"
 
 const serverCredentialsSchema = z.record(
   z.string().min(1).max(64).regex(/^[a-z0-9._-]+$/),
@@ -30,7 +31,7 @@ const envSchema = z.object({
   TELEGRAM_GROUP_CHAT_ID: z.string().default(""),
 
   // logs and schedules render in this zone (project standard: Europe/Moscow)
-  LOG_TIMEZONE: z.string().min(1).default("Europe/Moscow"),
+  LOG_TIMEZONE: z.string().min(1).default(MOSCOW_TZ),
 
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info"),
 
@@ -272,9 +273,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     authRequestTtlSeconds: result.data.AUTH_REQUEST_TTL_SECONDS,
     groupChatId: result.data.GROUP_CHAT_ID ?? null,
     questions: { ru: questionsRu, en: questionsEn },
-    votingDurationMs: result.data.VOTING_DURATION_MINUTES * 60_000,
+    votingDurationMs: result.data.VOTING_DURATION_MINUTES * MS_PER_MINUTE,
     votingScanIntervalMs: result.data.VOTING_SCAN_INTERVAL_MS,
-    groupInviteTtlMs: result.data.GROUP_INVITE_TTL_HOURS * 3_600_000,
+    groupInviteTtlMs: result.data.GROUP_INVITE_TTL_HOURS * MS_PER_HOUR,
     applicationStartLimit: result.data.APPLICATION_START_LIMIT,
     applicationStartWindowMs: result.data.APPLICATION_START_WINDOW_MS,
     voteButtonIcons: {
