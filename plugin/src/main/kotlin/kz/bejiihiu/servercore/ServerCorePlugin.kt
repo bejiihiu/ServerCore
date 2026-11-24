@@ -756,13 +756,15 @@ class ServerCorePlugin : JavaPlugin() {
         gamemodeGuard?.stop()
         commandBlockAuditor?.stop()
         permissionSource?.shutdown()
-        // belt and braces: async snapshot writes may still be in flight
-        snapshots.shutdown()
-        counter.shutdown()
-        accountsCache.shutdown()
+        // belt and braces: async snapshot writes may still be in flight.
+        // lateinit-guarded: a config-error boot lands here with the stores
+        // never constructed at all
+        if (::snapshots.isInitialized) snapshots.shutdown()
+        if (::counter.isInitialized) counter.shutdown()
+        if (::accountsCache.isInitialized) accountsCache.shutdown()
         // the trail flushes synchronously before the io pool goes away
         specTrail?.close()
-        io.shutdown()
+        if (::io.isInitialized) io.shutdown()
         logger.info("servercore ${pluginMeta.version} disabled, bye")
     }
 }
