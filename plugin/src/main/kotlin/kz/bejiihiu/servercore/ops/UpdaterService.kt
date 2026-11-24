@@ -26,6 +26,11 @@ class UpdaterService(
 
     private var task: ScheduledTask? = null
 
+    // one install at a time: a slow download must not race the next tick into
+    // the same staging file (double download corrupts it, double swap lets the
+    // loser roll the fresh jar back to the old one)
+    private val checking = java.util.concurrent.atomic.AtomicBoolean(false)
+
     fun start() {
         if (!config.enabled) {
             logger.info("[ops] auto-update disabled by config")
@@ -49,6 +54,12 @@ class UpdaterService(
 
     /** one full check cycle; safe to call repeatedly, all failures are logged */
     fun checkNow() {
+        // a still-running cycle owns the staging dir and the swap; skip instead
+        // of racing it, the next tick retries anyway
+        if (!checking.compareAndSet(false, true)) {
+            logger.info("[ops] update check still running, skipping this cycle")
+            return
+        }
         try {
             val currentRaw = plugin.pluginMeta.version
             val lookup = client.latestBuildRelease()
@@ -69,6 +80,8 @@ class UpdaterService(
             }
         } catch (error: Exception) {
             logger.severe("[ops] update check crashed: ${error.message}")
+        } finally {
+            checking.set(false)
         }
     }
 
