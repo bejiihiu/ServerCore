@@ -5,6 +5,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kz.bejiihiu.servercore.boot.JoinFlowListener
 import kz.bejiihiu.servercore.config.ConfigLoader
+import kz.bejiihiu.servercore.esp.EspConfig
+import kz.bejiihiu.servercore.esp.EspModule
 import kz.bejiihiu.servercore.guest.AccountService
 import kz.bejiihiu.servercore.guest.GuestConfig
 import kz.bejiihiu.servercore.guest.GuestMessageService
@@ -79,6 +81,7 @@ class ServerCorePlugin : JavaPlugin() {
     private var restartSchedule: RestartScheduleTask? = null
     private var packetSync: PacketStateSync? = null
     private var syncReconciler: SyncReconciler? = null
+    private var esp: EspModule? = null
     private lateinit var opsBus: OpsEventBus
     private var packetService: PacketService? = null
 
@@ -232,6 +235,14 @@ class ServerCorePlugin : JavaPlugin() {
         // personal deep link arrived after the generic prompt went out
         wsResolver.onLinkAvailable { uuid -> sessions.onLinkAvailable(uuid) }
 
+        // anti-esp visibility engine; guests flag flows in so guest-viewing-guest
+        // stays vanilla. the packet writer from the packetevents module registers
+        // itself as the applier later, until then the no-op keeps this standalone
+        val espConfig = EspConfig.load(config, logger)
+        if (espConfig.enabled) {
+            esp = EspModule.create(this, espConfig, guests = sessions::isRestricted).also { it.start() }
+        }
+
         // restart recovery: durable snapshots become pending restores
         sessions.markPendingRestores(snapshots.pendingAll())
 
@@ -330,6 +341,7 @@ class ServerCorePlugin : JavaPlugin() {
         // detach our listener first, the shared packetevents instance must outlive us
         packetService?.stop()
         wsGateway?.stop()
+        esp?.stop()
         updater?.stop()
         restartSchedule?.stop()
         // belt and braces: async snapshot writes may still be in flight
