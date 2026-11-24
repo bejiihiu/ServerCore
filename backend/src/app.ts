@@ -51,6 +51,7 @@ import { AuthenticationService } from "./modules/authentication/auth-service.js"
 import { MongoAuthenticationStore } from "./modules/authentication/mongo-store.js"
 import { TelegramAuthUi } from "./modules/authentication/telegram-prompt.js"
 import { registerAuthCallbacks } from "./modules/authentication/bot-callbacks.js"
+import { LocaleService } from "./services/locale-service.js"
 
 // chat_member events must be requested explicitly, telegram does not send
 // them by default
@@ -89,6 +90,19 @@ async function main(): Promise<void> {
 
   const logger: Logger = createLogger(config)
   const startedAt = Date.now()
+
+  // canonical locale bundle: shipped in the image, loaded once. a missing or
+  // oversized file is a broken build — fail boot instead of silently serving
+  // plugins an undefined locale forever
+  const locales = new LocaleService({ logger })
+  logger.info(
+    {
+      locale: locales.current.locale,
+      revision: locales.current.revision,
+      bytes: Buffer.byteLength(locales.current.content, "utf8"),
+    },
+    "canonical locale bundle loaded",
+  )
 
   // a fatal error during boot must exit: the graceful path below dereferences
   // bindings that do not exist yet, so before this flips there is nothing to
@@ -236,7 +250,14 @@ async function main(): Promise<void> {
     logger,
     verifier,
     specAudit,
+    locale: locales,
     hooks: {
+      onServerRegistered: (serverId, connection) => {
+        // fresh socket, registration status already acked: hand the plugin
+        // the full canonical bundle. the ack comes back through LOCALE_ACK
+        const correlationId = locales.pushTo(connection)
+        logger.debug({ serverId, revision: locales.current.revision, correlationId }, "locale push sent")
+      },
       onStateChange: (serverId, state, previous, options) => {
         // crash/status events flow to telegram: all events, dm + admin copy.
         // when the plugin reports flectonepulse's telegram module as active it

@@ -72,6 +72,12 @@ export type LifecycleHooks = {
     serverId: string,
   ) => void
   onGuestEnded?: (event: { minecraftUuid: string; sessionId: string; reason: string }) => void
+  /**
+   * fires once per fresh socket, on its first SERVER_STATUS (by then the
+   * transport already acked that frame). modules that seed per-connection
+   * state — the canonical locale push — hang off this instead of polling
+   */
+  onServerRegistered?: (serverId: string, connection: ServerConnection) => void
 }
 
 /** wires the lifecycle handlers that exist at skeleton stage: presence tracking */
@@ -81,6 +87,10 @@ export function registerLifecycleHandlers(
   logger: Logger,
   hooks: LifecycleHooks = {},
 ): void {
+  // last socket that completed registration per server; identity comparison
+  // is the "is this a new connection" signal
+  const registeredConnection = new Map<string, ServerConnection>()
+
   const mergeCounts = (
     serverId: string,
     patch: PlayerCountPatch,
@@ -109,6 +119,13 @@ export function registerLifecycleHandlers(
       { ...envelope.payload, activeSpecSessions },
       { version: envelope.payload.version, state, detail, telegramSuppressed },
     )
+    // the plugin registers on every fresh socket; per-connection seeding
+    // (locale push) must not repeat on the status pushes that follow
+    const freshConnection = registeredConnection.get(connection.serverId) !== connection
+    registeredConnection.set(connection.serverId, connection)
+    if (freshConnection) {
+      hooks.onServerRegistered?.(connection.serverId, connection)
+    }
     if (state !== undefined && previousState !== state) {
       // status frames fire on every heartbeat-style push; only a real state
       // flip is interesting for notifications

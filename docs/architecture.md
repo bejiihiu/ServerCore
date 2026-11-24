@@ -48,6 +48,7 @@ The backend is the brain. It owns:
 - Telegram group administration: single-use invites, join confirmation, removal on account deletion.
 - Storage: every persistent collection in MongoDB.
 - Event history, session history, audit logging, notifications, retention sweeps.
+- Canonical locale distribution: the backend owns the canonical `ru` bundle and pushes the full file to every plugin on connect.
 - Ops watch: per-server live state from `SERVER_STATUS`/`SERVER_HEARTBEAT`, offline detection with admin alerts, and the admin-only `/stats` bot command.
 
 Its HTTP server (Fastify) serves the `/health` endpoint only. All plugin traffic rides the WebSocket gateway — a separate native listener that never touches Fastify.

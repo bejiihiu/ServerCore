@@ -75,7 +75,7 @@ Two surfaces may combine (title announces, card explains), three never overlap a
 ## Localization
 
 - Canonical locale: RU (`locale/LocaleService.kt`). The bundled seed is `plugin/src/main/resources/locales/ru.yml`.
-- The backend hosts locale files (GitHub), pushes the **full file** over WS as `LOCALE_PUSH` (see `docs/websocket-protocol.md`); the plugin acknowledges with `LOCALE_ACK` and persists the file to `plugins/ServerCore/locales/ru.yml`, which wins over the seed on boot.
+- The backend ships the canonical locale bundle in its image and pushes the **full file** over WS as `LOCALE_PUSH` (see `docs/websocket-protocol.md`); the plugin acknowledges with `LOCALE_ACK` and persists the file to `plugins/ServerCore/locales/ru.yml`, which wins over the seed on boot.
 - Placeholder values are MiniMessage-escaped at injection; pushed templates are trusted only as far as their yaml parses.
 
 ## Toolkit map

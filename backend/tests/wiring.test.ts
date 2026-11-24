@@ -6,6 +6,7 @@ import { registerAllHandlers } from "../src/websocket/handlers/wiring.js"
 import type { ServerConnection } from "../src/websocket/connection.js"
 import type { GatewayOwnershipVerifier } from "../src/modules/account/session-probe.js"
 import type { SpecAuditService } from "../src/modules/audit/spec-audit-service.js"
+import { LocaleService } from "../src/services/locale-service.js"
 
 /** every message type the plugin can send that the backend must handle */
 const PLUGIN_ORIGIN_DOMAIN_TYPES = [
@@ -16,6 +17,7 @@ const PLUGIN_ORIGIN_DOMAIN_TYPES = [
   "SESSION_CHECK_RESULT",
   "SPEC_STARTED",
   "SPEC_ENDED",
+  "LOCALE_ACK",
   "SERVER_STATUS",
   "SERVER_HEARTBEAT",
 ] as const
@@ -37,6 +39,7 @@ function buildWiring(hooks: Parameters<typeof registerAllHandlers>[1]["hooks"] =
         specRecords.push(entry.action)
       },
     } as unknown as SpecAuditService,
+    locale: new LocaleService({ logger: silentLogger() }),
     hooks,
   })
   return { registry, specRecords }
@@ -147,5 +150,31 @@ describe("websocket handler wiring", () => {
       fakeConnection("game-1"),
     )
     expect(specRecords).toEqual(["spec.started"])
+  })
+
+  test("per-connection seeding fires once per fresh socket, not per status frame", async () => {
+    const seeded: string[] = []
+    const { registry } = buildWiring({
+      onServerRegistered: (serverId) => {
+        seeded.push(serverId)
+      },
+    })
+    const statusFrame = (id: string) => ({
+      id,
+      type: "SERVER_STATUS" as const,
+      timestamp: Date.now(),
+      payload: { onlinePlayers: 0, maxPlayers: 20 },
+    })
+
+    const connection = fakeConnection("game-1")
+    await registry.dispatch(statusFrame("msg_12345681"), connection)
+    await registry.dispatch(statusFrame("msg_12345682"), connection)
+    // the registration frame repeats on this socket; the hook must not
+    await registry.dispatch(statusFrame("msg_12345683"), connection)
+
+    // reconnect = a new connection object, which is a fresh registration
+    await registry.dispatch(statusFrame("msg_12345684"), fakeConnection("game-1"))
+
+    expect(seeded).toEqual(["game-1", "game-1"])
   })
 })

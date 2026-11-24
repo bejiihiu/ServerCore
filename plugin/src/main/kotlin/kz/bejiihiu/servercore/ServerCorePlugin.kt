@@ -27,6 +27,7 @@ import kz.bejiihiu.servercore.integration.luckperms.LuckPermsConfig
 import kz.bejiihiu.servercore.integration.luckperms.PermissionSource
 import kz.bejiihiu.servercore.integration.luckperms.PermissionSourceFactory
 import kz.bejiihiu.servercore.boot.GroupsDebugCommand
+import kz.bejiihiu.servercore.locale.LocalePushListener
 import kz.bejiihiu.servercore.locale.LocaleService
 import kz.bejiihiu.servercore.packet.CachedViewStateStore
 import kz.bejiihiu.servercore.packet.PacketConfig
@@ -390,6 +391,10 @@ class ServerCorePlugin : JavaPlugin() {
         accountsCache.load()
 
         backendGateway = BackendGateway()
+        // locale channel: the backend pushes the canonical bundle on every
+        // fresh connection. the listener applies it to the live store and
+        // answers LOCALE_ACK through the same hub
+        backendGateway.addListener(LocalePushListener(locale, backendGateway, logger))
 
         val wsResolver = WsAccountResolver(backendGateway, accountsCache, guestConfig)
         val accounts = AccountService(
