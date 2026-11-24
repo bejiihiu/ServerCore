@@ -184,7 +184,7 @@ export class AuthenticationService {
     this.openSessions.set(event.minecraftUuid, "WAITING_AUTH")
 
     const request = await this.issueRequest(user, session, now)
-    await this.deliver(request, now)
+    await this.deliver(request)
     await this.enqueue(
       event.serverId,
       "AUTH_REQUEST",
@@ -350,7 +350,7 @@ export class AuthenticationService {
 
     if (this.sendPrompt !== null) {
       for (const request of await this.store.findPendingUndelivered()) {
-        await this.deliver(request, now)
+        await this.deliver(request)
       }
     }
 

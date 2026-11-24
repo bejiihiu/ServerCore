@@ -75,7 +75,7 @@ export function registerAdmissionCommands(bot: Bot<BotContext>, deps: CommandDep
     await ctx.reply(
       t(lang, "status.reply", {
         username: user.username,
-        status: statusLabel(user.status, lang),
+        status: statusLabel(lang, user.status),
       }),
     )
   })

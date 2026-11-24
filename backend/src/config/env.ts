@@ -266,7 +266,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     wsNonceTtlMs: result.data.WS_NONCE_TTL_MS,
     authRequestTtlSeconds: result.data.AUTH_REQUEST_TTL_SECONDS,
     groupChatId: result.data.GROUP_CHAT_ID ?? null,
-    defaultLanguage: result.data.OPS_LOCALE,
     questions: { ru: questionsRu, en: questionsEn },
     votingDurationMs: result.data.VOTING_DURATION_MINUTES * 60_000,
     votingScanIntervalMs: result.data.VOTING_SCAN_INTERVAL_MS,

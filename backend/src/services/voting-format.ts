@@ -72,7 +72,7 @@ export function formatApplicationView(
     .join("\n\n")
   const body = t(lang, "app.summary", { username: application.minecraftUuid, answers: rendered })
   return `${t(lang, "app.viewHeader")}\n\n${body}\n\n${t(lang, "vote.resultLine", {
-    verdict: statusLabel(application.status, lang),
+    verdict: statusLabel(lang, application.status),
   })}`
 }
 

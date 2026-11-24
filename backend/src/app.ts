@@ -30,7 +30,6 @@ import { GrammySender } from "./services/telegram-sender.js"
 import { OpsNotifier, eventForState } from "./services/ops-notifier.js"
 import { OfflineWatcher } from "./services/offline-watcher.js"
 import { SessionCounters, StatsService } from "./services/runtime-stats.js"
-<<<<<<< HEAD
 import { VotingScheduler } from "./services/voting-scheduler.js"
 import { RetentionService } from "./modules/retention/retention-service.js"
 import {
@@ -41,10 +40,18 @@ import {
 } from "./modules/retention/repository-mongo.js"
 import { MongoCollectionStats } from "./modules/retention/collection-stats.js"
 import { createBot } from "./bot/bot.js"
+import { AuthenticationService } from "./modules/authentication/auth-service.js"
+import { MongoAuthenticationStore } from "./modules/authentication/mongo-store.js"
+import { TelegramAuthUi } from "./modules/authentication/telegram-prompt.js"
+import { registerAuthCallbacks } from "./modules/authentication/bot-callbacks.js"
+import { mongoCollectionSizes } from "./modules/authentication/maintenance.js"
+import { AuthRequestModel } from "./database/models/auth-request.js"
+import { PlayerSessionModel } from "./database/models/session.js"
 
 // chat_member events must be requested explicitly, telegram does not send
 // them by default
 const ALLOWED_UPDATES = ["message", "callback_query", "chat_member", "my_chat_member"] as const
+
 /** adapts the shared broadcast engine onto the account modules' fan-out port */
 class FanoutAdapter implements NotificationFanout {
   private readonly notifications: NotificationService
@@ -194,7 +201,6 @@ async function main(): Promise<void> {
     logger,
   })
 
-<<<<<<< HEAD
   // admission bot: questionnaire + group voting, riding the shared
   // notification engine and the ops stats snapshot
   const admission = createAdmissionBot(config, logger, createAdmissionRepositories(), {

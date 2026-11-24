@@ -143,7 +143,7 @@ describe("section 9.1 protection matrix", () => {
     const session = await h.store.findOpenSession(UUID)
     expect(session?.status).toBe("AUTHENTICATED")
     const push = h.pushes.find((p) => p.type === "AUTH_APPROVED")
-    expect(push?.payload).toMatchPartials({ minecraftUuid: UUID, sessionId })
+    expect(push?.payload).toMatchObject({ minecraftUuid: UUID, sessionId })
   })
 
   test("one-time tokens: a second approve of the same token is rejected", async () => {
@@ -374,7 +374,7 @@ describe("telegram ui", () => {
     expect(screen.text).toContain("75")
     const row = screen.markup?.inline_keyboard[0] ?? []
     expect(row).toHaveLength(2)
-    expect(row[0]).toMatchPartials({ style: "success", callback_data: "auth:approve:AbCdEfGhIjKlMnOp" })
-    expect(row[1]).toMatchPartials({ style: "danger", callback_data: "auth:reject:AbCdEfGhIjKlMnOp" })
+    expect(row[0]).toMatchObject({ style: "success", callback_data: "auth:approve:AbCdEfGhIjKlMnOp" })
+    expect(row[1]).toMatchObject({ style: "danger", callback_data: "auth:reject:AbCdEfGhIjKlMnOp" })
   })
 })

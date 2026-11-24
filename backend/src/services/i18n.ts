@@ -86,7 +86,6 @@ const messages = {
     ru: "состояние неизвестно",
     en: "state unknown",
   },
-<<<<<<< HEAD
 
   // admission: questionnaire
   "app.intro": {
