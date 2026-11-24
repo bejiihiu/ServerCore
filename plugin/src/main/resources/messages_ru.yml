@@ -1,0 +1,49 @@
+# русские строки. разрешены mini-message теги (<bold>, <gold>, <click>, ...).
+# можно свободно править в папке плагина, недостающие ключи берутся из english.
+guest:
+  welcome:
+    title: "<gold>Вы в гостевом режиме</gold>"
+    subtitle: "<gray>Исследуйте свободно, игровой процесс откроется после регистрации</gray>"
+  welcome-back:
+    title: "<gold>С возвращением, гость</gold>"
+    subtitle: "<gray>Ваша исходная точка восстановлена</gray>"
+  link-prompt:
+    - "<gray>Для получения доступа к серверу необходимо</gray>"
+    - "<gray>пройти регистрацию в Telegram.</gray>"
+    - ""
+    - "<aqua>Telegram:</aqua> <click:open_url:'{link}'><underlined><gold>{link}</gold></underlined></click>"
+  restriction:
+    actionbar: "<red>Гостевой режим: взаимодействие заблокировано. Используйте <bold>/link</bold> для регистрации</red>"
+  reminder:
+    actionbar: "<gray>Ожидаем регистрацию — </gray><gold>{link}</gold>"
+  limit:
+    warning:
+      title: "<red>Лимит гостевых сессий исчерпан</red>"
+      subtitle: "<gray>Зарегистрируйтесь, чтобы продолжить</gray>"
+    chat:
+      - "<red>Вы использовали все {limit} гостевых сессий.</red>"
+      - "<gray>Зарегистрируйтесь через бота, чтобы играть:</gray>"
+      - "<gold>{link}</gold>"
+  kick:
+    limit:
+      - "<red>Достигнут лимит гостевых сессий ({limit}).</red>"
+      - "<gray>Чтобы играть на сервере, пройдите регистрацию в Telegram:</gray>"
+      - "<gold>{link}</gold>"
+    banned:
+      - "<red>Ваш доступ к этому серверу ограничен.</red>"
+      - "<gray>Если вы считаете это ошибкой, свяжитесь с администрацией.</gray>"
+    disabled:
+      - "<red>Для входа на этот сервер нужна регистрация.</red>"
+      - "<gray>Пройдите регистрацию в Telegram, чтобы зайти:</gray>"
+      - "<gold>{link}</gold>"
+# ключи для следующих фаз — держим здесь, чтобы обе стороны early agree на имена
+auth:
+  waiting:
+    actionbar: "<gray>Ожидаем подтверждение входа в Telegram...</gray>"
+  approved:
+    title: "<green>Добро пожаловать!</green>"
+    subtitle: "<gray>Авторизация подтверждена</gray>"
+  rejected:
+    title: "<red>В авторизации отказано</red>"
+  expired:
+    actionbar: "<yellow>Запрос на вход истёк, используйте <bold>/link</bold>, чтобы повторить</yellow>"
