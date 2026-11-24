@@ -33,7 +33,7 @@ class PacketResyncExecutorTest {
     }
 
     private fun packetRegistry() = PacketStateRegistry(
-        CachedViewStateStore(ttlMillis = 60_000, maxViewers = 64, maxTargetsPerViewer = 64),
+        CachedViewStateStore(64, 64),
     )
 
     private fun bridge(
@@ -107,6 +107,27 @@ class PacketResyncExecutorTest {
 
         assertEquals(ViewState.VISIBLE, packets.state(viewer, target))
         assertEquals(listOf("DISGUISED($viewer,$target)", "VISIBLE($viewer,$target)"), disguise.calls)
+    }
+
+    @Test
+    fun `a stale engine settle cannot overwrite the dead pin`() {
+        val states = InMemoryViewStateRegistry()
+        val packets = packetRegistry()
+        val disguise = RecordingDisguise()
+        val exec = bridge(states, packets, disguise)
+
+        exec.apply(viewer, target, ViewState.DISGUISED, null)
+        exec.apply(viewer, target, ViewState.DEAD, null)
+        disguise.calls.clear()
+
+        // the engine's snapshot predates the death event: its settle says
+        // disguised again. the pin must win, respawn clears it - not a laggy
+        // snapshot
+        exec.apply(viewer, target, ViewState.DISGUISED, null)
+
+        assertEquals(ViewState.DEAD, states.get(viewer, target), "pin must survive a stale settle")
+        assertEquals(ViewState.VISIBLE, packets.state(viewer, target), "client keeps vanilla death")
+        assertTrue(disguise.calls.isEmpty(), "no disguise work may run for a dead pair")
     }
 
     @Test

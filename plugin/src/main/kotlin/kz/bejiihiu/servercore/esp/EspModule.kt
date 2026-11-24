@@ -28,6 +28,10 @@ class EspModule private constructor(
 
     fun start() {
         engine.start()
+        // reload / soft-enable mid-session: the join listener below only
+        // covers players joining after this point, everyone already online
+        // is tracked here or the anti-esp would silently stay off for them
+        plugin.server.onlinePlayers.forEach { engine.track(it) }
         plugin.server.pluginManager.registerEvents(tracker, plugin)
     }
 
