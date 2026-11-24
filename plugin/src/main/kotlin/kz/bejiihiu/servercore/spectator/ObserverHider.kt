@@ -202,11 +202,8 @@ class ObserverHider(
 
     private fun mirror(viewer: UUID, target: UUID, state: EntityViewState) {
         packets.registry.set(viewer, target, state)
-        syncStates?.set(viewer, target, when (state) {
-            EntityViewState.VISIBLE -> kz.bejiihiu.servercore.sync.ViewState.VISIBLE
-            EntityViewState.DISGUISED -> kz.bejiihiu.servercore.sync.ViewState.DISGUISED
-            EntityViewState.HIDDEN -> kz.bejiihiu.servercore.sync.ViewState.HIDDEN
-        })
+        // packet + sync state are the same canonical type now, one row each
+        syncStates?.set(viewer, target, state)
     }
 
     private fun trackPose(admin: UUID) {

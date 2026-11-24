@@ -23,7 +23,7 @@ class SpecViewStateApplier(
     private val delegate: kz.bejiihiu.servercore.esp.ViewStateApplier,
 ) : kz.bejiihiu.servercore.esp.ViewStateApplier {
 
-    override fun apply(viewer: UUID, target: UUID, state: ViewState, disguise: DisguiseAssignment?) {
+    override fun apply(viewer: UUID, target: UUID, state: ViewState, assignment: DisguiseAssignment?) {
         val observed = sessions.observedTarget(target)
         if (observed != null && viewer == observed) {
             // the observed player holds no representation of the admin at
@@ -32,6 +32,6 @@ class SpecViewStateApplier(
             hider.hide(admin = target, target = viewer)
             return
         }
-        delegate.apply(viewer, target, state, disguise)
+        delegate.apply(viewer, target, state, assignment)
     }
 }

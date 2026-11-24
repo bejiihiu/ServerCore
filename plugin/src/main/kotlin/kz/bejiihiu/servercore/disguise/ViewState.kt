@@ -1,23 +1,16 @@
 package kz.bejiihiu.servercore.disguise
 
-import java.util.UUID
+import kz.bejiihiu.servercore.esp.ViewState
 
-// local copy of the esp branch's decision types. the canonical definition
-// lives on feature/pe-esp; keep this signature-identical so the merge is a
-// pure file dedup with no code changes
+/**
+ * the disguise layer speaks the one canonical view state from the esp module.
+ * historically this package carried a signature-identical local copy; the
+ * merge made the esp definition canonical and this alias keeps the local
+ * naming (EntityViewState) without a second enum in play.
+ */
+typealias EntityViewState = ViewState
 
-enum class EntityViewState {
-    VISIBLE,
-    DISGUISED,
-    HIDDEN,
-}
-
-/** what the visibility engine calls for one (viewer, target) pair */
-fun interface ViewStateApplier {
-    fun apply(viewer: UUID, target: UUID, state: EntityViewState)
-}
-
-/** where the target stood when a state transition fired */
+/** what the target stood like when the disguise scheduler captured it */
 data class DisguiseSnapshot(
     val x: Double,
     val y: Double,
