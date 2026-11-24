@@ -512,7 +512,7 @@ class ServerCorePlugin : JavaPlugin() {
             )
             val specJournal = SpecRestoreJournal(dataFolder.toPath().resolve("spec-restore-journal.json"), io)
             specJournal.load()
-            val specEffects = FoliaSpecEffects(this, BukkitHiddenObserver(this), specJournal, logger)
+            val specEffects = FoliaSpecEffects(this, BukkitHiddenObserver(this), specJournal, logger, overrideRegistry)
             // the session machine is the single owner of the truth; the
             // bridges hang off its lifecycle callbacks:
             // - gamemode sanction: the guard sees the grant before the

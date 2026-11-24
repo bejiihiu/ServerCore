@@ -1,7 +1,9 @@
 package kz.bejiihiu.servercore.spec
 
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import java.util.logging.Logger
+import kz.bejiihiu.servercore.protection.AllowedGamemodeOverrideRegistry
 import org.bukkit.GameMode
 import org.bukkit.Location
 import org.bukkit.entity.Player
@@ -25,6 +27,8 @@ class FoliaSpecEffects(
     private val hiddenObserver: HiddenObserver,
     private val journal: SpecRestoreJournal,
     private val logger: Logger,
+    /** gamemode sanction source for the journal replay, see [replayRestore] */
+    private val sanctions: AllowedGamemodeOverrideRegistry? = null,
 ) : SpecEffects {
 
     override fun beginObservation(adminId: UUID, target: ObservationTarget, session: SpecSession, onComplete: (Boolean) -> Unit) {
@@ -70,18 +74,14 @@ class FoliaSpecEffects(
                                     { attachTask ->
                                         if (session.phase != SessionPhase.STARTING || moved != true || error != null) {
                                             attachTask.cancel()
-                                            // an exit may have interleaved with our teleport; undo the
-                                            // stray hop so the restore sequence never fights a lost admin
-                                            if (session.phase == SessionPhase.ENDING) {
-                                                session.savedState?.let { saved ->
-                                                    admin.teleportAsync(saved.location.clone(), PlayerTeleportEvent.TeleportCause.PLUGIN)
-                                                }
-                                            } else {
-                                                // world refused the start: undo the spectator switch right
-                                                // here, the coordinator has torn the claim down and has no
-                                                // restore of its own to run
-                                                abortRestore(admin, session)
-                                            }
+                                            // an exit may have interleaved with our teleport (phase already
+                                            // ENDING), or the world refused the start: either way the admin
+                                            // goes home with the saved mode back. endObservation may have
+                                            // read savedState before our capture became visible to it, so
+                                            // this is the path that actually restores - a second restore
+                                            // alongside a concurrent one is idempotent, a missing one
+                                            // strands the admin in spectator
+                                            abortRestore(admin, session)
                                             onComplete(false)
                                             return@run
                                         }
@@ -185,6 +185,20 @@ class FoliaSpecEffects(
             return
         }
         val location = Location(world, record.x, record.y, record.z, record.yaw, record.pitch)
+        // the session's restore grant died with the session (short ttl), and
+        // the guard cancels any non-survival mode change without a live one -
+        // an admin rejoining after the ttl would otherwise stay stranded in
+        // spectator while the sweep pushed them to survival. the replay
+        // carries its own grant, valid only for the mode it restores
+        val mode = runCatching { GameMode.valueOf(record.gamemode) }.getOrNull()
+        if (mode != null && mode != GameMode.SURVIVAL) {
+            sanctions?.grant(
+                admin.uniqueId,
+                setOf(mode),
+                REPLAY_SOURCE,
+                ttlMillis = TimeUnit.SECONDS.toMillis(REPLAY_TTL_SECONDS),
+            )
+        }
         admin.scheduler.run(
             plugin,
             { task ->
@@ -196,6 +210,9 @@ class FoliaSpecEffects(
                             { restoreTask ->
                                 restoreTask.cancel()
                                 restore(admin, record)
+                                if (mode != null && mode != GameMode.SURVIVAL) {
+                                    sanctions?.revoke(admin.uniqueId, REPLAY_SOURCE)
+                                }
                                 journal.remove(UUID.fromString(record.adminId))
                             },
                             null,
@@ -228,6 +245,13 @@ class FoliaSpecEffects(
         }.onFailure { error ->
             logger.warning("spec journal restore failed for ${admin.name}: $error")
         }
+    }
+
+    private companion object {
+        const val REPLAY_SOURCE = "spec-restore-replay"
+
+        /** the replay restore fires within a few scheduler hops of the join, this is generous */
+        const val REPLAY_TTL_SECONDS = 60L
     }
 }
 
