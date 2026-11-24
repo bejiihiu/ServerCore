@@ -7,6 +7,7 @@ import kz.bejiihiu.servercore.boot.JoinFlowListener
 import kz.bejiihiu.servercore.config.ConfigLoader
 import kz.bejiihiu.servercore.esp.EspConfig
 import kz.bejiihiu.servercore.esp.EspModule
+import kz.bejiihiu.servercore.esp.NoopViewStateApplier
 import kz.bejiihiu.servercore.esp.SpecObserverSource
 import kz.bejiihiu.servercore.guest.AccountService
 import kz.bejiihiu.servercore.guest.GuestConfig
@@ -56,6 +57,7 @@ import kz.bejiihiu.servercore.spec.SpecEventSender
 import kz.bejiihiu.servercore.spec.SpecSessionRegistry
 import kz.bejiihiu.servercore.sync.EntityIdentityTracker
 import kz.bejiihiu.servercore.sync.InMemoryViewStateRegistry
+import kz.bejiihiu.servercore.sync.PacketResyncExecutor
 import kz.bejiihiu.servercore.sync.PacketStateListener
 import kz.bejiihiu.servercore.sync.PacketStateSync
 import kz.bejiihiu.servercore.sync.SyncReconciler
@@ -372,28 +374,6 @@ class ServerCorePlugin : JavaPlugin() {
         // personal deep link arrived after the generic prompt went out
         wsResolver.onLinkAvailable { uuid -> sessions.onLinkAvailable(uuid) }
 
-        // packet state sync: every client-view state transition goes through
-        // the double-load-guarded coordinator. the registry and the packet
-        // writer are seams — the packetevents layer attaches below via
-        // PacketService, whose applier feeds both the registry and real
-        // packet writes; until PE is present the vanilla-only fallback keeps
-        // registry state correct without emitting packets.
-        val viewStates = InMemoryViewStateRegistry()
-        val entityIds = EntityIdentityTracker()
-        packetSync = PacketStateSync.create(
-            states = viewStates,
-            resync = VanillaOnlyResyncExecutor(logger),
-            identities = entityIds,
-            logger = logger,
-        )
-        val sync = packetSync
-        if (sync == null) {
-            logger.severe("packet state sync unavailable (double load), listeners not registered")
-        } else {
-            server.pluginManager.registerEvents(PacketStateListener(sync, entityIds), this)
-            syncReconciler = SyncReconciler(this, sync).also { it.start() }
-        }
-
         // packetevents layer: personal entity view foundation. attaches its
         // listener to the shared PE instance only when packetevents is
         // reachable, otherwise idles without breaking boot
@@ -413,16 +393,48 @@ class ServerCorePlugin : JavaPlugin() {
         packets.start()
         packetService = packets
 
+        // packet disguise layer: client-only entities for the anti-esp
+        // visibility engine. it registers its own packetevents listener, so it
+        // only comes up when the packet pipeline is actually alive; without
+        // pe the engine's disguise verdicts degrade to plain hiding below
+        disguiseStack = if (packets.online) DisguiseStack.create(this, config, logger) else null
+        if (!packets.online) {
+            logger.warning("packet layer idle, disguise layer staying off")
+        }
+
+        // packet state sync: every client-view state transition goes through
+        // the double-load-guarded coordinator. with pe up, resyncs run through
+        // the packet bridge — it keeps the policy rows, mirrors the applied
+        // picture into the packet registry and drives the disguise service,
+        // so an invalidation emits real packets. without pe the vanilla-only
+        // fallback keeps registry state correct without emitting packets
+        val viewStates = InMemoryViewStateRegistry()
+        val entityIds = EntityIdentityTracker()
+        val bridge = if (packets.online) {
+            PacketResyncExecutor(packets.registry, viewStates, disguiseStack?.applier, logger)
+        } else {
+            null
+        }
+        packetSync = PacketStateSync.create(
+            states = viewStates,
+            resync = bridge ?: VanillaOnlyResyncExecutor(logger),
+            identities = entityIds,
+            logger = logger,
+        )
+        val sync = packetSync
+        if (sync == null) {
+            logger.severe("packet state sync unavailable (double load), listeners not registered")
+        } else {
+            server.pluginManager.registerEvents(PacketStateListener(sync, entityIds), this)
+            syncReconciler = SyncReconciler(this, sync).also { it.start() }
+        }
+
         // live read-only inventory view for spec sessions. the session machinery
         // lands on its own branch and calls open()/close() through this service;
         // everything else (packet rewrite, read-only guard, flush loop, cleanup)
         // is self-contained and inert while no viewer is open
         inventoryViewer = InventoryViewerService(this, pluginConfig.spec, i18n)
         inventoryViewer.start()
-
-        // packet disguise layer: client-only entities for the anti-esp
-        // visibility engine (the engine itself drives disguiseStack.applier)
-        disguiseStack = DisguiseStack.create(this, config, logger)
 
         // protection stack: command denial, gamemode guard, op lockdown.
         // guest sessions keep their players in spectator, so that specific
@@ -528,11 +540,15 @@ class ServerCorePlugin : JavaPlugin() {
                 guests = sessions::isRestricted,
                 spec = SpecObserverSource { observerSessions.isObserver(it) },
             ).also { it.start() }
-            // the spec applier wraps whatever the engine had (the no-op until
-            // the packet writer registers itself): observer pairs are forced
+            // the spec applier wraps the packet bridge (the no-op when pe is
+            // absent and no writer exists at all): observer pairs are forced
             // hidden, everything else passes straight through
             esp?.let { module ->
-                module.engine.applier = SpecViewStateApplier(observerSessions, hider, module.engine.applier)
+                module.engine.applier = SpecViewStateApplier(
+                    observerSessions,
+                    hider,
+                    bridge ?: NoopViewStateApplier,
+                )
             }
         }
 

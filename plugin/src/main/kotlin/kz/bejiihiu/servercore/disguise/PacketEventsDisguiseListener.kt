@@ -7,6 +7,7 @@ import com.github.retrooper.packetevents.protocol.packettype.PacketType
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityEquipment
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityMetadata
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSpawnEntity
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSpawnPlayer
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import java.util.UUID
@@ -19,7 +20,10 @@ import java.util.UUID
  * - equipment updates of the real player are captured then dropped, so the
  *   mob never ends up holding the player's sword mid-disguise
  * - a tracker resync re-sending the real player spawn is cancelled and the
- *   same synthetic mob is re-issued (seeded per pair, so no model swap)
+ *   same synthetic mob is re-issued (seeded per pair, so no model swap);
+ *   both spawn shapes are covered — SPAWN_ENTITY for generic resends and
+ *   SPAWN_PLAYER for the player-target flavour, missing either would let
+ *   the real player flash through mid-disguise
  *
  * runs on netty threads by design: only map lookups and wrapper reads here,
  * entity-state reads go through the scheduler. dropped packets carry the
@@ -41,6 +45,7 @@ class PacketEventsDisguiseListener(
             PacketType.Play.Server.ENTITY_METADATA -> suppressMetadata(viewer, event)
             PacketType.Play.Server.ENTITY_EQUIPMENT -> suppressEquipment(viewer, event)
             PacketType.Play.Server.SPAWN_ENTITY -> suppressRealSpawn(viewer, event)
+            PacketType.Play.Server.SPAWN_PLAYER -> suppressRealSpawnPlayer(viewer, event)
             else -> return
         }
     }
@@ -72,6 +77,19 @@ class PacketEventsDisguiseListener(
         // same seeded mob re-issued so the resync is invisible
         event.isCancelled = true
         if (record.status != DisguiseStatus.DISGUISED) return
+        reissueDisguise(viewer, record)
+    }
+
+    private fun suppressRealSpawnPlayer(viewer: UUID, event: PacketSendEvent) {
+        val wrapper = WrapperPlayServerSpawnPlayer(event)
+        val record = registry.findByRealEntityId(viewer, wrapper.entityId) ?: return
+        event.isCancelled = true
+        if (record.status != DisguiseStatus.DISGUISED) return
+        reissueDisguise(viewer, record)
+    }
+
+    /** same seeded mob, same synthetic id: the client never notices the resync */
+    private fun reissueDisguise(viewer: UUID, record: ActiveDisguise) {
         scheduler.run(record.target) { entity ->
             if (registry.get(viewer, record.target) !== record) return@run
             renderer.spawnDisguise(
