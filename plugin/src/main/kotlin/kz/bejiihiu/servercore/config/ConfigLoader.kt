@@ -17,7 +17,7 @@ data class PluginConfig(
 
 object ConfigLoader {
     fun load(config: FileConfiguration, logger: java.util.logging.Logger): PluginConfig {
-        val url = config.getString("backend.url", "ws://127.0.0.1:8081/ws")!!.trim()
+        val url = config.getString("backend.url", "")!!.trim()
         val serverId = config.getString("backend.server-id", "game-1")!!.trim()
         val secret = config.getString("backend.secret", "")!!.trim()
         // the shipped file nests these under backend.reconnect.*; the old flat
@@ -37,9 +37,17 @@ object ConfigLoader {
         val dedupeTtl = config.getLong("backend.dedupe-ttl-milliseconds", 600_000L)
         val outboxMax = config.getInt("backend.outbox-max-entries", 500)
 
-        require(url.startsWith("ws://") || url.startsWith("wss://")) { "backend.url must start with ws:// or wss://" }
+        require(url.isNotEmpty()) {
+            "backend.url is empty: set the backend gateway websocket url (ws:// or wss://)"
+        }
+        require(url.startsWith("ws://") || url.startsWith("wss://")) {
+            "backend.url must start with ws:// or wss://"
+        }
         require(serverId.matches(Regex("[a-z0-9._-]+"))) { "backend.server-id must be [a-z0-9._-]+" }
-        require(secret.length >= 32) { "backend.secret must be at least 32 characters" }
+        require(secret.length >= 32) {
+            "backend.secret must be at least 32 characters (openssl rand -hex 32)"
+        }
+        require(heartbeat > 0) { "backend.heartbeat-interval-seconds must be positive" }
         require(ackTimeout > 0) { "backend.ack-timeout-milliseconds must be positive" }
         require(ackMaxRetries >= 0) { "backend.ack-max-retries must not be negative" }
         require(livenessTimeout > 0) { "backend.liveness-timeout-milliseconds must be positive" }

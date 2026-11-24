@@ -104,7 +104,7 @@ openssl rand -hex 32
 
 1. Download the plugin jar from [GitHub Releases](https://github.com/bejiihiu/ServerCore/releases).
 2. Install PacketEvents (and the optional plugins you want) into `plugins/`.
-3. Start the server once. The plugin generates `plugins/ServerCore/config.yml` and stays inert for account checks until the backend section is filled in.
+3. Start the server once. The plugin generates `plugins/ServerCore/config.yml` but disables itself on that first boot: `backend.url` and `backend.secret` are empty, and an unusable backend block is a boot blocker (the log shows `config error: …`).
 4. Edit the configuration:
 
 ```yaml

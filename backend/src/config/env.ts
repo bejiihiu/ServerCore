@@ -6,12 +6,24 @@ const serverCredentialsSchema = z.record(
   z.string().min(32).max(256),
 )
 
+/** empty env value (dotenv keeps a bare `KEY=`) means "not configured" */
+function emptyToUndefined(value: unknown): unknown {
+  return typeof value === "string" && value.trim() === "" ? undefined : value
+}
+
+/** true when the runtime accepts the zone (same lookup Intl does at log time) */
+function isValidTimeZone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: zone })
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** int field that treats an empty env value as "not configured" */
 function optionalInt() {
-  return z.preprocess(
-    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
-    z.coerce.number().int().optional(),
-  )
+  return z.preprocess(emptyToUndefined, z.coerce.number().int().optional())
 }
 
 const envSchema = z.object({
@@ -25,13 +37,19 @@ const envSchema = z.object({
   // atlas in production: mongodb+srv://... (tls is implicit for srv); local
   // dev keeps the plain mongodb:// form. retryWrites is always enabled below
   MONGODB_URI: z.string().min(1).default("mongodb://localhost:27017/servercore"),
-  BOT_TOKEN: z.string().min(1).optional(),
+  // empty = no bot; dotenv keeps a bare `BOT_TOKEN=`, so an empty value must
+  // read as "not configured" instead of failing the min-length check
+  BOT_TOKEN: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
 
   // closed telegram group; empty until the group exists (kick needs it)
   TELEGRAM_GROUP_CHAT_ID: z.string().default(""),
 
   // logs and schedules render in this zone (project standard: Europe/Moscow)
-  LOG_TIMEZONE: z.string().min(1).default(MOSCOW_TZ),
+  LOG_TIMEZONE: z
+    .string()
+    .min(1)
+    .default(MOSCOW_TZ)
+    .refine(isValidTimeZone, { message: "must be a valid IANA timezone" }),
 
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info"),
 
@@ -122,7 +140,7 @@ const envSchema = z.object({
   AUTH_RATE_LIMIT_APPROVALS_PER_TELEGRAM: z.coerce.number().int().min(1).max(200).default(30),
 
   // telegram message effect for the auth prompt, unset = no effect
-  AUTH_MESSAGE_EFFECT_ID: z.string().min(1).max(64).optional(),
+  AUTH_MESSAGE_EFFECT_ID: z.preprocess(emptyToUndefined, z.string().min(1).max(64).optional()),
 
   // how often pending auth requests are swept for expiry and delivery retries
   AUTH_SWEEP_INTERVAL_MS: z.coerce.number().int().min(250).max(60_000).default(1_000),
