@@ -13,9 +13,22 @@ const envSchema = z.object({
   // plugin websocket gateway runs on its own port, separate from fastify http
   WS_PORT: z.coerce.number().int().min(1).max(65535).default(8081),
 
+  // atlas in production: mongodb+srv://... (tls is implicit for srv); local
+  // dev keeps the plain mongodb:// form. retryWrites is always enabled below
   MONGODB_URI: z.string().min(1).default("mongodb://localhost:27017/servercore"),
   BOT_TOKEN: z.string().min(1).optional(),
   TELEGRAM_BOT_USERNAME: z.string().min(1).default("ServerCoreBot"),
+
+  // comma-separated telegram chat ids receiving duplicates of key events
+  ADMIN_CHAT_IDS: z.string().default(""),
+  // closed telegram group; empty until the group exists (kick needs it)
+  TELEGRAM_GROUP_CHAT_ID: z.string().default(""),
+
+  // default bot language for users without a stored preference
+  DEFAULT_LANGUAGE: z.enum(["ru", "en"]).default("ru"),
+  // logs and schedules render in this zone (project standard: Europe/Moscow)
+  LOG_TIMEZONE: z.string().min(1).default("Europe/Moscow"),
+
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info"),
 
   // json object mapping server id -> per-server secret
@@ -39,6 +52,10 @@ export type AppConfig = {
   mongoUri: string
   botToken?: string
   telegramBotUsername: string
+  adminChatIds: string[]
+  telegramGroupChatId: string
+  defaultLanguage: "ru" | "en"
+  logTimezone: string
   logLevel: "trace" | "debug" | "info" | "warn" | "error" | "fatal"
   serverCredentials: Record<string, string>
   wsHeartbeatIntervalMs: number
@@ -73,6 +90,13 @@ function parseServerCredentials(raw: string): Record<string, string> {
   return result.data
 }
 
+function parseChatIds(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0)
+}
+
 export function loadConfig(env: Record<string, string | undefined> = process.env): AppConfig {
   const result = envSchema.safeParse(env)
   if (!result.success) {
@@ -87,6 +111,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     mongoUri: result.data.MONGODB_URI,
     botToken: result.data.BOT_TOKEN,
     telegramBotUsername: result.data.TELEGRAM_BOT_USERNAME,
+    adminChatIds: parseChatIds(result.data.ADMIN_CHAT_IDS),
+    telegramGroupChatId: result.data.TELEGRAM_GROUP_CHAT_ID,
+    defaultLanguage: result.data.DEFAULT_LANGUAGE,
+    logTimezone: result.data.LOG_TIMEZONE,
     logLevel: result.data.LOG_LEVEL,
     serverCredentials: parseServerCredentials(result.data.SERVERCORE_SERVER_CREDENTIALS),
     wsHeartbeatIntervalMs: result.data.WS_HEARTBEAT_INTERVAL_MS,

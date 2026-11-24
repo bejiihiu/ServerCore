@@ -1,4 +1,16 @@
 import mongoose from "mongoose"
+import {
+  ApplicationModel,
+  AuditLogModel,
+  AuthRequestModel,
+  GuestSnapshotModel,
+  PlayerSessionModel,
+  PunishmentExternalModel,
+  ServerEventModel,
+  TelegramLinkModel,
+  UserModel,
+  VoteModel,
+} from "../database/models/index.js"
 import type { AppConfig } from "../config/env.js"
 import type { Logger } from "../logging/logger.js"
 
@@ -48,13 +60,44 @@ async function connectWithRetry(config: AppConfig, logger: Logger): Promise<void
         serverSelectionTimeoutMS: 5_000,
         maxPoolSize: 10,
         appName: "servercore-backend",
+        // atlas in production: tls is implicit for mongodb+srv uris, and
+        // retryWrites keeps transient primary elections from failing writes
+        retryWrites: true,
       })
       logger.info({ host: mongoose.connection.host, name: mongoose.connection.name, attempt }, "mongo connected")
+      await syncIndexesWithTolerance(logger)
       return
     } catch (err) {
       const delayMs = Math.min(RETRY_BASE_MS * 2 ** (attempt - 1), RETRY_MAX_MS)
       logger.warn({ err, attempt, nextRetryMs: delayMs }, "mongo connect failed, retrying")
       await bunDelay(delayMs)
+    }
+  }
+}
+
+/**
+ * creates missing indexes on boot. tolerant by design: on atlas a connection
+ * without index-creation rights must not take the backend down — the unique
+ * constraints get created by an admin run once and this call becomes a no-op.
+ */
+export async function syncIndexesWithTolerance(logger: Logger): Promise<void> {
+  const models = [
+    UserModel,
+    ApplicationModel,
+    VoteModel,
+    PlayerSessionModel,
+    GuestSnapshotModel,
+    AuthRequestModel,
+    TelegramLinkModel,
+    PunishmentExternalModel,
+    AuditLogModel,
+    ServerEventModel,
+  ]
+  for (const model of models) {
+    try {
+      await model.syncIndexes()
+    } catch (err: unknown) {
+      logger.warn({ err, collection: model.collection.name }, "index sync failed, continuing without it")
     }
   }
 }

@@ -1,4 +1,4 @@
-export { UserModel, type User, type UserStatus, USER_STATUSES } from "./user.js"
+export { UserModel, type User, type UserLanguage, type UserStatus, USER_STATUSES } from "./user.js"
 export {
   ApplicationModel,
   type Application,

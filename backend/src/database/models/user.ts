@@ -13,6 +13,8 @@ export const USER_STATUSES = [
 
 export type UserStatus = (typeof USER_STATUSES)[number]
 
+export type UserLanguage = "ru" | "en"
+
 export interface User {
   minecraft: {
     uuid: string
@@ -24,6 +26,8 @@ export interface User {
     linkedAt: Date | null
   }
   status: UserStatus
+  /** bot language preference, ru until the user switches (en) */
+  language: UserLanguage
   lastApplicationAt: Date | null
   createdAt: Date
   updatedAt: Date
@@ -43,6 +47,7 @@ const userSchema = new Schema<User>(
       linkedAt: { type: Date, default: null },
     },
     status: { type: String, enum: USER_STATUSES, required: true },
+    language: { type: String, enum: ["ru", "en"], default: "ru" },
     lastApplicationAt: { type: Date, default: null },
   },
   { timestamps: true },

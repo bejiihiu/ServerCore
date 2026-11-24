@@ -19,7 +19,7 @@ export type Gateway = {
     serverId: string,
     type: T,
     payload: PayloadOf<T>,
-    options?: { awaitAck?: boolean },
+    options?: { awaitAck?: boolean; correlationId?: string },
   ): Promise<void>
   stop(): void
 }
@@ -158,11 +158,16 @@ export function createGateway(config: AppConfig, logger: Logger, handlers: Handl
       serverId: string,
       type: T,
       payload: PayloadOf<T>,
-      options: { awaitAck?: boolean } = {},
+      options: { awaitAck?: boolean; correlationId?: string } = {},
     ): Promise<void> {
       const connection = connections.get(serverId)
       if (connection === undefined) throw new Error(`no connection for server ${serverId}`)
-      await connection.send(type, payload, { awaitAck: options.awaitAck ?? true })
+      const awaitAck = options.awaitAck ?? true
+      await connection.send(type, payload, {
+        awaitAck,
+        // explicit correlation ids travel as-is; otherwise awaitAck auto-generates one
+        ...(options.correlationId !== undefined ? { correlationId: options.correlationId } : {}),
+      })
     },
     stop(): void {
       stats.running = false
