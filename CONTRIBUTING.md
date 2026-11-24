@@ -28,6 +28,25 @@ We use [Conventional Commits](https://www.conventionalcommits.org/) with subject
 - `fix: restore guest snapshot after restart`
 - `docs: expand websocket reconnect section`
 
+## Release
+
+Releases are cut by pushing a tag; the tag **is** the version. There is no semantic version and no
+`v1.0.0` anywhere:
+
+```bash
+count="$(git rev-list --count HEAD)"
+sha="$(git rev-parse --short=7 HEAD)"
+git tag "build-${count}-${sha}"
+git push origin "build-${count}-${sha}"
+```
+
+Pushing `build-*` runs the release workflow, which refuses a tag that does not describe the pushed commit.
+It builds the plugin with `-Pversion=<tag>` (so the jar name and the `version:` inside `paper-plugin.yml`
+both carry it), runs the backend checks, stages `ServerCore-<tag>.jar` and
+`servercore-backend-<tag>.tar.gz`, verifies the jar is really the shaded build, writes `SHA256SUMS.txt` and
+publishes the release. The in-plugin updater compares those tags by commit count, so never reuse or move a
+published tag — cut a new one.
+
 ## Review
 
 Every PR is reviewed for correctness, Folia thread-safety, and security impact. Changes that weaken fail-closed behaviour or widen privileges will be asked to justify themselves — or be declined.

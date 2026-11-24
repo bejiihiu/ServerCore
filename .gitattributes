@@ -4,6 +4,11 @@
 # Linux start script should use lf
 /gradlew        text eol=lf
 
+# workflow scripts and yaml: a crlf in a workflow makes bash choke on every
+# run: line, so keep them lf in the repo no matter which OS commits them
+*.yml           text eol=lf
+*.yaml          text eol=lf
+
 # These are Windows script files and should use crlf
 *.bat           text eol=crlf
 
