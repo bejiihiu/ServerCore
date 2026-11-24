@@ -1,5 +1,6 @@
 package kz.bejiihiu.servercore.guest
 
+import com.destroystokyo.paper.event.player.PlayerTeleportEndGatewayEvent
 import io.papermc.paper.event.player.AsyncChatEvent
 import java.util.UUID
 import org.bukkit.event.EventHandler
@@ -27,6 +28,10 @@ import org.bukkit.inventory.InventoryHolder
  *
  * chat isolation runs at LOWEST so flectonepulse (or any other chat plugin)
  * never sees guest traffic in the first place — no fighting over the event.
+ *
+ * the restriction hint cooldown lives in memory on purpose: it survives as
+ * long as the process does and resets on restart, which is fine for a spam
+ * guard — no durability wanted, nothing to persist.
  */
 class GuestProtectionListener(
     private val sessions: GuestSessionService,
@@ -99,6 +104,20 @@ class GuestProtectionListener(
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     fun onPortal(event: PlayerPortalEvent) {
+        if (!config.restrictions.portals) return
+        if (restricted(event.player.uniqueId)) {
+            event.isCancelled = true
+            hint(event.player)
+        }
+    }
+
+    /**
+     * end gateway teleports are their own paper event and never come through
+     * PlayerPortalEvent; without this a guest could still be yanked through a
+     * gateway into another world (or the end exit path) despite the portal cancel
+     */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    fun onEndGateway(event: PlayerTeleportEndGatewayEvent) {
         if (!config.restrictions.portals) return
         if (restricted(event.player.uniqueId)) {
             event.isCancelled = true
