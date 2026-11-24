@@ -9,6 +9,10 @@ import type { VotingService } from "./voting-service.js"
  */
 export class VotingScheduler {
   private timer: ReturnType<typeof setInterval> | null = null
+  // setInterval does not wait for async sweeps: a sweep slower than the
+  // interval (telegram fan-out for many expired votings) must not overlap
+  // itself, or the same voting gets decided twice — double invites, double dms
+  private running = false
 
   constructor(
     private readonly deps: {
@@ -36,8 +40,11 @@ export class VotingScheduler {
     this.deps.logger.info("voting scheduler stopped")
   }
 
-  /** one sweep: decide every expired voting, follow up on approvals */
+  /** one sweep: decide every expired voting, follow up on approvals. a sweep
+   * that is still running skips the next tick instead of running concurrently */
   async runOnce(): Promise<void> {
+    if (this.running) return
+    this.running = true
     try {
       const { decisions, extended } = await this.deps.voting.decideExpired()
       if (extended > 0) {
@@ -67,6 +74,8 @@ export class VotingScheduler {
       }
     } catch (err) {
       this.deps.logger.error({ err }, "voting scheduler sweep failed")
+    } finally {
+      this.running = false
     }
   }
 }

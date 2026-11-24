@@ -90,6 +90,9 @@ export class InMemoryTokenStore implements TokenStore {
   private readonly tokens = new Map<string, StoredToken>()
 
   async save(record: StoredToken): Promise<void> {
+    // the only growth point of this map is issue(): sweep dead records here
+    // so an unlinked player rejoining forever cannot balloon memory
+    this.purge(record.createdAt)
     this.tokens.set(record.tokenHash, record)
   }
 

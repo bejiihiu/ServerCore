@@ -35,7 +35,10 @@ export function rejectCallbackData(token: string): string {
   return callbackData(CALLBACK_PREFIX, "reject", token)
 }
 
-type SentPrompt = { chatId: string; messageId: number }
+type SentPrompt = { chatId: string; messageId: number; sentAt: number }
+
+/** prompt locations older than this can never conclude (request ttl is <=90s) */
+const SENT_PROMPT_TTL_MS = 15 * 60_000
 
 /**
  * telegram side of the auth flow: renders the confirmation prompt through the
@@ -77,6 +80,13 @@ export class TelegramAuthUi {
     const api = this.api
     if (api === null) return false
 
+    // requests that expire with no button press never reach conclude(); drop
+    // their locations here so the map cannot grow forever
+    const now = Date.now()
+    for (const [id, entry] of this.sent) {
+      if (now - entry.sentAt > SENT_PROMPT_TTL_MS) this.sent.delete(id)
+    }
+
     const screen = promptScreen(request, this.serverName, this.translator)
     const message = await sendScreen(api, {
       chatId: request.telegramId,
@@ -86,6 +96,7 @@ export class TelegramAuthUi {
     this.sent.set(request.id, {
       chatId: String(request.telegramId),
       messageId: message.message_id,
+      sentAt: now,
     })
     return true
   }

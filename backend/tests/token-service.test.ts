@@ -91,4 +91,15 @@ describe("token service", () => {
     }
     expect(sawRawToken).toBe(false)
   })
+
+  test("the store purges expired and consumed records on save", async () => {
+    const store = new InMemoryTokenStore()
+    const service = new TokenService(store, 60)
+    const first = await service.issue({}, NOW)
+    const second = await service.issue({}, NOW + 120_000) // first is long expired by now
+    expect(store.size).toBe(1)
+    // the expired token must be gone, not just filtered by verify
+    expect(await store.find(sha256Hex(first.token))).toBeNull()
+    expect(await store.find(sha256Hex(second.token))).not.toBeNull()
+  })
 })

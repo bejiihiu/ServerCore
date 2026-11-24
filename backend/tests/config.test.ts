@@ -78,4 +78,12 @@ describe("config", () => {
     const config = loadConfig(env({ BOT_TOKEN: "123:abc" }))
     expect(config.botToken).toBe("123:abc")
   })
+
+  test("boolean flags read 'false' as false, not truthy-string", () => {
+    // z.coerce.boolean would make Boolean("false") === true
+    const off = loadConfig(env({ VOTE_BUTTON_ICONS_ENABLED: "false" }))
+    expect(off.voteButtonIcons.enabled).toBe(false)
+    const on = loadConfig(env({ VOTE_BUTTON_ICONS_ENABLED: "true" }))
+    expect(on.voteButtonIcons.enabled).toBe(true)
+  })
 })

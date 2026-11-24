@@ -67,8 +67,12 @@ const envSchema = z.object({
 
   // vote button icons via icon_custom_emoji_id (bot api 9.4). needs telegram
   // premium on the bot owner — default off until confirmed, api degrades to
-  // plain buttons on failure
-  VOTE_BUTTON_ICONS_ENABLED: z.coerce.boolean().default(false),
+  // plain buttons on failure. boolean envs go through the truthy-string
+  // transform: z.coerce.boolean would read "false" as true
+  VOTE_BUTTON_ICONS_ENABLED: z
+    .string()
+    .default("false")
+    .transform((raw) => ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase())),
   VOTE_BUTTON_ICON_ACCEPT_ID: z.string().default(""),
   VOTE_BUTTON_ICON_REJECT_ID: z.string().default(""),
 
