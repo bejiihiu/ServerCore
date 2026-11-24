@@ -4,11 +4,13 @@ import java.util.UUID
 import java.util.logging.Logger
 
 /**
- * default [ResyncExecutor] used until the packetevents writer lands behind the
- * interface. everything achievable without packets is real: registry rows are
- * the policy truth and the sync core keeps them correct; the only thing this
- * executor cannot do is emit the actual packets, and it says so at debug level
- * rather than pretending.
+ * the fallback [ResyncExecutor] used when packetevents is absent, so the
+ * plugin still boots and the sync core keeps the registry rows correct.
+ * everything achievable without packets is real; the only thing this
+ * executor cannot do is emit the actual packets, and it says so at debug
+ * level rather than pretending. the packet-backed replacement lives in
+ * [PacketResyncExecutor] and is wired instead whenever the packet layer is
+ * online.
  *
  * note that [resetViewer] is genuinely a no-op by design even with a real
  * writer: dropping the overrides *is* the mechanism — vanilla resends on its

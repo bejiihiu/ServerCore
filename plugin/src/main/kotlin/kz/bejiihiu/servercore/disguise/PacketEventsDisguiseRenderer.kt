@@ -51,6 +51,14 @@ class CapturedStateStore {
  * packetevents implementation of [DisguiseRenderer]: builds the synthetic
  * spawn / metadata / equipment packets and the real-entity destroy, and
  * sends them strictly to one viewer's channel.
+ *
+ * every send here is silent (bypasses packetevents listeners) on purpose:
+ * these are our own synthetic-view packets, not server-broadcast traffic.
+ * the shared entity listener's destroy bookkeeping would otherwise unbind
+ * the real entity id and drop the very packet-registry row that keeps a
+ * hidden pair suppressed — the same race ObserverHider documents for the
+ * spec path. the server's own broadcast packets still go through the
+ * listeners; only our synthetic writes skip them.
  */
 class PacketEventsDisguiseRenderer(
     private val captured: CapturedStateStore,
@@ -69,7 +77,7 @@ class PacketEventsDisguiseRenderer(
         val type = resolveEntityType(profile.mobTypeName) ?: return
 
         // 1) the synthetic mob appears where the player stood
-        out.sendPacket(
+        out.sendPacketSilently(
             v,
             WrapperPlayServerSpawnEntity(
                 syntheticEntityId,
@@ -82,13 +90,13 @@ class PacketEventsDisguiseRenderer(
             ),
         )
         // 2) plausible mob defaults, deliberately zero player fields
-        out.sendPacket(
+        out.sendPacketSilently(
             v,
             WrapperPlayServerEntityMetadata(syntheticEntityId, profile.metadata.map { it.toEntityData() }),
         )
         // 3) every wearable slot explicitly empty, so no real armor or held
         //    item can show up on the mob
-        out.sendPacket(
+        out.sendPacketSilently(
             v,
             WrapperPlayServerEntityEquipment(
                 syntheticEntityId,
@@ -97,13 +105,13 @@ class PacketEventsDisguiseRenderer(
         )
         // 4) the real player disappears for this viewer only; the server
         //    entity stays untouched
-        out.sendPacket(v, WrapperPlayServerDestroyEntities(realEntityId))
+        out.sendPacketSilently(v, WrapperPlayServerDestroyEntities(realEntityId))
     }
 
     override fun destroyEntities(viewer: UUID, entityIds: IntArray) {
         if (entityIds.isEmpty()) return
         val v = Bukkit.getPlayer(viewer) ?: return
-        PacketEvents.getAPI().playerManager.sendPacket(v, WrapperPlayServerDestroyEntities(*entityIds))
+        PacketEvents.getAPI().playerManager.sendPacketSilently(v, WrapperPlayServerDestroyEntities(*entityIds))
     }
 
     override fun revealPlayer(viewer: UUID, target: UUID, realEntityId: Int, snapshot: DisguiseSnapshot) {
@@ -114,7 +122,7 @@ class PacketEventsDisguiseRenderer(
         // the real player back at the captured spot; metadata + equipment the
         // listener captured while hidden are replayed so the client does not
         // render a default-skinned stranger
-        out.sendPacket(
+        out.sendPacketSilently(
             v,
             WrapperPlayServerSpawnEntity(
                 realEntityId,
@@ -127,10 +135,10 @@ class PacketEventsDisguiseRenderer(
             ),
         )
         captured.drainMetadata(viewer, target)?.let {
-            out.sendPacket(v, WrapperPlayServerEntityMetadata(realEntityId, it))
+            out.sendPacketSilently(v, WrapperPlayServerEntityMetadata(realEntityId, it))
         }
         captured.drainEquipment(viewer, target)?.let {
-            out.sendPacket(v, WrapperPlayServerEntityEquipment(realEntityId, it))
+            out.sendPacketSilently(v, WrapperPlayServerEntityEquipment(realEntityId, it))
         }
     }
 

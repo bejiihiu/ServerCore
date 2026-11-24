@@ -37,7 +37,7 @@ class EntityDisguiseServiceTest {
 
     /** inline "scheduler": the hop runs immediately with canned entity data */
     private class InlineScheduler(
-        private val entityIds: MutableMap<UUID, Int> = mutableMapOf(),
+        val entityIds: MutableMap<UUID, Int> = mutableMapOf(),
     ) : DisguiseScheduler {
         override fun run(target: UUID, block: (TargetEntity) -> Unit) {
             block(TargetEntity(entityIds[target] ?: 900, DisguiseSnapshot(1.0, 2.0, 3.0, 0f, 0f)))
@@ -57,9 +57,9 @@ class EntityDisguiseServiceTest {
         val renderer = FakeRenderer()
         val svc = service(renderer)
 
-        svc.apply(viewer, target, EntityViewState.DISGUISED)
-        svc.apply(viewer, target, EntityViewState.DISGUISED)
-        svc.apply(viewer, target, EntityViewState.DISGUISED)
+        svc.apply(viewer, target, EntityViewState.DISGUISED, null)
+        svc.apply(viewer, target, EntityViewState.DISGUISED, null)
+        svc.apply(viewer, target, EntityViewState.DISGUISED, null)
 
         assertEquals(1, renderer.calls.count { it.startsWith("spawn:") }, renderer.calls.toString())
         // the real-player destroy rides INSIDE spawnDisguise in the real
@@ -70,7 +70,7 @@ class EntityDisguiseServiceTest {
     @Test
     fun revealWithoutAnyPriorStateDoesNothing() {
         val renderer = FakeRenderer()
-        service(renderer).apply(viewer, target, EntityViewState.VISIBLE)
+        service(renderer).apply(viewer, target, EntityViewState.VISIBLE, null)
         assertTrue(renderer.calls.isEmpty(), renderer.calls.toString())
     }
 
@@ -79,9 +79,9 @@ class EntityDisguiseServiceTest {
         val renderer = FakeRenderer()
         val svc = service(renderer)
 
-        svc.apply(viewer, target, EntityViewState.DISGUISED)
-        svc.apply(viewer, target, EntityViewState.VISIBLE)
-        svc.apply(viewer, target, EntityViewState.VISIBLE)
+        svc.apply(viewer, target, EntityViewState.DISGUISED, null)
+        svc.apply(viewer, target, EntityViewState.VISIBLE, null)
+        svc.apply(viewer, target, EntityViewState.VISIBLE, null)
 
         assertEquals(1, renderer.calls.count { it.startsWith("spawn:") })
         assertEquals(1, renderer.calls.count { it.startsWith("reveal:") })
@@ -100,8 +100,8 @@ class EntityDisguiseServiceTest {
         val scheduler = InlineScheduler(entityIds = mutableMapOf(target to 777))
         val svc = service(renderer, scheduler)
 
-        svc.apply(viewer, target, EntityViewState.DISGUISED)
-        svc.apply(viewer, target, EntityViewState.HIDDEN)
+        svc.apply(viewer, target, EntityViewState.DISGUISED, null)
+        svc.apply(viewer, target, EntityViewState.HIDDEN, null)
 
         val destroy = renderer.calls.last { it.startsWith("destroy:") }
         // synthetic id + the real entity id 777, nothing else
@@ -114,14 +114,51 @@ class EntityDisguiseServiceTest {
         val scheduler = InlineScheduler(entityIds = mutableMapOf(target to 555))
         val svc = service(renderer, scheduler)
 
-        svc.apply(viewer, target, EntityViewState.HIDDEN)
+        svc.apply(viewer, target, EntityViewState.HIDDEN, null)
         assertEquals(listOf("destroy:$viewer/[555]"), renderer.calls)
 
         // a later reveal restores the parked entity exactly once
-        svc.apply(viewer, target, EntityViewState.VISIBLE)
+        svc.apply(viewer, target, EntityViewState.VISIBLE, null)
         assertEquals(listOf("destroy:$viewer/[555]", "reveal:$viewer/$target/real=555"), renderer.calls)
-        svc.apply(viewer, target, EntityViewState.VISIBLE)
+        svc.apply(viewer, target, EntityViewState.VISIBLE, null)
         assertEquals(2, renderer.calls.size, "second reveal must be a no-op")
+    }
+
+    @Test
+    fun reHiddenPairDestroysTheLiveEntityIdAgain() {
+        val renderer = FakeRenderer()
+        val scheduler = InlineScheduler(entityIds = mutableMapOf(target to 555))
+        val svc = service(renderer, scheduler)
+
+        svc.apply(viewer, target, EntityViewState.HIDDEN, null)
+        assertEquals(listOf("destroy:$viewer/[555]"), renderer.calls)
+        renderer.calls.clear()
+
+        // the target re-registered with a fresh entity id after a re-track,
+        // then the pair gets re-asserted while still parked hidden
+        scheduler.entityIds[target] = 800
+        svc.apply(viewer, target, EntityViewState.HIDDEN, null)
+        // parked id destroyed again, plus the live one read off the scheduler
+        assertEquals(listOf("destroy:$viewer/[555]", "destroy:$viewer/[800]"), renderer.calls)
+    }
+
+    @Test
+    fun deadPairLandsOnTheVanillaRevealPath() {
+        val renderer = FakeRenderer()
+        val scheduler = InlineScheduler(entityIds = mutableMapOf(target to 444))
+        val svc = service(renderer, scheduler)
+
+        svc.apply(viewer, target, EntityViewState.DISGUISED, null)
+        renderer.calls.clear()
+
+        // death pins the pair into DEAD in the sync layer; the disguise side
+        // just has to put the real (dead) entity back, no synthetic remains
+        svc.apply(viewer, target, EntityViewState.DEAD, null)
+        assertEquals(1, renderer.calls.count { it.startsWith("destroy:") })
+        assertEquals(1, renderer.calls.count { it.startsWith("reveal:") })
+        // record gone: a later reveal is a clean no-op
+        svc.apply(viewer, target, EntityViewState.VISIBLE, null)
+        assertEquals(2, renderer.calls.size)
     }
 
     @Test
@@ -129,11 +166,11 @@ class EntityDisguiseServiceTest {
         val renderer = FakeRenderer()
         val svc = service(renderer)
 
-        svc.apply(viewer, target, EntityViewState.DISGUISED)
+        svc.apply(viewer, target, EntityViewState.DISGUISED, null)
         val first = renderer.calls.first { it.startsWith("spawn:") }
 
-        svc.apply(viewer, target, EntityViewState.HIDDEN)
-        svc.apply(viewer, target, EntityViewState.DISGUISED)
+        svc.apply(viewer, target, EntityViewState.HIDDEN, null)
+        svc.apply(viewer, target, EntityViewState.DISGUISED, null)
         val second = renderer.calls.last { it.startsWith("spawn:") }
 
         // seeded per pair: the resync respawns the same model, not a new one
@@ -145,7 +182,7 @@ class EntityDisguiseServiceTest {
     @Test
     fun viewerNeverDisguisesItself() {
         val renderer = FakeRenderer()
-        service(renderer).apply(viewer, viewer, EntityViewState.DISGUISED)
+        service(renderer).apply(viewer, viewer, EntityViewState.DISGUISED, null)
         assertTrue(renderer.calls.isEmpty())
     }
 
@@ -156,15 +193,15 @@ class EntityDisguiseServiceTest {
         val other = UUID.nameUUIDFromBytes("other-viewer".toByteArray())
         val svc = service(renderer, registry = registry)
 
-        svc.apply(viewer, target, EntityViewState.DISGUISED)
-        svc.apply(other, target, EntityViewState.DISGUISED)
+        svc.apply(viewer, target, EntityViewState.DISGUISED, null)
+        svc.apply(other, target, EntityViewState.DISGUISED, null)
         renderer.calls.clear()
 
         svc.clearFor(target)
 
         // both viewers lose their synthetic ghost, records gone -> reveal no-ops
         assertEquals(2, renderer.calls.count { it.startsWith("destroy:") })
-        svc.apply(viewer, target, EntityViewState.VISIBLE)
+        svc.apply(viewer, target, EntityViewState.VISIBLE, null)
         assertTrue(renderer.calls.none { it.startsWith("reveal:") }, renderer.calls.toString())
     }
 
@@ -175,8 +212,8 @@ class EntityDisguiseServiceTest {
         val other = UUID.nameUUIDFromBytes("other-target".toByteArray())
         val svc = service(renderer, registry = registry)
 
-        svc.apply(viewer, target, EntityViewState.DISGUISED)
-        svc.apply(other, viewer, EntityViewState.DISGUISED) // viewer is the target here
+        svc.apply(viewer, target, EntityViewState.DISGUISED, null)
+        svc.apply(other, viewer, EntityViewState.DISGUISED, null) // viewer is the target here
         renderer.calls.clear()
 
         svc.clearFor(viewer)
@@ -192,7 +229,7 @@ class EntityDisguiseServiceTest {
         val svc = EntityDisguiseService(
             InlineScheduler(), renderer, DisguiseRegistry(), SyntheticEntityIds(), emptyList(),
         )
-        svc.apply(viewer, target, EntityViewState.DISGUISED)
+        svc.apply(viewer, target, EntityViewState.DISGUISED, null)
         assertTrue(renderer.calls.isEmpty())
     }
 }

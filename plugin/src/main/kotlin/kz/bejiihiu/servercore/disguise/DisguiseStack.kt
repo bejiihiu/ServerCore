@@ -3,6 +3,7 @@ package kz.bejiihiu.servercore.disguise
 import com.github.retrooper.packetevents.PacketEvents
 import com.github.retrooper.packetevents.event.PacketListenerCommon
 import com.github.retrooper.packetevents.event.PacketListenerPriority
+import kz.bejiihiu.servercore.esp.ViewStateApplier
 import org.bukkit.configuration.file.FileConfiguration
 import org.bukkit.plugin.Plugin
 import java.util.logging.Logger
@@ -11,8 +12,9 @@ import java.util.logging.Logger
  * one-stop wiring for the disguise layer: parses config, builds the packetevents
  * renderer + suppression listener + service, registers the listener.
  *
- * the esp decision engine (esp branch) drives [applier]; until decisions
- * arrive the registry stays empty and every packet passes through untouched.
+ * the esp visibility engine drives [applier] directly (the service implements
+ * the engine's applier contract); until decisions arrive the registry stays
+ * empty and every packet passes through untouched.
  */
 class DisguiseStack private constructor(
     val applier: ViewStateApplier,

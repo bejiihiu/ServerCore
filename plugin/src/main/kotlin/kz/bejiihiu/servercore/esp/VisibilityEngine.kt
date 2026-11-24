@@ -219,17 +219,18 @@ class VisibilityEngine(
     private fun settle(key: PairKey, facts: PairFacts, now: Long) {
         val previous = cache[key]?.verdict
         val verdict = decider.decide(facts, previous, rng)
-        val changed = arrayOf(false)
         cache.upsert(key) { e ->
             // a settle from a later cycle already landed, don't clobber it
             if (e != null && e.updatedAt > now && !e.losPending) {
                 e
             } else {
-                changed[0] = e?.verdict != verdict
                 VisibilityCache.Entry(verdict, now, facts.losBlocked, losPending = false)
             }
         }
-        if (changed[0]) applier.apply(key.viewer, key.target, verdict.state, verdict.disguise)
+        // every settle applies, not only verdict changes: appliers are
+        // idempotent by contract, and a re-tracked client or an evicted
+        // packet row heals itself on the next settle instead of leaking
+        applier.apply(key.viewer, key.target, verdict.state, verdict.disguise)
     }
 
     private fun ttlCycles(): Long = maxOf(1L, ceil(config.cacheTtlTicks.toDouble() / config.checkIntervalTicks).toLong())
