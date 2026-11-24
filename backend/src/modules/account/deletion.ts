@@ -3,8 +3,8 @@ import type { Logger } from "../../logging/logger.js"
 import type { Gateway } from "../../websocket/gateway.js"
 import type { AuditRepository, AuthRequestRepository, SessionRepository, TelegramLinkRepository, UserRepository } from "./repository.js"
 import { AccountError } from "./types.js"
-import type { NotificationFanout } from "../notification/notification-service.js"
-import { t, type Language } from "../../bot/i18n.js"
+import type { NotificationFanout } from "../notification/notification-port.js"
+import { t, type Locale } from "../../services/i18n.js"
 
 /**
  * how deletion talks to the telegram group. kicking needs an admin bot in the
@@ -183,7 +183,7 @@ export class AccountDeletionService {
       throw new AccountError("DELETION_FAILED", "requester is not the linked telegram account")
     }
 
-    const language: Locale = user.language
+    const locale: Locale = user.language
     const originalUsername = user.username
     const steps: DeletionStep[] = []
     const push = (step: DeletionStep): void => {
@@ -258,8 +258,8 @@ export class AccountDeletionService {
       push("AUDIT")
 
       // tell the (former) owner it's done — the chat id works without a link
-      await this.notifier.notifyUser(requesterTelegramId, t(language, "bot.delete.done", { username: originalUsername }))
-      await this.notifier.notifyAdmins(t(language, "bot.delete.done", { username: originalUsername }))
+      await this.notifier.notifyUser(requesterTelegramId, t(locale, "bot.delete.done", { username: originalUsername }))
+      await this.notifier.notifyAdmins(t(locale, "bot.delete.done", { username: originalUsername }))
 
       this.logger.info({ minecraftUuid, cancelledAuthRequests, revokedInvites }, "account deleted")
       return { steps, cancelledAuthRequests, revokedInvites, deletedUsernameHash }
@@ -267,7 +267,7 @@ export class AccountDeletionService {
       // leave the account frozen in DELETION_PENDING: revokes can be retried,
       // and nothing personal has been destroyed yet
       this.logger.error({ err, minecraftUuid }, "account deletion aborted mid-pipeline")
-      await this.notifier.notifyUser(requesterTelegramId, t(language, "bot.delete.fail"))
+      await this.notifier.notifyUser(requesterTelegramId, t(locale, "bot.delete.fail"))
       if (err instanceof AccountError) throw err
       throw new AccountError("DELETION_FAILED", "account deletion failed mid-pipeline", {
         completedSteps: steps,

@@ -4,7 +4,7 @@ import { AccountError, type UserStatus } from "../../src/modules/account/types.j
 import type { AuditRecord, AuditRepository, AuthRequestRecord, AuthRequestRepository, LinkRecord, SessionRecord, SessionRepository, TelegramLinkRepository, UserRecord, UserRepository } from "../../src/modules/account/repository.js"
 import { InMemoryTokenStore, TokenService } from "../../src/services/token-service.js"
 import { silentLogger } from "../../src/websocket/handlers/registry.js"
-import type { NotificationFanout } from "../../src/modules/notification/notification-service.js"
+import type { NotificationFanout } from "../../src/modules/notification/notification-port.js"
 import type { OwnershipVerifier } from "../../src/modules/account/session-probe.js"
 import type { AccountView } from "../../src/modules/account/account-service.js"
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { RateLimiter } from "../src/utils/rate-limiter.js"
 import { zonedIso, pinoTimestampFor } from "../src/utils/time.js"
-import { t, normalizeLanguage, type MessageKey } from "../src/bot/i18n.js"
+import { t, statusLabel } from "../src/services/i18n.js"
 
 describe("rate limiter", () => {
   test("allows up to the limit inside the window", () => {
@@ -67,29 +67,40 @@ describe("zoned iso timestamps", () => {
 })
 
 describe("i18n", () => {
-  test("unknown languages fall back to ru", () => {
-    expect(normalizeLanguage("de")).toBe("ru")
-    expect(normalizeLanguage("en")).toBe("en")
-    expect(normalizeLanguage(undefined)).toBe("ru")
-  })
-
-  test("parameter substitution works in both languages", () => {
-    const ru = t("ru", "linkSuccess", { username: "steve" })
-    const en = t("en", "linkSuccess", { username: "steve" })
+  test("parameter substitution works in both locales", () => {
+    const ru = t("ru", "bot.link.success", { username: "steve" })
+    const en = t("en", "bot.link.success", { username: "steve" })
     expect(ru).toContain("steve")
     expect(en).toContain("steve")
     expect(ru).not.toBe(en)
   })
 
-  test("every key exists in every language and leaves no placeholders behind", () => {
-    // compile-time exhaustiveness is guaranteed by Record<MessageKey, string>;
-    // this guards the runtime side (no {param} left unsubstituted)
-    const keys: MessageKey[] = ["help", "accountScreen", "deleteConfirm", "linkSuccess"]
-    for (const key of keys) {
-      for (const lang of ["ru", "en"] as const) {
-        const text = t(lang, key, { username: "x", status: "y", telegram: "z", from: "a", to: "b" })
-        expect(text).not.toMatch(/\{[a-z]+\}/)
+  test("status labels resolve for the full ladder in both locales", () => {
+    for (const status of [
+      "UNREGISTERED",
+      "APPLICATION_PENDING",
+      "VOTING",
+      "APPROVED",
+      "ACTIVE",
+      "SUSPENDED",
+      "BANNED",
+      "DELETION_PENDING",
+    ]) {
+      for (const locale of ["ru", "en"] as const) {
+        // a missing key returns the key itself, so a real label never contains a dot
+        expect(statusLabel(locale, status)).not.toContain(".")
       }
+    }
+  })
+
+  test("account screen keys leave no placeholders behind", () => {
+    for (const locale of ["ru", "en"] as const) {
+      const screen = t(locale, "bot.account.screen", {
+        username: "x",
+        status: statusLabel(locale, "ACTIVE"),
+        telegram: t(locale, "bot.account.telegram_linked"),
+      })
+      expect(screen).not.toMatch(/\{\{?\w+\}?\}/)
     }
   })
 })

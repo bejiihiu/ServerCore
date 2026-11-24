@@ -1,4 +1,4 @@
-import type { Bot } from "grammy"
+import { Bot as GrammyBot } from "grammy"
 import { loadConfig, ConfigError as EnvConfigError } from "./config/env.js"
 import type { AppConfig } from "./config/env.js"
 import { createLogger } from "./logging/logger.js"
@@ -36,7 +36,6 @@ import {
 } from "./modules/retention/repository-mongo.js"
 import { MongoCollectionStats } from "./modules/retention/collection-stats.js"
 import { createBot } from "./bot/bot.js"
-import type { BotDeps } from "./bot/context.js"
 
 /** adapts the shared broadcast engine onto the account modules' fan-out port */
 class FanoutAdapter implements NotificationFanout {
@@ -135,7 +134,7 @@ async function main(): Promise<void> {
   // the deletion pipeline needs raw bot api access for the group kick
   const kickApi = () => {
     if (config.botToken === undefined) throw new Error("telegram bot disabled, cannot kick")
-    return new Bot(config.botToken).api
+    return new GrammyBot(config.botToken).api
   }
   const deletion = new AccountDeletionService({
     users: new MongoUserRepository(),
@@ -174,7 +173,7 @@ async function main(): Promise<void> {
   })
   const stopRetention = retention.start()
 
-  const bot: Bot | null = createBot(config, logger, {
+  const bot = createBot(config, logger, {
     accounts,
     deletion,
     defaultLanguage: config.opsLocale,
