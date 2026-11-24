@@ -146,10 +146,11 @@ anti-esp:
 Full key reference: [configuration.md](configuration.md).
 
 5. Restart the server. On startup the plugin opens an outbound connection to the backend gateway
-   (`<scheme>://<host>:<WS_PORT>/ws` — the gateway answers `404` on any other path). The plugin log shows
-   `backend gateway connected as game-1`, and the backend log answers with `game server connected, awaiting hello`.
-   If the plugin instead keeps logging `backend gateway disconnected`, the handshake is being rejected — the
-   backend names the reason (`unknown server id`, `signature mismatch`, `timestamp outside replay window`).
+   (`<scheme>://<host>:<backend WS_PORT>/ws` — the gateway answers `404` on any other path). The plugin log
+   shows `backend gateway connected as game-1`, and the backend log answers with
+   `game server connected, awaiting hello`. If the plugin instead keeps logging
+   `backend gateway disconnected`, the handshake is being rejected — the backend names the reason
+   (`unknown server id`, `signature mismatch`, `timestamp outside replay window`).
 
 `docs/first-run.md` condenses the whole backend + plugin bring-up into a checklist with the exact log lines
 to look for.
