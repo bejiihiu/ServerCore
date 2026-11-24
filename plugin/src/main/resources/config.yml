@@ -88,6 +88,11 @@ anti-esp:
 spec:
   enabled: true
   live-inventory: true
+  # minimum gap between live inventory view updates, milliseconds
+  live-inventory-push-milliseconds: 500
+  # periodic full re-sync of the live view, seconds; catches changes no event
+  # reported (e.g. plugin-side inventory edits)
+  live-inventory-full-resync-seconds: 5
   log-to-audit: true
 
 protection:

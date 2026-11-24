@@ -27,6 +27,7 @@ import kz.bejiihiu.servercore.ops.ServerState
 import kz.bejiihiu.servercore.ops.UpdateInstaller
 import kz.bejiihiu.servercore.ops.UpdaterService
 import kz.bejiihiu.servercore.player.PlayerPresenceService
+import kz.bejiihiu.servercore.spectator.InventoryViewerService
 import kz.bejiihiu.servercore.ui.UiKit
 import kz.bejiihiu.servercore.util.I18n
 import kz.bejiihiu.servercore.websocket.DelayScheduler
@@ -67,6 +68,7 @@ class ServerCorePlugin : JavaPlugin() {
     private var updater: UpdaterService? = null
     private var restartSchedule: RestartScheduleTask? = null
     private lateinit var opsBus: OpsEventBus
+    private lateinit var inventoryViewer: InventoryViewerService
 
     override fun onEnable() {
         saveDefaultConfig()
@@ -122,7 +124,7 @@ class ServerCorePlugin : JavaPlugin() {
 
         // presence + gateway client: liveness, PLAYER_JOINED/LEFT, account events.
         // bad config is a boot blocker: better dead than half-connected
-        val gatewayConfig = try {
+        val pluginConfig = try {
             ConfigLoader.load(config)
         } catch (e: IllegalArgumentException) {
             logger.severe("config error: ${e.message}")
@@ -138,7 +140,7 @@ class ServerCorePlugin : JavaPlugin() {
 
         val gatewayListener = object : GatewayListener {
             override fun onConnected() {
-                logger.info("backend gateway connected as ${gatewayConfig.gateway.serverId}")
+                logger.info("backend gateway connected as ${pluginConfig.gateway.serverId}")
                 // re-announce live guest sessions so both sides agree on reality
                 sessions.reconcile()
             }
@@ -163,7 +165,7 @@ class ServerCorePlugin : JavaPlugin() {
         }
 
         val client = GatewayClient(
-            config = gatewayConfig.gateway,
+            config = pluginConfig.gateway,
             listener = gatewayListener,
             scheduler = delayScheduler,
             stats = stats,
@@ -225,6 +227,13 @@ class ServerCorePlugin : JavaPlugin() {
         // demo surface for the ui toolkit until real flows consume it everywhere
         server.pluginManager.registerEvents(JoinFlowListener(ui), this)
 
+        // live read-only inventory view for spec sessions. the session machinery
+        // lands on its own branch and calls open()/close() through this service;
+        // everything else (packet rewrite, read-only guard, flush loop, cleanup)
+        // is self-contained and inert while no viewer is open
+        inventoryViewer = InventoryViewerService(this, pluginConfig.spec, i18n)
+        inventoryViewer.start()
+
         // heartbeat keeps the backend's liveness picture fresh
         presenceService.startHeartbeat()
         client.start()
@@ -257,6 +266,7 @@ class ServerCorePlugin : JavaPlugin() {
         wsGateway?.stop()
         updater?.stop()
         restartSchedule?.stop()
+        if (::inventoryViewer.isInitialized) inventoryViewer.shutdown()
         // belt and braces: async snapshot writes may still be in flight
         snapshots.shutdown()
         counter.shutdown()

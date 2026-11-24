@@ -47,3 +47,5 @@ auth:
     title: "<red>В авторизации отказано</red>"
   expired:
     actionbar: "<yellow>Запрос на вход истёк, используйте <bold>/link</bold>, чтобы повторить</yellow>"
+spec:
+  inventory-title: "<secondary>Инвентарь</secondary> <muted>·</muted> <gold>{target}</gold>"
