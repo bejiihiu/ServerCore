@@ -19,9 +19,18 @@ import org.bukkit.event.Listener
 import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.plugin.java.JavaPlugin
+import kz.bejiihiu.servercore.boot.JoinFlowListener
+import kz.bejiihiu.servercore.locale.LocaleService
+import kz.bejiihiu.servercore.ui.UiKit
 
 // single entry point, folia-only. no main thread work here, ever
 class ServerCorePlugin : JavaPlugin() {
+
+    lateinit var ui: UiKit
+        private set
+
+    lateinit var locale: LocaleService
+        private set
 
     private lateinit var gateway: BackendGateway
     private lateinit var sessions: GuestSessionService
@@ -34,6 +43,10 @@ class ServerCorePlugin : JavaPlugin() {
         saveDefaultConfig()
 
         io = Executors.newVirtualThreadPerTaskExecutor()
+
+        locale = LocaleService(dataFolder.toPath(), logger)
+        ui = UiKit(this, locale)
+
         val config = GuestConfig.load(config, logger)
         val i18n = I18n(this, config.lang)
 
@@ -84,6 +97,8 @@ class ServerCorePlugin : JavaPlugin() {
             GuestProtectionListener(sessions, config, messages),
             this,
         )
+        // demo surface for the ui toolkit until real flows consume it everywhere
+        server.pluginManager.registerEvents(JoinFlowListener(ui), this)
 
         logger.info("servercore ${pluginMeta.version} enabled (guest mode: ${if (config.enabled) "on" else "off"})")
     }
