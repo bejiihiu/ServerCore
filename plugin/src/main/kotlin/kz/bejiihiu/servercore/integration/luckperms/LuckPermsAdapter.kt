@@ -27,11 +27,20 @@ class LuckPermsAdapter(
 
     override fun hasPermission(uuid: UUID, node: String): CompletableFuture<Boolean> =
         lp.loadUser(uuid).handle { user, error ->
-            if (error != null) {
-                logger.warning("permission check failed for $uuid / '$node': ${rootMessage(error)} — denying")
-                false
-            } else {
-                user.permissionValue(node)
+            // the whole check is fail-closed: lookup failure or a throw from
+            // the lp-side evaluation both land on deny, never propagate —
+            // an exceptional future would be "unknown", not "denied"
+            when {
+                error != null -> {
+                    logger.warning("permission check failed for $uuid / '$node': ${rootMessage(error)} — denying")
+                    false
+                }
+                else -> try {
+                    user.permissionValue(node)
+                } catch (t: Exception) {
+                    logger.warning("permission evaluation failed for $uuid / '$node': ${rootMessage(t)} — denying")
+                    false
+                }
             }
         }
 

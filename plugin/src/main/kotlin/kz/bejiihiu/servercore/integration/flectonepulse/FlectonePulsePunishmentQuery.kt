@@ -30,15 +30,22 @@ class FlectonePulsePunishmentQuery(
         val cached = cache.get(uuid, kind)
         if (cached is PunishmentCache.Result.Hit) return cached.value
 
-        val info = runCatching { lookup(kind, uuid) }
-            .getOrElse { error ->
-                // fp hiccup (db blip, reload race) must not break the caller's flow
+        return runCatching { lookup(kind, uuid) }.fold(
+            onSuccess = { info ->
+                // verified answer (including "no punishment") is cacheable;
+                // the fp event listener keeps it honest via invalidation
+                cache.put(uuid, kind, info)
+                info
+            },
+            onFailure = { error ->
+                // fp hiccup (db blip, reload race) must not break the caller's
+                // flow, but the failure answer must not be cached either: a
+                // cached "no punishment" would extend a transient error into a
+                // wrong yes/no for the whole ttl even after fp recovers
                 logger.warning("flectonepulse punishment lookup failed for $uuid/$kind: ${error.message}")
                 null
-            }
-
-        cache.put(uuid, kind, info)
-        return info
+            },
+        )
     }
 
     private fun lookup(kind: PunishmentKind, uuid: UUID): PunishmentInfo? {
