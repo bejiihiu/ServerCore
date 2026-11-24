@@ -147,11 +147,16 @@ generic (flow names, not files) — implementations move.
 
 ## B7. i18n integrity (bot)
 
-- [ ] no user-facing string hardcoded in flow code (grep for cyrillic
-      literals outside src/i18n/ and services/i18n.ts)
-- [ ] services/i18n.ts (ops flat map) consolidated into the structured
+- [x] no user-facing string hardcoded in flow code (grep for cyrillic
+      literals outside src/i18n/ and services/i18n.ts — only the language
+      picker endonyms and config defaults remain, both intentional)
+- [x] services/i18n.ts (ops flat map) consolidated into the structured
       src/i18n/ layer, or the split documented as permanent in DESIGN.md
-- [ ] en locale added and every key present in both locales (script check)
+      (one store now: services/i18n.ts; src/i18n/ is the locale-pinned
+      provider)
+- [x] en locale added and every key present in both locales (the store is
+      typed `Record<key, Record<Locale, string>>`, so a missing column fails
+      typecheck)
 - [ ] missing-key errors from tests fixed at the source, not caught
 
 ## B8. consistency checks (bot)
