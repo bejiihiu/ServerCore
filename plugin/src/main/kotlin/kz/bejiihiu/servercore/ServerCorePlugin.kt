@@ -17,6 +17,7 @@ import kz.bejiihiu.servercore.guest.LocalAccountCache
 import kz.bejiihiu.servercore.guest.LocalAccountResolver
 import kz.bejiihiu.servercore.guest.SnapshotStore
 import kz.bejiihiu.servercore.guest.WsAccountResolver
+import kz.bejiihiu.servercore.disguise.DisguiseStack
 import kz.bejiihiu.servercore.locale.LocaleService
 import kz.bejiihiu.servercore.packet.CachedViewStateStore
 import kz.bejiihiu.servercore.packet.PacketConfig
@@ -86,6 +87,7 @@ class ServerCorePlugin : JavaPlugin() {
     private lateinit var opsBus: OpsEventBus
     private var packetService: PacketService? = null
     private lateinit var inventoryViewer: InventoryViewerService
+    private var disguiseStack: DisguiseStack? = null
 
     override fun onLoad() {
         // packetevents is a server-installed plugin we attach to, not one we
@@ -311,6 +313,10 @@ class ServerCorePlugin : JavaPlugin() {
         inventoryViewer = InventoryViewerService(this, pluginConfig.spec, i18n)
         inventoryViewer.start()
 
+        // packet disguise layer: client-only entities for the anti-esp
+        // visibility engine (the engine itself drives disguiseStack.applier)
+        disguiseStack = DisguiseStack.create(this, config, logger)
+
         // heartbeat keeps the backend's liveness picture fresh
         presenceService.startHeartbeat()
         client.start()
@@ -354,6 +360,7 @@ class ServerCorePlugin : JavaPlugin() {
         updater?.stop()
         restartSchedule?.stop()
         if (::inventoryViewer.isInitialized) inventoryViewer.shutdown()
+        disguiseStack?.shutdown()
         // belt and braces: async snapshot writes may still be in flight
         snapshots.shutdown()
         counter.shutdown()
