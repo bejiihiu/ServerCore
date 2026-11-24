@@ -74,7 +74,7 @@ export async function handleStatusCommand(ctx: Context, ui: BotUiDeps): Promise<
 }
 
 /** menu callbacks: status opens the status screen, back returns to the menu */
-export function registerMenuCallbacks(bot: Bot, ui: BotUiDeps): void {
+export function registerMenuCallbacks<C extends Context>(bot: Bot<C>, ui: BotUiDeps): void {
   bot.callbackQuery(MENU_CALLBACK.status, async (ctx) => {
     await ctx.answerCallbackQuery()
     const msg = ctx.msg
@@ -104,7 +104,7 @@ export function registerMenuCallbacks(bot: Bot, ui: BotUiDeps): void {
   })
 }
 
-export function registerStartCommand(bot: Bot, ui: BotUiDeps): void {
+export function registerStartCommand<C extends Context>(bot: Bot<C>, ui: BotUiDeps): void {
   bot.command("start", (ctx) => handleStartCommand(ctx, ui))
   bot.command("status", (ctx) => handleStatusCommand(ctx, ui))
   registerMenuCallbacks(bot, ui)

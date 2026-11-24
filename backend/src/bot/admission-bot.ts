@@ -20,6 +20,9 @@ import { registerChatMemberHandler } from "./handlers/chat-member.js"
 import { registerAdmissionCommands } from "./commands/admission.js"
 import { registerStartCommand } from "./commands/start.js"
 import { registerStatsCommand } from "./commands/stats.js"
+import { i18n as i18nInstance } from "../i18n/instance.js"
+import { EmojiRegistry, createEmojiRenderer } from "../i18n/emoji.js"
+import { createTranslator } from "./ui/text/index.js"
 
 export type AdmissionBot = {
   bot: Bot<BotContext>
@@ -130,7 +133,10 @@ export function createAdmissionBot(
     { id: APPLICATION_CONVERSATION_ID },
   ))
 
-  registerStartCommand(bot)
+  registerStartCommand(bot, {
+    t: createTranslator(i18nInstance),
+    e: createEmojiRenderer(new EmojiRegistry(config.botCustomEmoji)),
+  })
   registerAdmissionCommands(bot, {
     applications,
     users: repos.users,

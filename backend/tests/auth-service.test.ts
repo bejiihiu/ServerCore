@@ -17,6 +17,8 @@ type Harness = {
   pushes: PushRecord[]
   prompts: PromptRequest[]
   botOnline: { value: boolean }
+  /** server ids whose gateway link is currently down (mutable per test) */
+  deadServers: Set<string>
   flushPrompts(): Promise<void>
 }
 
@@ -34,13 +36,14 @@ function harness(overrides: Partial<typeof BASE_CONFIG> = {}, botOnline = true):
   const pushes: PushRecord[] = []
   const prompts: PromptRequest[] = []
   const botState = { value: botOnline }
+  const deadServers = new Set<string>()
   const service = new AuthenticationService({
     store,
     config: { ...BASE_CONFIG, ...overrides },
     logger: silentLogger(),
     push: async (serverId, type, payload) => {
       // the link being down means nothing can be delivered right now
-      if (serverId === "dead-server") return false
+      if (deadServers.has(serverId)) return false
       pushes.push({ serverId, type, payload: payload as Record<string, unknown> })
       return true
     },
@@ -56,6 +59,7 @@ function harness(overrides: Partial<typeof BASE_CONFIG> = {}, botOnline = true):
     pushes,
     prompts,
     botOnline: botState,
+    deadServers,
     async flushPrompts() {
       await service.sweep(Date.now())
     },
@@ -189,7 +193,10 @@ describe("section 9.1 protection matrix", () => {
     // second join: new request, the first one must die
     await h.service.handlePlayerJoined({ minecraftUuid: UUID, username: "player", serverId: SERVER }, 10_000)
     const outcome = await h.service.approve(firstToken, "100", 11_000)
-    expect(outcome.kind).toBe("UNKNOWN")
+    // the request still exists but sits in CANCELLED: unusable either way
+    expect(outcome.kind).toBe("ALREADY_PROCESSED")
+    const session = await h.store.findOpenSession(UUID)
+    expect(session?.status).toBe("WAITING_AUTH")
   })
 
   test("session binding: a token from an ended session cannot approve a new one", async () => {
@@ -199,7 +206,7 @@ describe("section 9.1 protection matrix", () => {
     await h.service.handlePlayerLeft(UUID, 2_000)
     await h.service.handlePlayerJoined({ minecraftUuid: UUID, username: "player", serverId: SERVER }, 3_000)
     const outcome = await h.service.approve(token, "100", 4_000)
-    expect(outcome.kind).toBe("UNKNOWN")
+    expect(outcome.kind).toBe("ALREADY_PROCESSED")
     expect(firstSession).not.toBe((await h.store.findOpenSession(UUID))?.sessionId)
   })
 
@@ -209,7 +216,7 @@ describe("section 9.1 protection matrix", () => {
     // simulate the plugin reconnecting: a fresh session replaces the old one
     await h.service.handlePlayerJoined({ minecraftUuid: UUID, username: "player", serverId: SERVER }, 10_000)
     const outcome = await h.service.approve(token, "100", 11_000)
-    expect(outcome.kind).toBe("UNKNOWN")
+    expect(outcome.kind).toBe("ALREADY_PROCESSED")
   })
 
   test("foreign telegram id cannot approve someone else's request", async () => {
@@ -246,20 +253,18 @@ describe("section 9.1 protection matrix", () => {
 
   test("approval rate limiting caps telegram-side presses", async () => {
     const h = harness({ maxApprovalsPerTelegram: 1 })
-    activeUser(h.store, UUID)
+    activeUser(h.store, UUID, "777")
     // two fresh requests by re-joining, each delivers a fresh prompt token
     await h.service.handlePlayerJoined({ minecraftUuid: UUID, username: "p", serverId: SERVER }, 1_000)
     await h.service.handlePlayerLeft(UUID, 1_100)
     // bypass the per-telegram join limiter by rewinding the window config
     const second = await h.service.handlePlayerJoined({ minecraftUuid: UUID, username: "p", serverId: SERVER }, 1_200)
     expect(second.kind).toBe("AUTH_FLOW_STARTED")
-    const firstToken = h.prompts[0]?.token ?? ""
-    const secondToken = h.prompts[1]?.token ?? ""
-    const first = await h.service.approve(firstToken, "777", 2_000)
+    const liveToken = h.prompts.at(-1)?.token ?? ""
+    const first = await h.service.approve(liveToken, "777", 2_000)
     expect(first.kind).toBe("APPROVED")
-    // second press over budget
-    h.store.putUser({ minecraftUuid: UUID, username: "p", telegramId: "777", status: "ACTIVE" })
-    const blocked = await h.service.reject(secondToken, "777", 2_100)
+    // the very next press is over budget, whatever token it carries
+    const blocked = await h.service.reject(liveToken, "777", 2_100)
     expect(blocked.kind).toBe("RATE_LIMITED")
   })
 
@@ -323,12 +328,14 @@ describe("fail-closed posture", () => {
     const h = harness()
     activeUser(h.store, UUID)
     // first join against a dead server link: push parked
-    await h.service.handlePlayerJoined({ minecraftUuid: UUID, username: "p", serverId: "dead-server" }, 1_000)
+    h.deadServers.add(SERVER)
+    await h.service.handlePlayerJoined({ minecraftUuid: UUID, username: "p", serverId: SERVER }, 1_000)
     expect(h.pushes.find((p) => p.type === "AUTH_REQUEST")).toBeUndefined()
     // link returns: sweeper flushes the queued push
+    h.deadServers.delete(SERVER)
     await h.service.sweep(2_000)
     const push = h.pushes.find((p) => p.type === "AUTH_REQUEST")
-    expect(push?.serverId).toBe("dead-server")
+    expect(push?.serverId).toBe(SERVER)
   })
 
   test("undelivered prompts retry on the next sweep when telegram recovers", async () => {

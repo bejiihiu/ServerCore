@@ -88,8 +88,7 @@ export class InMemoryAuthenticationStore implements AuthenticationStore {
     return cancelled
   }
 
-  async findPendingExpired(): Promise<AuthRequestRecord[]> {
-    const now = Date.now()
+  async findPendingExpired(now: number): Promise<AuthRequestRecord[]> {
     return [...this.requests.values()].filter(
       (r) => r.status === "PENDING" && r.expiresAt <= now,
     )

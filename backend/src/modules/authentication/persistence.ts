@@ -81,7 +81,7 @@ export interface AuthenticationStore {
   cancelPendingForPlayer(minecraftUuid: string, now: number): Promise<number>
 
   /** PENDING requests past their expiry, for the sweeper */
-  findPendingExpired(): Promise<AuthRequestRecord[]>
+  findPendingExpired(now: number): Promise<AuthRequestRecord[]>
 
   /** PENDING requests whose prompt never reached telegram, for retries */
   findPendingUndelivered(): Promise<AuthRequestRecord[]>

@@ -2,23 +2,23 @@ import { Bot } from "grammy"
 import type { AppConfig } from "../config/env.js"
 import type { Logger } from "../logging/logger.js"
 import type { BotDeps, BotContext } from "./context.js"
+import type { StatsService } from "../services/runtime-stats.js"
 import { registerBotRoutes } from "./routes.js"
 import { registerStartCommand } from "./commands/start.js"
 import { registerStatsCommand } from "./commands/stats.js"
-import { createI18n } from "../i18n/index.js"
-import { createI18n } from "../i18n/index.js"
+import { i18n as i18nInstance } from "../i18n/instance.js"
 import { EmojiRegistry, createEmojiRenderer } from "../i18n/emoji.js"
 import { createTranslator, type Translator } from "./ui/text/index.js"
 import type { EmojiRenderer } from "../i18n/emoji.js"
 
 export type BotOpsDeps = {
-  stats: unknown
+  stats: StatsService
 }
 
 /** optional telegram handlers contributed by feature modules */
 export type BotModuleDeps = {
   /** login confirmation buttons, wired by the authentication module */
-  registerCallbacks?: (bot: Bot) => void
+  registerCallbacks?: (bot: Bot<BotContext>) => void
 }
 
 /**
@@ -37,7 +37,7 @@ export function createBot(config: AppConfig, logger: Logger, deps: BotDeps, ops?
     logger.error({ err: error.error }, "telegram bot error")
   })
 
-  const i18n = createI18n({}, {})
+  const i18n = i18nInstance
   const registry = new EmojiRegistry(config.botCustomEmoji)
   const renderer = createEmojiRenderer(registry)
   const ui: { t: Translator; e: EmojiRenderer } = { t: createTranslator(i18n), e: renderer }

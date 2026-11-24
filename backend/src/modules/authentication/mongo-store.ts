@@ -117,8 +117,8 @@ export class MongoAuthenticationStore implements AuthenticationStore, RetentionS
     return result.modifiedCount
   }
 
-  async findPendingExpired(): Promise<AuthRequestRecord[]> {
-    const docs = await AuthRequestModel.find({ status: "PENDING", expiresAt: { $lte: new Date() } })
+  async findPendingExpired(now: number): Promise<AuthRequestRecord[]> {
+    const docs = await AuthRequestModel.find({ status: "PENDING", expiresAt: { $lte: new Date(now) } })
       .limit(100)
       .lean()
     return docs.map(toAuthRequestRecord)

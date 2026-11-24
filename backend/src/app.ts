@@ -22,7 +22,6 @@ import { AccountDeletionService, BotApiTelegramGroupPort, GatewaySessionRevoker 
 import { GatewayOwnershipVerifier } from "./modules/account/session-probe.js"
 import type { NotificationFanout } from "./modules/notification/notification-port.js"
 import { createAdmissionBot } from "./bot/admission-bot.js"
-import type { BotContext } from "./bot/context.js"
 import { createAdmissionRepositories, syncAdmissionIndexes } from "./database/repos.js"
 import { LinkedTelegramRecipients } from "./services/recipients.js"
 import { NotificationService } from "./services/notification-service.js"
@@ -70,14 +69,6 @@ class FanoutAdapter implements NotificationFanout {
     await this.notifications.sendToChats(this.adminChatIds, text)
   }
 }
-
-import { AuthenticationService } from "./modules/authentication/auth-service.js"
-import { MongoAuthenticationStore } from "./modules/authentication/mongo-store.js"
-import { TelegramAuthUi } from "./modules/authentication/telegram-prompt.js"
-import { registerAuthCallbacks } from "./modules/authentication/bot-callbacks.js"
-import { mongoCollectionSizes } from "./modules/authentication/maintenance.js"
-import { AuthRequestModel } from "./database/models/auth-request.js"
-import { PlayerSessionModel } from "./database/models/session.js"
 
 async function main(): Promise<void> {
   let config: AppConfig
@@ -278,6 +269,10 @@ async function main(): Promise<void> {
     collectionStats: databaseReady() ? new MongoCollectionStats() : null,
   })
   const finalBot = bot ?? admissionBot
+  // auth approve/reject buttons ride whichever bot instance actually runs
+  if (finalBot !== null) {
+    registerAuthCallbacks(finalBot, { auth: authService, ui: authUi, logger })
+  }
   // grammy api is ready the moment the Bot exists, swap the real senders in
   const api = finalBot !== null ? finalBot.api : null
   notifications.attachSender(api !== null ? new GrammySender(api) : null)
@@ -294,7 +289,7 @@ async function main(): Promise<void> {
       })
     : null
 
-  if (mongo.ready) {
+  if (databaseReady()) {
     try {
       await syncAdmissionIndexes()
       logger.info("admission indexes synced")
@@ -304,10 +299,6 @@ async function main(): Promise<void> {
   } else {
     logger.warn("mongo not ready at boot, indexes not synced")
   }
-
-  // grammy api is ready the moment the Bot exists, wire the auth ui sender
-  const api = finalBot !== null ? finalBot.api : null
-  authUi.attachApi(api)
 
   // crash detection: ws gone for N minutes => presumed offline
   const offlineWatcher = new OfflineWatcher({
@@ -358,27 +349,7 @@ async function main(): Promise<void> {
     counters.guestSessions = stats.guestSessions
     counters.pendingAuths = stats.pendingAuths
   }, config.authSweepIntervalMs)
-
-  // daily data hygiene: rolling retention over closed sessions
-  const retention = new RetentionService({
-    store: authStore,
-    config: { sessionRetentionDays: 60 },
-    logger,
-  })
-  const DAY_MS = 86_400_000
-  const retentionTimer = setInterval(
-    () => {
-      void retention.run().catch((error) => logger.error({ err: error }, "retention purge failed"))
-    },
-    DAY_MS,
-  )
-  // first purge happens shortly after boot so an existing backlog drains
-  setTimeout(() => {
-    void retention.run().catch((error) => logger.error({ err: error }, "retention purge failed"))
-  }, 30_000)
-
-  // db indexes for the auth collections, synced once mongo is reachable
-  void syncAuthIndexes(mongo, logger)
+  sweeper.unref()
 
   logger.info({ env: config.env }, "servercore backend started")
 
@@ -390,7 +361,6 @@ async function main(): Promise<void> {
     try {
       scheduler?.stop()
       sweeper.unref()
-      retentionTimer.unref()
       authService.stop()
       offlineWatcher.stop()
       stopRetention()
@@ -406,25 +376,6 @@ async function main(): Promise<void> {
 
   process.once("SIGINT", () => void shutdown("SIGINT"))
   process.once("SIGTERM", () => void shutdown("SIGTERM"))
-}
-
-/** waits for mongo in the background, then syncs the auth collection indexes */
-async function syncAuthIndexes(mongo: MongoHandle, logger: Logger): Promise<void> {
-  for (let attempt = 0; attempt < 30; attempt += 1) {
-    if (mongo.ready) break
-    await new Promise((resolve) => setTimeout(resolve, 2_000))
-  }
-  if (!mongo.ready) {
-    logger.warn("mongo never became ready, auth indexes not synced")
-    return
-  }
-  try {
-    await PlayerSessionModel.syncIndexes()
-    await AuthRequestModel.syncIndexes()
-    logger.info("auth collection indexes synced")
-  } catch (err) {
-    logger.error({ err }, "auth index sync failed")
-  }
 }
 
 main().catch((err) => {

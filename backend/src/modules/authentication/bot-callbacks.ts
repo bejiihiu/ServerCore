@@ -44,8 +44,8 @@ async function answer(ctx: Context, key: AuthOutcomeKey, player: string): Promis
  * full protection matrix and then the prompt message is rewritten with the
  * outcome, so stale buttons die on the spot.
  */
-export function registerAuthCallbacks(
-  bot: Bot,
+export function registerAuthCallbacks<C extends Context>(
+  bot: Bot<C>,
   deps: {
     auth: AuthenticationService
     ui: TelegramAuthUi

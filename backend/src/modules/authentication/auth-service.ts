@@ -184,7 +184,7 @@ export class AuthenticationService {
     this.openSessions.set(event.minecraftUuid, "WAITING_AUTH")
 
     const request = await this.issueRequest(user, session, now)
-    await this.deliver(request)
+    await this.deliver(request, now)
     await this.enqueue(
       event.serverId,
       "AUTH_REQUEST",
@@ -195,6 +195,7 @@ export class AuthenticationService {
         expiresInSeconds: this.config.requestTtlSeconds,
       },
       request.id,
+      now,
     )
     return { kind: "AUTH_FLOW_STARTED" }
   }
@@ -281,6 +282,7 @@ export class AuthenticationService {
       "AUTH_APPROVED",
       { minecraftUuid: request.minecraftUuid, sessionId: request.sessionId },
       request.id,
+      now,
     )
     this.logger.info({ uuid: request.minecraftUuid, sessionId: request.sessionId }, "login approved via telegram")
     return { kind: "APPROVED", minecraftUuid: request.minecraftUuid, sessionId: request.sessionId }
@@ -318,6 +320,7 @@ export class AuthenticationService {
       "AUTH_REJECTED",
       { minecraftUuid: request.minecraftUuid, sessionId: request.sessionId, reason: "DECLINED" },
       request.id,
+      now,
     )
     this.logger.info({ uuid: request.minecraftUuid }, "login rejected via telegram")
     return { kind: "REJECTED", minecraftUuid: request.minecraftUuid, sessionId: request.sessionId }
@@ -330,7 +333,7 @@ export class AuthenticationService {
    * called on a timer by the wiring; safe to call at any rate.
    */
   async sweep(now: number): Promise<void> {
-    for (const request of await this.store.findPendingExpired()) {
+    for (const request of await this.store.findPendingExpired(now)) {
       const claimed = await this.store.claimPendingAuthRequest(request.id, "EXPIRED", now)
       if (!claimed) continue
       // the player keeps playing as guest after the window closes
@@ -343,6 +346,7 @@ export class AuthenticationService {
           "AUTH_EXPIRED",
           { minecraftUuid: request.minecraftUuid, sessionId: request.sessionId },
           request.id,
+          now,
         )
       }
       this.logger.info({ uuid: request.minecraftUuid }, "auth request expired")
@@ -350,11 +354,11 @@ export class AuthenticationService {
 
     if (this.sendPrompt !== null) {
       for (const request of await this.store.findPendingUndelivered()) {
-        await this.deliver(request)
+        await this.deliver(request, now)
       }
     }
 
-    await this.flushOutbox()
+    await this.flushOutbox(now)
 
     this.joinLimiter.prune(now)
     this.promptLimiter.prune(now)
@@ -423,7 +427,7 @@ export class AuthenticationService {
     throw new Error("could not issue a unique auth token")
   }
 
-  private async deliver(request: AuthRequestRecord): Promise<void> {
+  private async deliver(request: AuthRequestRecord, now: number): Promise<void> {
     const token = this.promptTokens.get(request.id)
     if (token === undefined) return // already delivered once, or lost with a restart
 
@@ -434,7 +438,7 @@ export class AuthenticationService {
       return
     }
 
-    if (request.expiresAt <= Date.now()) {
+    if (request.expiresAt <= now) {
       this.promptTokens.delete(request.id)
       return
     }
@@ -448,13 +452,13 @@ export class AuthenticationService {
         telegramId: request.telegramId,
         username,
         token,
-        expiresInSeconds: Math.max(1, Math.ceil((request.expiresAt - Date.now()) / 1000)),
+        expiresInSeconds: Math.max(1, Math.ceil((request.expiresAt - now) / 1000)),
       })
     } catch (error) {
       this.logger.warn({ err: error, requestId: request.id }, "telegram prompt delivery failed, will retry")
     }
     if (delivered) {
-      await this.store.markAuthRequestDelivered(request.id, Date.now())
+      await this.store.markAuthRequestDelivered(request.id, now)
       this.promptTokens.delete(request.id)
     }
   }
@@ -470,6 +474,7 @@ export class AuthenticationService {
     type: T,
     payload: PayloadOf<T>,
     correlationId: string,
+    now: number,
   ): Promise<void> {
     const sent = await this.push(serverId, type, payload, correlationId)
     if (sent) return
@@ -478,14 +483,13 @@ export class AuthenticationService {
       type,
       payload,
       correlationId,
-      queuedAt: Date.now(),
+      queuedAt: now,
     })
     this.logger.info({ serverId, type }, "game server link down, push queued for retry")
   }
 
-  private async flushOutbox(): Promise<void> {
+  private async flushOutbox(now: number): Promise<void> {
     if (this.outbox.size === 0) return
-    const now = Date.now()
     for (const [key, queued] of this.outbox) {
       // a push older than the give-up window is dead weight: the next player
       // event re-syncs the state anyway (idempotent join/guest reconciliation)
