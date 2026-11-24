@@ -7,6 +7,7 @@ import kz.bejiihiu.servercore.boot.JoinFlowListener
 import kz.bejiihiu.servercore.config.ConfigLoader
 import kz.bejiihiu.servercore.esp.EspConfig
 import kz.bejiihiu.servercore.esp.EspModule
+import kz.bejiihiu.servercore.esp.SpecObserverSource
 import kz.bejiihiu.servercore.guest.AccountService
 import kz.bejiihiu.servercore.guest.GuestConfig
 import kz.bejiihiu.servercore.guest.GuestMessageService
@@ -58,6 +59,13 @@ import kz.bejiihiu.servercore.sync.PacketStateSync
 import kz.bejiihiu.servercore.sync.SyncReconciler
 import kz.bejiihiu.servercore.sync.VanillaOnlyResyncExecutor
 import kz.bejiihiu.servercore.spectator.InventoryViewerService
+import kz.bejiihiu.servercore.spectator.ObserverHider
+import kz.bejiihiu.servercore.spectator.SpecObserverConfig
+import kz.bejiihiu.servercore.spectator.SpecResyncListener
+import kz.bejiihiu.servercore.spectator.SpecSessionRegistry as SpectatorSpecSessionRegistry
+import kz.bejiihiu.servercore.spectator.SpecTraceListener
+import kz.bejiihiu.servercore.spectator.SpecViewStateApplier
+import kz.bejiihiu.servercore.spectator.TraceFilter
 import kz.bejiihiu.servercore.protection.AllowedGamemodeOverrideRegistry
 import kz.bejiihiu.servercore.protection.CommandBlockAuditor
 import kz.bejiihiu.servercore.protection.CommandProtectionListener
@@ -145,6 +153,8 @@ class ServerCorePlugin : JavaPlugin() {
     private var permissionSource: PermissionSource? = null
     private var specTrail: SpecAuditTrail? = null
     private var specRegistry: SpecSessionRegistry? = null
+    private var specHider: ObserverHider? = null
+    private var specTraceListener: com.github.retrooper.packetevents.event.PacketListenerCommon? = null
 
     override fun onLoad() {
         // packetevents is a server-installed plugin we attach to, not one we
@@ -349,32 +359,6 @@ class ServerCorePlugin : JavaPlugin() {
         // personal deep link arrived after the generic prompt went out
         wsResolver.onLinkAvailable { uuid -> sessions.onLinkAvailable(uuid) }
 
-        // anti-esp visibility engine; guests flag flows in so guest-viewing-guest
-        // stays vanilla. the packet writer from the packetevents module registers
-        // itself as the applier later, until then the no-op keeps this standalone
-        val espConfig = EspConfig.load(config, logger)
-        if (espConfig.enabled) {
-            esp = EspModule.create(this, espConfig, guests = sessions::isRestricted).also { it.start() }
-        }
-
-        // restart recovery: durable snapshots become pending restores
-        sessions.markPendingRestores(snapshots.pendingAll())
-
-        val lifecycle = object : Listener {
-            @EventHandler(priority = EventPriority.LOWEST)
-            fun onJoin(event: PlayerJoinEvent) = sessions.onJoin(event.player)
-
-            @EventHandler(priority = EventPriority.MONITOR)
-            fun onQuit(event: PlayerQuitEvent) = sessions.onQuit(event.player)
-        }
-        server.pluginManager.registerEvents(lifecycle, this)
-        server.pluginManager.registerEvents(
-            GuestProtectionListener(sessions, guestConfig, messages),
-            this,
-        )
-        // demo surface for the ui toolkit until real flows consume it everywhere
-        server.pluginManager.registerEvents(JoinFlowListener(ui), this)
-
         // packet state sync: every client-view state transition goes through
         // the double-load-guarded coordinator. the registry and the packet
         // writer are seams — the packetevents layer attaches below via
@@ -501,6 +485,61 @@ class ServerCorePlugin : JavaPlugin() {
                 SpecCommand(specService).register(event.registrar())
             }
         }
+
+        // hidden observer layer for /spec: while an admin watches a player,
+        // the admin's entity vanishes from that client (destroy + suppressed
+        // spawns/data + tab removal), and comes back intact on session end.
+        // the session side (command, audit, permission ordering) lives in the
+        // spec-core module; both meet at the SpecSessionSource seam over this registry
+        val specConfig = SpecObserverConfig.load(config, logger)
+        val specSessions = SpecSessionRegistry()
+        val traceFilter = TraceFilter(specConfig.traceRadius, specConfig.suppressActionBar)
+        val hider = ObserverHider(this, packets, specSessions, traceFilter, syncStates = viewStates)
+        val traceListener = SpecTraceListener(specSessions, packets.registry, hider::poseOf, traceFilter)
+        if (packets.register(traceListener)) {
+            specTraceListener = traceListener
+        } else {
+            logger.warning("packet layer idle, hidden observer suppression inactive")
+        }
+        server.pluginManager.registerEvents(SpecResyncListener(hider, specSessions), this)
+        specHider = hider
+
+        // anti-esp visibility engine; guests flag flows in so guest-viewing-guest
+        // stays vanilla, the spec registry flags in so a watching admin renders
+        // as nothing to the player they watch
+        val espConfig = EspConfig.load(config, logger)
+        if (espConfig.enabled) {
+            esp = EspModule.create(
+                this,
+                espConfig,
+                guests = sessions::isRestricted,
+                spec = SpecObserverSource { specSessions.isObserver(it) },
+            ).also { it.start() }
+            // the spec applier wraps whatever the engine had (the no-op until
+            // the packet writer registers itself): observer pairs are forced
+            // hidden, everything else passes straight through
+            esp?.let { module ->
+                module.engine.applier = SpecViewStateApplier(specSessions, hider, module.engine.applier)
+            }
+        }
+
+        // restart recovery: durable snapshots become pending restores
+        sessions.markPendingRestores(snapshots.pendingAll())
+
+        val lifecycle = object : Listener {
+            @EventHandler(priority = EventPriority.LOWEST)
+            fun onJoin(event: PlayerJoinEvent) = sessions.onJoin(event.player)
+
+            @EventHandler(priority = EventPriority.MONITOR)
+            fun onQuit(event: PlayerQuitEvent) = sessions.onQuit(event.player)
+        }
+        server.pluginManager.registerEvents(lifecycle, this)
+        server.pluginManager.registerEvents(
+            GuestProtectionListener(sessions, guestConfig, messages),
+            this,
+        )
+        // demo surface for the ui toolkit until real flows consume it everywhere
+        server.pluginManager.registerEvents(JoinFlowListener(ui), this)
 
         // heartbeat keeps the backend's liveness picture fresh
         presenceService.startHeartbeat()
@@ -631,6 +670,10 @@ class ServerCorePlugin : JavaPlugin() {
             sync.restoreAllForReload()
             sync.release()
         }
+        // hidden observer pairs restore next, in deterministic order, while
+        // the packetevents pipeline is still fully alive
+        specHider?.shutdown()
+        specTraceListener?.let { packetService?.unregister(it) }
         // detach our listener first, the shared packetevents instance must outlive us
         packetService?.stop()
         // sessions never survive a restart: end them, restore what can be

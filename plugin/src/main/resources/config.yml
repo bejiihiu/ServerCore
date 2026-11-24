@@ -118,6 +118,18 @@ spec:
     max-entries-per-session: 64
     # bounded write buffer, a full buffer drops entries instead of blocking
     queue-capacity: 1024
+  hidden:
+    # how a trace (particle/sound packet aimed at the observed player) gets
+    # attributed to the watching admin: by proximity to the admin's position.
+    # a spectator admin following their target stands within arm's reach of
+    # them, so a bigger radius also starts eating the target's own effects -
+    # keep this small and treat it as a stealth/fidelity trade, not a switch
+    trace-radius: 1.5
+    # drop every actionbar line toward an observed player during a session.
+    # an actionbar packet carries no position or origin, so this is all or
+    # nothing per session: on = maximum stealth, off = the target keeps every
+    # normal server feedback line while being watched
+    suppress-action-bar: true
 
 protection:
   # master switch for the whole stack: command denial, gamemode guard,
