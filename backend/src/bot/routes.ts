@@ -1,9 +1,11 @@
-import { conversations, createConversation } from "@grammyjs/conversations"
 import type { Bot } from "grammy"
+import { conversations, createConversation } from "@grammyjs/conversations"
 import { parseStartPayload } from "./commands/start-payload.js"
-import { t, type Language } from "./i18n.js"
-import { accountKeyboard, CALLBACK } from "./keyboards.js"
-import { statusLabel, type AccountView } from "../modules/account/account-service.js"
+import { t, statusLabel, type Locale } from "../services/i18n.js"
+import { accountKeyboard, CALLBACK, toggleKey } from "./keyboards.js"
+import type { AccountView } from "../modules/account/account-service.js"
+import type { StatsService } from "../services/runtime-stats.js"
+import type { CollectionStatsSource } from "../modules/retention/collection-stats.js"
 import type { BotContext, BotDeps } from "./context.js"
 import { linkingConversation } from "./conversations/linking.js"
 import { deleteAccountConversation } from "./conversations/delete-account.js"
@@ -11,8 +13,8 @@ import { deleteAccountConversation } from "./conversations/delete-account.js"
 /**
  * wires every bot route. user-facing command set is deliberately minimal:
  * /start (deep-link entry), /status (account screen), /help.
- * /stats is admin-only (sender chat id must be in ADMIN_CHAT_IDS) and reads
- * real numbers off the live mongo deployment.
+ * /stats is admin-only (sender id must be in ADMIN_TELEGRAM_IDS) and reads
+ * real numbers off live state + the mongo deployment.
  *
  * conversation builders receive their arguments straight from
  * ctx.conversation.enter(name, ...args) — v2 serializes and replays them.
@@ -26,7 +28,7 @@ export function registerBotRoutes(bot: Bot<BotContext>, deps: BotDeps): void {
     createConversation<BotContext, BotContext>(
       (conversation, ctx, token?: string, username?: string) => {
         if (token === undefined || username === undefined) return Promise.resolve()
-        return linkingConversation(conversation, ctx, deps, token, username)
+        return linkingConversation(conversation, ctx, { accounts: deps.accounts }, token, username)
       },
       { id: "linking" },
     ),
@@ -44,7 +46,7 @@ export function registerBotRoutes(bot: Bot<BotContext>, deps: BotDeps): void {
 
   bot.command("start", async (ctx) => handleStartCommand(ctx, deps))
   bot.command("status", async (ctx) => handleStatusCommand(ctx, deps))
-  bot.command("help", async (ctx) => ctx.reply(t(deps.defaultLanguage, "help")))
+  bot.command("help", async (ctx) => ctx.reply(t(deps.defaultLanguage, "bot.help")))
   bot.command("stats", async (ctx) => handleStatsCommand(ctx, deps))
 
   // language toggle button on the account screen
@@ -59,7 +61,7 @@ export function registerBotRoutes(bot: Bot<BotContext>, deps: BotDeps): void {
       await ctx.answerCallbackQuery()
       return
     }
-    const next: Language = account.language === "ru" ? "en" : "ru"
+    const next: Locale = account.language === "ru" ? "en" : "ru"
     await deps.accounts.setLanguage(account.minecraftUuid, next)
     await ctx.answerCallbackQuery()
     // re-render the screen in the new language
@@ -84,11 +86,11 @@ export function registerBotRoutes(bot: Bot<BotContext>, deps: BotDeps): void {
 export async function handleStartCommand(ctx: BotContext, deps: BotDeps): Promise<void> {
   const raw = ctx.match
   const match = typeof raw === "string" ? raw : ""
-  const lang = deps.defaultLanguage
+  const locale = deps.defaultLanguage
   const result = parseStartPayload(match)
 
   if (!result.ok) {
-    await ctx.reply(result.reason === "MISSING" ? t(lang, "startNoToken") : t(lang, "startBadToken"))
+    await ctx.reply(result.reason === "MISSING" ? t(locale, "bot.start.no_token") : t(locale, "bot.start.bad_token"))
     return
   }
 
@@ -96,7 +98,7 @@ export async function handleStartCommand(ctx: BotContext, deps: BotDeps): Promis
   // after the user confirms, so an abandoned /start wastes nothing
   const preview = await deps.accounts.previewLinkToken(result.token)
   if (!preview.ok) {
-    await ctx.reply(t(lang, "startBadToken"))
+    await ctx.reply(t(locale, "bot.start.bad_token"))
     return
   }
 
@@ -108,51 +110,104 @@ export async function handleStatusCommand(ctx: BotContext, deps: BotDeps): Promi
   await renderAccountScreen(ctx, deps, deps.defaultLanguage)
 }
 
-/** /stats — admin-only: real collection sizes off the live mongo */
+async function renderAccountScreen(ctx: BotContext, deps: BotDeps, locale: Locale): Promise<void> {
+  const telegramId = ctx.from?.id
+  if (telegramId === undefined) {
+    await ctx.reply(t(locale, "bot.account.no_account"))
+    return
+  }
+  const account = await deps.accounts.getByTelegramId(String(telegramId))
+  if (account === null) {
+    await ctx.reply(t(locale, "bot.account.no_account"))
+    return
+  }
+  await ctx.reply(
+    t(account.language, "bot.account.screen", {
+      username: account.username,
+      status: statusLabel(account.language, account.status),
+      telegram: t(
+        account.language,
+        account.telegramLinked ? "bot.account.telegram_linked" : "bot.account.telegram_not_linked",
+      ),
+    }),
+    { reply_markup: accountKeyboard((key) => t(account.language, key)) },
+  )
+}
+
+/** /stats — admin-only: live ops snapshot plus real mongo collection sizes */
 export async function handleStatsCommand(ctx: BotContext, deps: BotDeps): Promise<void> {
   const telegramId = ctx.from?.id
-  if (telegramId === undefined || !deps.adminChatIds.includes(String(telegramId))) {
+  if (telegramId === undefined || !deps.adminTelegramIds.includes(telegramId)) {
     // silent for strangers: don't even confirm the command exists
     return
   }
-  if (deps.collectionStats === null) {
-    await ctx.reply("Статистика недоступна: mongo не подключён.")
-    return
+
+  const locale = deps.defaultLanguage
+  const lines: string[] = []
+
+  if (deps.stats !== null) {
+    const snap = deps.stats.snapshot()
+    lines.push(
+      t(locale, "ops.stats.uptime", { uptime: formatDuration(snap.uptimeSeconds) }),
+      t(locale, "ops.stats.ws", {
+        state: snap.wsRunning ? t(locale, "ops.stats.ws_up") : t(locale, "ops.stats.ws_down"),
+        connections: snap.wsConnections,
+      }),
+      t(locale, "ops.stats.sessions", {
+        active: snap.counters.activeSessions,
+        guests: snap.counters.guestSessions,
+        pending: snap.counters.pendingAuths,
+      }),
+    )
+    if (snap.servers.length === 0) {
+      lines.push(t(locale, "ops.stats.no_servers"))
+    } else {
+      for (const server of snap.servers) {
+        lines.push(
+          t(locale, "ops.stats.server", {
+            server: server.serverId,
+            state: server.state ?? t(locale, "ops.stats.state_unknown"),
+            players: `${server.onlinePlayers}/${server.maxPlayers}`,
+            seen: server.secondsSinceLastSeen,
+          }),
+        )
+      }
+    }
   }
-  const report = await deps.collectionStats.collect()
-  const lines = report.collections.map((collection) => {
-    const size =
-      collection.storageBytes !== null ? ` (${formatBytes(collection.storageBytes)})` : ""
-    return `${collection.name}: ${collection.documents} док.${size}`
-  })
-  const total =
-    report.totalStorageBytes !== null ? `\nВсего: ${formatBytes(report.totalStorageBytes)}` : ""
-  await ctx.reply(["📊 Размеры коллекций:", "", ...lines, total].filter((line) => line !== "").join("\n"))
+
+  if (deps.collectionStats !== null) {
+    const report = await deps.collectionStats.collect()
+    lines.push(t(locale, "bot.stats.db_header"))
+    for (const collection of report.collections) {
+      lines.push(
+        t(locale, "bot.stats.db_line", {
+          collection: collection.name,
+          documents: collection.documents,
+          size: collection.storageBytes !== null ? `(${formatBytes(collection.storageBytes)})` : "",
+        }),
+      )
+    }
+    if (report.totalStorageBytes !== null) {
+      lines.push(t(locale, "bot.stats.db_total", { size: formatBytes(report.totalStorageBytes) }))
+    }
+  }
+
+  await ctx.reply(lines.join("\n"))
+}
+
+function formatDuration(totalSeconds: number): string {
+  const days = Math.floor(totalSeconds / 86_400)
+  const hours = Math.floor((totalSeconds % 86_400) / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const parts: string[] = []
+  if (days > 0) parts.push(`${days}d`)
+  if (hours > 0) parts.push(`${hours}h`)
+  parts.push(`${minutes}m`)
+  return parts.join(" ")
 }
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} Б`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`
   return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`
-}
-
-async function renderAccountScreen(ctx: BotContext, deps: BotDeps, lang: Language): Promise<void> {
-  const telegramId = ctx.from?.id
-  if (telegramId === undefined) {
-    await ctx.reply(t(lang, "statusNoAccount"))
-    return
-  }
-  const account = await deps.accounts.getByTelegramId(String(telegramId))
-  if (account === null) {
-    await ctx.reply(t(lang, "statusNoAccount"))
-    return
-  }
-  await ctx.reply(
-    t(lang, "accountScreen", {
-      username: account.username,
-      status: statusLabel(account.status),
-      telegram: t(account.language, account.telegramLinked ? "statusTelegramLinked" : "statusTelegramNotLinked"),
-    }),
-    { reply_markup: accountKeyboard(account.language) },
-  )
 }

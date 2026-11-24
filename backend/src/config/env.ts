@@ -19,13 +19,9 @@ const envSchema = z.object({
   BOT_TOKEN: z.string().min(1).optional(),
   TELEGRAM_BOT_USERNAME: z.string().min(1).default("ServerCoreBot"),
 
-  // comma-separated telegram chat ids receiving duplicates of key events
-  ADMIN_CHAT_IDS: z.string().default(""),
   // closed telegram group; empty until the group exists (kick needs it)
   TELEGRAM_GROUP_CHAT_ID: z.string().default(""),
 
-  // default bot language for users without a stored preference
-  DEFAULT_LANGUAGE: z.enum(["ru", "en"]).default("ru"),
   // logs and schedules render in this zone (project standard: Europe/Moscow)
   LOG_TIMEZONE: z.string().min(1).default("Europe/Moscow"),
 
@@ -43,6 +39,20 @@ const envSchema = z.object({
   // one-time login/link token lifetime, must stay in the 60-90 band
   AUTH_REQUEST_TTL_SECONDS: z.coerce.number().int().min(60).max(90).default(75),
 
+  // ops: telegram admin ids (comma separated), get event copies + /stats
+  ADMIN_TELEGRAM_IDS: z.string().default(""),
+  // locale for ops notifications ("ru" | "en")
+  OPS_LOCALE: z.enum(["ru", "en"]).default("ru"),
+  // ws silent for this long => server presumed offline, admins alerted
+  SERVER_OFFLINE_ALERT_MINUTES: z.coerce.number().int().min(1).max(1440).default(5),
+  // crash alert also goes to all linked users, not just admins
+  NOTIFY_USERS_ON_OFFLINE: z
+    .string()
+    .default("false")
+    .transform((raw) => ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase())),
+  // outbound broadcast rate ceiling (telegram allows ~30/s)
+  NOTIFICATION_RATE_PER_SECOND: z.coerce.number().int().min(1).max(30).default(30),
+
   // atlas m0 housekeeping: audit/server_events lifetime and closed-session
   // lifetime in days; the daily cleanup task enforces both
   RETENTION_AUDIT_DAYS: z.coerce.number().int().min(7).default(90),
@@ -59,7 +69,6 @@ export type AppConfig = {
   mongoUri: string
   botToken?: string
   telegramBotUsername: string
-  adminChatIds: string[]
   telegramGroupChatId: string
   defaultLanguage: "ru" | "en"
   logTimezone: string
@@ -71,6 +80,11 @@ export type AppConfig = {
   wsReplayWindowMs: number
   wsNonceTtlMs: number
   authRequestTtlSeconds: number
+  adminTelegramIds: number[]
+  opsLocale: "ru" | "en"
+  serverOfflineAlertMinutes: number
+  notifyUsersOnOffline: boolean
+  notificationRatePerSecond: number
   retentionAuditDays: number
   retentionSessionDays: number
   retentionInitialDelayMinutes: number
@@ -100,11 +114,14 @@ function parseServerCredentials(raw: string): Record<string, string> {
   return result.data
 }
 
-function parseChatIds(raw: string): string[] {
+/** "123, 456" -> [123, 456]; empty string means no admins configured */
+function parseAdminIds(raw: string): number[] {
   return raw
     .split(",")
-    .map((id) => id.trim())
-    .filter((id) => id.length > 0)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+    .map((part) => Number.parseInt(part, 10))
+    .filter((id) => Number.isInteger(id) && id > 0)
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): AppConfig {
@@ -121,9 +138,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     mongoUri: result.data.MONGODB_URI,
     botToken: result.data.BOT_TOKEN,
     telegramBotUsername: result.data.TELEGRAM_BOT_USERNAME,
-    adminChatIds: parseChatIds(result.data.ADMIN_CHAT_IDS),
     telegramGroupChatId: result.data.TELEGRAM_GROUP_CHAT_ID,
-    defaultLanguage: result.data.DEFAULT_LANGUAGE,
+    defaultLanguage: result.data.OPS_LOCALE,
     logTimezone: result.data.LOG_TIMEZONE,
     logLevel: result.data.LOG_LEVEL,
     serverCredentials: parseServerCredentials(result.data.SERVERCORE_SERVER_CREDENTIALS),
@@ -133,6 +149,11 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     wsReplayWindowMs: result.data.WS_REPLAY_WINDOW_MS,
     wsNonceTtlMs: result.data.WS_NONCE_TTL_MS,
     authRequestTtlSeconds: result.data.AUTH_REQUEST_TTL_SECONDS,
+    adminTelegramIds: parseAdminIds(result.data.ADMIN_TELEGRAM_IDS),
+    opsLocale: result.data.OPS_LOCALE,
+    serverOfflineAlertMinutes: result.data.SERVER_OFFLINE_ALERT_MINUTES,
+    notifyUsersOnOffline: result.data.NOTIFY_USERS_ON_OFFLINE,
+    notificationRatePerSecond: result.data.NOTIFICATION_RATE_PER_SECOND,
     retentionAuditDays: result.data.RETENTION_AUDIT_DAYS,
     retentionSessionDays: result.data.RETENTION_SESSION_DAYS,
     retentionInitialDelayMinutes: result.data.RETENTION_INITIAL_DELAY_MINUTES,

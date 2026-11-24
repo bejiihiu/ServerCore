@@ -26,7 +26,10 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Build plugin jar
-        run: ./gradlew :plugin:build --no-daemon
+        # the tag IS the version (build-<commitCount>-<shortSha>): the plugin
+        # jar and its paper-plugin.yml must carry it so the in-plugin
+        # auto-updater can compare releases
+        run: ./gradlew :plugin:build --no-daemon -Pversion=${GITHUB_REF_NAME}
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -47,6 +50,17 @@ jobs:
             --exclude=.env \
             package.json bun.lock tsconfig.json src tests .env.example Dockerfile .dockerignore
 
+      - name: Generate checksums
+        # sha256sums for every release asset; the plugin's auto-updater pulls
+        # this file and refuses any jar it cannot verify
+        run: |
+          for f in plugin/build/libs/*.jar dist/*.tar.gz; do
+            hash=$(sha256sum "$f" | awk '{print $1}')
+            base=$(basename "$f")
+            echo "${hash}  ${base}"
+          done > dist/SHA256SUMS.txt
+          cat dist/SHA256SUMS.txt
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
@@ -55,3 +69,4 @@ jobs:
           files: |
             plugin/build/libs/*.jar
             dist/*.tar.gz
+            dist/SHA256SUMS.txt

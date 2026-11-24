@@ -1,0 +1,40 @@
+# ServerCore canonical locale: ru
+#
+# this seed ships inside the plugin jar and serves as the fallback until the
+# backend pushes the current full file over the ws channel (LOCALE_PUSH).
+# templates are miniMessage; color tags are the plugin theme tokens
+# (<primary> <secondary> <muted> <hairline> <gold> <ok> <warn> <danger> <info>),
+# never vanilla color names. placeholders use {name} syntax and their values
+# are escaped before injection.
+#
+# copy rules: lowercase headers, no exclamation marks, no trailing periods on
+# short lines, one thought per line. the tone is a quiet gatekeeper, not a
+# salesman.
+
+tablist:
+  header: "<gold>◆</gold> <primary>закрытый сезон · второй заход</primary>"
+  footer: "<muted>доступ по пропуску</muted>"
+
+guest:
+  welcome:
+    title: "Гостевой пропуск"
+    subtitle: "<secondary>сессия <gold>{n}</gold> из <gold>{max}</gold> · мир открыт для осмотра</secondary>"
+    card: |
+      <gold>гостевой пропуск</gold>
+      <secondary>мир открыт для осмотра, чат для гостей закрыт</secondary>
+      <secondary>сессия <gold>{n}</gold> из <gold>{max}</gold></secondary>
+      <muted>полный доступ открывается после одобрения заявки</muted>
+
+auth:
+  prompt:
+    card: |
+      <gold>подтверждение входа</gold>
+      <secondary>код: <bold><gold>{code}</gold></bold></secondary>
+      <secondary>назви код в Telegram-боте — с него придёт подтверждение</secondary>
+      <muted>без подтверждения сессия закроется по таймеру</muted>
+  pulse: "<primary>код <gold>{code}</gold> — подтверди вход в Telegram</primary>"
+  window: "<gold>{code}</gold> <muted>·</muted> <secondary>осталось {time}</secondary>"
+  expired: "окно подтверждения истекло"
+
+countdown:
+  tick: "<secondary>через мгновение</secondary>"

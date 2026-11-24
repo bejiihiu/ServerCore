@@ -1,14 +1,137 @@
-# backend gateway connection. real values go on the game server only,
-# never in the repo.
+# servercore plugin configuration
+# fill in backend.* to link up with the backend gateway; the plugin stays
+# inert for account checks until then, guests still work locally (fail closed)
+
 backend:
+  # full websocket url of the backend gateway, wss://host:port/path
   # ws:// for local, wss:// in production (tls terminates at the proxy)
-  url: "ws://127.0.0.1:8081/ws"
+  url: ""
   # unique id of this game server, mirrors SERVERCORE_SERVER_CREDENTIALS key
   server-id: "game-1"
-  # per-server hmac secret, >= 32 chars, same value as on the backend
-  secret: "replace-with-long-random-secret"
+  # per-server hmac secret, must match SERVER_SECRET_<ID> on the backend.
+  # never commit the real value, keep it in the server environment
+  secret: ""
   # reconnect backoff: starts at initial, doubles up to max, with jitter
-  reconnect-initial-seconds: 1
-  reconnect-max-seconds: 60
+  reconnect:
+    initial-delay-seconds: 2
+    max-delay-seconds: 120
   # periodic liveness message cadence
   heartbeat-interval-seconds: 15
+
+guest:
+  # master switch. when off, unauthenticated players are kicked with the
+  # register message instead of entering guest mode
+  enabled: true
+  # rebuild guest sessions and restore snapshots after a server restart
+  restore-on-restart: true
+  # how long the ws-backed account check may take before we fall back to
+  # local state (fail closed to guest, never to authorized)
+  resolve-timeout-milliseconds: 4000
+  # max guest sessions per player. every join without authorization burns one;
+  # successful authorization resets the budget
+  session-limit: 3
+  # past the limit: true = kick with a register-now message,
+  # false = let them keep looking around but show a loud warning
+  kick-after-limit: true
+  # subtle actionbar reminder while a guest waits for authorization
+  reminder-interval-seconds: 60
+  # ui language, picks messages_<lang>.yml from the plugin data folder
+  # (bundled: en, ru; edit the file to customise every message)
+  lang: ru
+  # telegram bot username, used for the fallback deep link when the backend
+  # has not handed out a personal one-time link yet
+  bot-username: ServerCoreBot
+  # personal deep links are one-time tokens, they stop being shown after this
+  link-ttl-milliseconds: 90000
+  # durable snapshot storage, relative to plugins/ServerCore/
+  snapshot-storage-path: guest-snapshots.json
+  # command names a guest may run (no slash). /link is answered by the plugin
+  # itself and shows the registration prompt
+  command-whitelist:
+    - help
+    - rules
+    - link
+  # per-guest interaction toggles, true = blocked. free flight and world
+  # observation are always allowed and cannot be turned off here
+  restrictions:
+    block-interaction: true
+    block-break: true
+    block-place: true
+    item-pickup: true
+    item-use: true
+    container-interaction: true
+    entity-damage: true
+    # non-whitelisted commands
+    commands: true
+    gamemode-change: true
+    portals: true
+    inventory-edit: true
+    # full chat isolation: the guest neither sees nor writes chat
+    chat: true
+  # last-known-state overrides that work even with the backend down.
+  # offline-mode uuids come from nicknames, so treat these as convenience
+  # bookkeeping, the backend telegram binding is the real authority
+  # local-accounts:
+  #   "069a79f4-44e9-4726-a5be-fca90e38aaf5": authorized
+
+anti-esp:
+  enabled: true
+  max-distance: 48
+  check-interval-ticks: 10
+  sneak-hides: true
+  disguise:
+    enabled: true
+    mobs: zombie, skeleton, spider, cow, pig, sheep
+  cache:
+    ttl-ticks: 40
+
+spec:
+  enabled: true
+  live-inventory: true
+  log-to-audit: true
+
+protection:
+  blocked-commands: []
+  enforce-gamemode: true
+
+placeholders:
+  cache-ttl-milliseconds: 2000
+
+# ops configuration
+# every knob lives under ops:; secrets never go here - the panel api key and
+# the github token are read from environment variables named below.
+
+ops:
+  update:
+    # self-update from github releases (tags build-*)
+    enabled: true
+    # owner/repo to poll for the latest build-* release
+    repo: "bejiihiu/ServerCore"
+    # how often to check, minutes
+    check-interval-minutes: 30
+    # restart automatically after a verified swap; false = install and wait
+    # for a manual/scheduled restart
+    auto-restart: true
+    # env var holding a github token (optional, lifts the api rate limit)
+    github-token-env: "GITHUB_TOKEN"
+
+  restart:
+    # pterodactyl panel integration. all three values empty = feature off,
+    # restarts fall back to a console `stop` - which only acts like a restart
+    # when the server has AUTO-RESTART enabled in the panel.
+    pterodactyl:
+      # base url, e.g. https://panel.example.com
+      panel-url: ""
+      # the identifier of this server in the panel (the short id from the url)
+      server-id: ""
+      # env var with a pterodactyl CLIENT api key (ptlc_...)
+      api-key-env: "PTERO_API_KEY"
+
+    # daily restart times, wall clock hh:mm, europe/moscow
+    daily-times: ["05:00"]
+    # seconds of in-game warning (title + actionbar countdown) before kick
+    grace-seconds: 60
+    # player-facing texts: ru | en
+    locale: "ru"
+    # timezone for daily-times and logs (any java zone id)
+    timezone: "Europe/Moscow"

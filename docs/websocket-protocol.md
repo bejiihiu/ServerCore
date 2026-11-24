@@ -35,7 +35,7 @@ The `hmac` is computed over the **canonical json** of the envelope without the h
 
 | Type | Direction | Purpose |
 |---|---|---|
-| `SERVER_STATUS` | plugin → backend | Initial hello and registration; carries server identity, version, current load |
+| `SERVER_STATUS` | plugin → backend | Initial hello and registration; carries server identity, version, current load. The payload also carries an optional `state` — the ops lifecycle: `STARTING`, `RUNNING`, `RESTARTING`, `STOPPING`, `OFFLINE`, `UPDATE_READY`. Backend fans these out to telegram (users + admins). |
 | `SERVER_HEARTBEAT` | plugin → backend | Periodic liveness and metrics snapshot |
 | `SERVER_STATUS` (response) | backend → plugin | Registration acknowledgement, expected heartbeat cadence |
 
@@ -80,6 +80,42 @@ The `hmac` is computed over the **canonical json** of the envelope without the h
 |---|---|---|
 | `SPEC_STARTED` | backend → plugin | Audit notification that an observation session started |
 | `SPEC_ENDED` | backend → plugin | Observation ended; recorded in audit logs |
+
+### Localization
+
+| Type | Direction | Purpose |
+|---|---|---|
+| `LOCALE_PUSH` | backend → plugin | Full content of one locale file (canonical `ru`); replaces the plugin's copy wholesale |
+| `LOCALE_ACK` | plugin → backend | Outcome of an applied push; correlates with the push via `correlationId` |
+
+`LOCALE_PUSH` payload:
+
+```text
+{
+  locale: string     // language tag, currently only "ru" is accepted
+  revision: string   // opaque backend-side revision id (commit sha or hash)
+  content: string    // the FULL yaml file, never a diff
+}
+```
+
+`LOCALE_ACK` payload:
+
+```text
+{
+  locale: string
+  revision: string   // echoed from the push
+  accepted: boolean
+  reason?: string    // present when accepted is false
+}
+```
+
+Semantics:
+
+- The plugin never fetches locale files itself; there is no HTTP path. The backend renders the current canonical content (hosted on GitHub) and pushes it to every connected server.
+- Pushes are **full-file**: the plugin replaces its whole locale store for that language. Partial merges are not attempted.
+- The plugin validates the payload (yaml parses, locale matches the canonical tag, store is non-empty) before swapping the live store atomically; a rejected push leaves the running locale untouched and is reported back with a `reason`.
+- On success the plugin persists the file to its data folder; the persisted file wins over the bundled seed on boot, so locale state survives restarts. After a restart the revision is reported as unknown, and the backend may re-push the current revision.
+- Re-delivery of the same `revision` is safe: the plugin re-parses and re-applies it idempotently.
 
 ## Handshake flow
 

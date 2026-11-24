@@ -71,14 +71,16 @@ describe("retention service", () => {
 
   test("cutoffs derive from the configured retention windows", async () => {
     const purges = new FakePurges()
-    let seenAuditCutoff: Date | null = null
-    let seenSessionCutoff: Date | null = null
-    purges.auditPort.deleteOlderThan = async (cutoff: Date): Promise<number> => {
-      seenAuditCutoff = cutoff
+    // captured lists: ts narrowing can't see assignments inside async lambdas,
+    // a plain array keeps the values observable without casts
+    const seenAuditCutoffs: Date[] = []
+    const seenSessionCutoffs: Date[] = []
+    purges.auditPort.deleteOlderThan = async (cutoff?: Date): Promise<number> => {
+      if (cutoff !== undefined) seenAuditCutoffs.push(cutoff)
       return 0
     }
-    purges.sessionsPort.deleteClosedOlderThan = async (cutoff: Date): Promise<number> => {
-      seenSessionCutoff = cutoff
+    purges.sessionsPort.deleteClosedOlderThan = async (cutoff?: Date): Promise<number> => {
+      if (cutoff !== undefined) seenSessionCutoffs.push(cutoff)
       return 0
     }
     const service = new RetentionService({
@@ -91,9 +93,12 @@ describe("retention service", () => {
     })
     const now = new Date("2026-11-24T09:00:00Z")
     await service.runOnce(now)
+    // the service always passes a definite cutoff: exactly one call each
+    expect(seenAuditCutoffs.length).toBe(1)
+    expect(seenSessionCutoffs.length).toBe(1)
     // 2026-08-26 and 2026-09-25 respectively
-    expect(seenAuditCutoff?.toISOString()).toBe(new Date(now.getTime() - 90 * 86_400_000).toISOString())
-    expect(seenSessionCutoff?.toISOString()).toBe(new Date(now.getTime() - 60 * 86_400_000).toISOString())
+    expect(seenAuditCutoffs[0]?.toISOString()).toBe(new Date(now.getTime() - 90 * 86_400_000).toISOString())
+    expect(seenSessionCutoffs[0]?.toISOString()).toBe(new Date(now.getTime() - 60 * 86_400_000).toISOString())
   })
 
   test("one failing purge target never blocks the others", async () => {

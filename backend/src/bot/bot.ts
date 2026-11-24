@@ -5,6 +5,10 @@ import type { BotDeps } from "./context.js"
 import type { BotContext } from "./context.js"
 import { registerBotRoutes } from "./routes.js"
 
+export type BotOpsDeps = {
+  stats: unknown
+}
+
 /**
  * builds the telegram bot with all routes registered. returns null when no
  * token is configured — the backend then runs without the bot instead of

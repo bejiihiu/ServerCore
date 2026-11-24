@@ -2,10 +2,10 @@ import type { TokenService } from "../../services/token-service.js"
 import { AccountError, assertTransition, isFrozen, type UserStatus } from "./types.js"
 import type { AuditRepository, TelegramLinkRepository, UserRepository } from "./repository.js"
 import type { OwnershipVerifier } from "./session-probe.js"
-import type { NotificationFanout } from "../notification/notification-service.js"
+import { t, statusLabel, type Locale } from "../../services/i18n.js"
+import type { NotificationFanout } from "../notification/notification-port.js"
 import type { Logger } from "../../logging/logger.js"
 import { RateLimiter } from "../../utils/rate-limiter.js"
-import { t, type Language } from "../../bot/i18n.js"
 
 /** how a status change came about, mirrors the audit actor types we care about */
 export type StatusActor = "PLAYER" | "ADMIN" | "TELEGRAM" | "SYSTEM"
@@ -17,7 +17,7 @@ export type AccountView = {
   telegramUsername: string | null
   telegramLinked: boolean
   status: UserStatus
-  language: Language
+  language: Locale
   lastApplicationAt: Date | null
   createdAt: Date
 }
@@ -63,7 +63,7 @@ export class AccountService {
   private readonly ownership: OwnershipVerifier
   private readonly notifier: NotificationFanout
   private readonly logger: Logger
-  private readonly defaultLanguage: Language
+  private readonly defaultLanguage: Locale
   private readonly linkAttempts: RateLimiter
   private readonly tokenIssues: RateLimiter
 
@@ -75,7 +75,7 @@ export class AccountService {
     ownership: OwnershipVerifier
     notifier: NotificationFanout
     logger: Logger
-    defaultLanguage: Language
+    defaultLanguage: Locale
   }) {
     this.users = deps.users
     this.links = deps.links
@@ -140,7 +140,7 @@ export class AccountService {
   }
 
   /** persists the bot language preference on the account */
-  async setLanguage(minecraftUuid: string, language: Language): Promise<void> {
+  async setLanguage(minecraftUuid: string, language: Locale): Promise<void> {
     const user = await this.users.findByUuid(minecraftUuid)
     if (!user) throw new AccountError("ACCOUNT_NOT_FOUND", `account ${minecraftUuid} not found`)
     user.language = language
@@ -283,8 +283,8 @@ export class AccountService {
     })
 
     this.logger.info({ minecraftUuid, username }, "telegram account linked")
-    await this.notifier.notifyUser(params.telegramId, t(user.language, "linkSuccess", { username }))
-    await this.notifier.notifyAdmins(t(this.defaultLanguage, "linkSuccess", { username }))
+    await this.notifier.notifyUser(params.telegramId, t(user.language, "bot.link.success", { username }))
+    await this.notifier.notifyAdmins(t(this.defaultLanguage, "bot.link.success", { username }))
     return { linked: true, username, idempotent: false }
   }
 
@@ -321,7 +321,10 @@ export class AccountService {
     if (user.telegramId !== "") {
       await this.notifier.notifyUser(
         user.telegramId,
-        t(user.language, "statusChanged", { from: statusLabel(from), to: statusLabel(to) }),
+        t(user.language, "bot.account.status_changed", {
+          from: statusLabel(user.language, from),
+          to: statusLabel(user.language, to),
+        }),
       )
     }
     return this.toView(user)
@@ -334,7 +337,7 @@ export class AccountService {
     telegramUsername: string | null
     telegramLinkedAt: Date | null
     status: UserStatus
-    language: Language
+    language: Locale
     lastApplicationAt: Date | null
     createdAt: Date
   }): AccountView {
@@ -350,19 +353,4 @@ export class AccountService {
       createdAt: user.createdAt,
     }
   }
-}
-
-/** russian display labels for the status ladder, user-facing */
-export function statusLabel(status: UserStatus): string {
-  const labels: Record<UserStatus, string> = {
-    UNREGISTERED: "Без регистрации",
-    APPLICATION_PENDING: "Заявка на рассмотрении",
-    VOTING: "Голосование",
-    APPROVED: "Одобрен",
-    ACTIVE: "Активен",
-    SUSPENDED: "Заморожен",
-    BANNED: "Заблокирован",
-    DELETION_PENDING: "Ожидает удаления",
-  }
-  return labels[status]
 }

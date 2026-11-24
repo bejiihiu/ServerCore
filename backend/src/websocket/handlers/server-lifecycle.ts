@@ -1,4 +1,4 @@
-import type { Envelope, PayloadOf } from "../protocol/message-types.js"
+import type { Envelope, PayloadOf, ServerState } from "../protocol/message-types.js"
 import type { HandlerRegistry } from "./registry.js"
 import type { Logger } from "../../logging/logger.js"
 
@@ -8,6 +8,8 @@ export type ServerRuntimeStatus = {
   maxPlayers: number
   tps?: number
   version?: string
+  state?: ServerState
+  detail?: string
   lastSeenAt: number
 }
 
@@ -38,11 +40,17 @@ export class ServerDirectory {
 
 type PlayerCountPatch = Pick<ServerRuntimeStatus, "onlinePlayers" | "maxPlayers" | "tps">
 
+export type LifecycleHooks = {
+  /** fires only when the explicit ops state actually changes, not on every status frame */
+  onStateChange?: (serverId: string, state: ServerState, previous: ServerState | undefined) => void
+}
+
 /** wires the lifecycle handlers that exist at skeleton stage: presence tracking */
 export function registerLifecycleHandlers(
   registry: HandlerRegistry,
   directory: ServerDirectory,
   logger: Logger,
+  hooks: LifecycleHooks = {},
 ): void {
   const mergeCounts = (
     serverId: string,
@@ -56,13 +64,22 @@ export function registerLifecycleHandlers(
       maxPlayers: patch.maxPlayers ?? existing?.maxPlayers ?? 0,
       tps: patch.tps ?? existing?.tps,
       version: extra.version ?? existing?.version,
+      state: extra.state ?? existing?.state,
+      detail: extra.detail ?? existing?.detail,
       lastSeenAt: Date.now(),
     })
   }
 
   registry.register("SERVER_STATUS", (envelope: Envelope<"SERVER_STATUS">, connection) => {
-    mergeCounts(connection.serverId, envelope.payload, { version: envelope.payload.version })
-    logger.debug({ serverId: connection.serverId }, "server status updated")
+    const { state, detail } = envelope.payload
+    const previousState = directory.get(connection.serverId)?.state
+    mergeCounts(connection.serverId, envelope.payload, { version: envelope.payload.version, state, detail })
+    if (state !== undefined && previousState !== state) {
+      // status frames fire on every heartbeat-style push; only a real state
+      // flip is interesting for notifications
+      logger.info({ serverId: connection.serverId, state, previous: previousState }, "server state changed")
+      hooks.onStateChange?.(connection.serverId, state, previousState)
+    }
   })
 
   registry.register("SERVER_HEARTBEAT", (envelope: Envelope<"SERVER_HEARTBEAT">, connection) => {

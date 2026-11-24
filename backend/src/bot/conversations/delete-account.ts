@@ -1,5 +1,5 @@
 import type { Conversation } from "@grammyjs/conversations"
-import { t } from "../i18n.js"
+import { t } from "../../services/i18n.js"
 import { CALLBACK, deleteConfirmKeyboard } from "../keyboards.js"
 import type { BotContext } from "../context.js"
 import type { AccountView } from "../../modules/account/account-service.js"
@@ -21,17 +21,17 @@ export async function deleteAccountConversation(
   deps: DeleteConversationDeps,
   account: AccountView,
 ): Promise<void> {
-  const lang = account.language
+  const locale = account.language
 
-  await ctx.reply(t(lang, "deleteConfirm"), { reply_markup: deleteConfirmKeyboard(lang) })
+  await ctx.reply(t(locale, "bot.delete.confirm"), { reply_markup: deleteConfirmKeyboard((key) => t(locale, key)) })
 
   const answer = await conversation.waitForCallbackQuery([CALLBACK.linkConfirm, CALLBACK.linkCancel], {
-    otherwise: (nonAnswer) => nonAnswer.reply(t(lang, "deleteConfirm")),
+    otherwise: (nonAnswer) => nonAnswer.reply(t(locale, "bot.delete.confirm")),
   })
   await answer.answerCallbackQuery()
 
   if (answer.callbackQuery.data === CALLBACK.linkCancel) {
-    await ctx.reply(t(lang, "linkCancelled"))
+    await ctx.reply(t(locale, "bot.link.cancelled"))
     return
   }
 
@@ -46,5 +46,5 @@ export async function deleteAccountConversation(
     }
   })
 
-  await ctx.reply(t(lang, succeeded ? "deleteDone" : "deleteFail", { username: account.username }))
+  await ctx.reply(t(locale, succeeded ? "bot.delete.done" : "bot.delete.fail", { username: account.username }))
 }
