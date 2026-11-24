@@ -29,11 +29,17 @@ dependencies {
     // when used so shadow bundles it (the server has no coroutines at runtime)
     compileOnly(libs.kotlinx.coroutines.core)
 
-    // dto layer will use this later; compileOnly until something actually serializes at runtime
-    compileOnly(libs.kotlinx.serialization.json)
+    // locale DTOs serialize over the WS channel at runtime, so the json runtime
+    // rides in the fat jar alongside the stdlib
+    implementation(libs.kotlinx.serialization.json)
 
     // folia ships no kotlin at runtime, so the stdlib has to ride inside the fat jar
     implementation(libs.kotlin.stdlib)
+
+    // tests need the adventure + snakeyaml transitives on the classpath
+    testImplementation(libs.folia.api)
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 kotlin {
@@ -48,6 +54,10 @@ runPaper {
 tasks {
     build {
         dependsOn(shadowJar)
+    }
+
+    test {
+        useJUnitPlatform()
     }
 
     withType<RunServer> {
