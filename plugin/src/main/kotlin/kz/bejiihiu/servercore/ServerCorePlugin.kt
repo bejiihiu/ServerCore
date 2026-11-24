@@ -34,6 +34,10 @@ import kz.bejiihiu.servercore.ops.ServerState
 import kz.bejiihiu.servercore.ops.UpdateInstaller
 import kz.bejiihiu.servercore.ops.UpdaterService
 import kz.bejiihiu.servercore.player.PlayerPresenceService
+import kz.bejiihiu.servercore.spec.SpecAuditConfig
+import kz.bejiihiu.servercore.spec.SpecAuditTrail
+import kz.bejiihiu.servercore.spec.SpecEventSender
+import kz.bejiihiu.servercore.spec.SpecSessionRegistry
 import kz.bejiihiu.servercore.sync.EntityIdentityTracker
 import kz.bejiihiu.servercore.sync.InMemoryViewStateRegistry
 import kz.bejiihiu.servercore.sync.PacketStateListener
@@ -45,6 +49,7 @@ import kz.bejiihiu.servercore.util.I18n
 import kz.bejiihiu.servercore.websocket.DelayScheduler
 import kz.bejiihiu.servercore.websocket.GatewayClient
 import kz.bejiihiu.servercore.websocket.GatewayListener
+import kz.bejiihiu.servercore.websocket.MessageType
 import kz.bejiihiu.servercore.websocket.Payload
 import kz.bejiihiu.servercore.websocket.ServerStatsProvider
 import kz.bejiihiu.servercore.ws.BackendGateway
@@ -84,6 +89,8 @@ class ServerCorePlugin : JavaPlugin() {
     private var esp: EspModule? = null
     private lateinit var opsBus: OpsEventBus
     private var packetService: PacketService? = null
+    private var specTrail: SpecAuditTrail? = null
+    private var specRegistry: SpecSessionRegistry? = null
 
     override fun onLoad() {
         // packetevents is a server-installed plugin we attach to, not one we
@@ -151,7 +158,7 @@ class ServerCorePlugin : JavaPlugin() {
         // presence + gateway client: liveness, PLAYER_JOINED/LEFT, account events.
         // bad config is a boot blocker: better dead than half-connected
         val gatewayConfig = try {
-            ConfigLoader.load(config)
+            ConfigLoader.load(config, logger)
         } catch (e: IllegalArgumentException) {
             logger.severe("config error: ${e.message}")
             server.pluginManager.disablePlugin(this)
@@ -162,6 +169,7 @@ class ServerCorePlugin : JavaPlugin() {
             override fun onlinePlayers(): Int = presence?.onlineCount() ?: 0
             override fun maxPlayers(): Int = server.maxPlayers
             override fun serverVersion(): String = server.getMinecraftVersion()
+            override fun activeSpecSessions(): Int = specRegistry?.activeCount() ?: 0
         }
 
         val gatewayListener = object : GatewayListener {
@@ -199,9 +207,34 @@ class ServerCorePlugin : JavaPlugin() {
         )
         wsGateway = client
 
-        val presenceService = PlayerPresenceService(this, client)
+        val presenceService = PlayerPresenceService(this, client, { specRegistry?.activeCount() ?: 0 })
         presence = presenceService
         server.pluginManager.registerEvents(presenceService, this)
+
+        // spec audit: local append-only jsonl trail + the session registry that
+        // reports starts/ends to the backend and feeds the heartbeat counter.
+        // the /spec command itself hooks into the registry when it lands
+        val specAuditConfig = gatewayConfig.specAudit
+        if (specAuditConfig.enabled) {
+            val trail = SpecAuditTrail(
+                directory = dataFolder.toPath().resolve(specAuditConfig.directory),
+                io = io,
+                retentionDays = specAuditConfig.retentionDays.toLong(),
+                maxEntriesPerSession = specAuditConfig.maxEntriesPerSession,
+                queueCapacity = specAuditConfig.queueCapacity,
+            )
+            val specSender = object : SpecEventSender {
+                override fun sendSpecStarted(payload: Payload.SpecStarted) {
+                    client.send(MessageType.SPEC_STARTED, payload)
+                }
+
+                override fun sendSpecEnded(payload: Payload.SpecEnded) {
+                    client.send(MessageType.SPEC_ENDED, payload)
+                }
+            }
+            specTrail = trail
+            specRegistry = SpecSessionRegistry(trail, specSender)
+        }
 
         // guest mode stack (uses its own local gateway handle for envelope-level
         // helpers; both handles share the same backend connection semantics)
@@ -348,6 +381,8 @@ class ServerCorePlugin : JavaPlugin() {
         snapshots.shutdown()
         counter.shutdown()
         accountsCache.shutdown()
+        // the trail flushes synchronously before the io pool goes away
+        specTrail?.close()
         io.shutdown()
         logger.info("servercore ${pluginMeta.version} disabled, bye")
     }

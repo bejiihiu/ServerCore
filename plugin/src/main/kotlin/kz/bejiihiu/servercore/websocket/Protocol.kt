@@ -22,6 +22,8 @@ enum class MessageType(val wire: String) {
     SESSION_CHECK("SESSION_CHECK"),
     SESSION_CHECK_RESULT("SESSION_CHECK_RESULT"),
     ACCOUNT_DELETED("ACCOUNT_DELETED"),
+    SPEC_STARTED("SPEC_STARTED"),
+    SPEC_ENDED("SPEC_ENDED"),
     ACK("ACK"),
     ERROR("ERROR");
 
@@ -35,12 +37,40 @@ enum class MessageType(val wire: String) {
 sealed interface Payload {
     data class PlayerJoined(val minecraftUuid: String, val username: String) : Payload
     data class PlayerLeft(val minecraftUuid: String, val reason: String = "DISCONNECT") : Payload
-    data class ServerStatus(val onlinePlayers: Int, val maxPlayers: Int, val version: String) : Payload
-    data class ServerHeartbeat(val onlinePlayers: Int, val maxPlayers: Int) : Payload
+    data class ServerStatus(
+        val onlinePlayers: Int,
+        val maxPlayers: Int,
+        val version: String,
+        val activeSpecSessions: Int? = null,
+    ) : Payload
+
+    data class ServerHeartbeat(
+        val onlinePlayers: Int,
+        val maxPlayers: Int,
+        val activeSpecSessions: Int? = null,
+    ) : Payload
     data class LinkToken(val minecraftUuid: String, val username: String, val token: String, val expiresAt: Long) : Payload
     data class SessionCheck(val minecraftUuid: String) : Payload
     data class SessionCheckResult(val minecraftUuid: String, val online: Boolean, val sessionId: String? = null) : Payload
     data class AccountDeleted(val minecraftUuid: String, val reason: String) : Payload
+
+    data class SpecStarted(
+        val adminUuid: String,
+        val targetUuid: String,
+        val sessionId: String? = null,
+        val adminUsername: String? = null,
+        val targetUsername: String? = null,
+    ) : Payload
+
+    data class SpecEnded(
+        val adminUuid: String,
+        val targetUuid: String,
+        val sessionId: String? = null,
+        val adminUsername: String? = null,
+        val targetUsername: String? = null,
+        val durationSec: Long? = null,
+        val reason: String = "NORMAL",
+    ) : Payload
     data class Ack(val ackedId: String) : Payload
     data class Error(val code: String, val message: String) : Payload
 }
@@ -155,10 +185,12 @@ class EnvelopeCodec(private val secret: String) {
             put("onlinePlayers", payload.onlinePlayers)
             put("maxPlayers", payload.maxPlayers)
             put("version", payload.version)
+            payload.activeSpecSessions?.let { put("activeSpecSessions", it) }
         }
         is Payload.ServerHeartbeat -> buildJsonObject {
             put("onlinePlayers", payload.onlinePlayers)
             put("maxPlayers", payload.maxPlayers)
+            payload.activeSpecSessions?.let { put("activeSpecSessions", it) }
         }
         is Payload.LinkToken -> buildJsonObject {
             put("minecraftUuid", payload.minecraftUuid)
@@ -176,6 +208,22 @@ class EnvelopeCodec(private val secret: String) {
         }
         is Payload.AccountDeleted -> buildJsonObject {
             put("minecraftUuid", payload.minecraftUuid)
+            put("reason", payload.reason)
+        }
+        is Payload.SpecStarted -> buildJsonObject {
+            put("adminUuid", payload.adminUuid)
+            put("targetUuid", payload.targetUuid)
+            payload.sessionId?.let { put("sessionId", it) }
+            payload.adminUsername?.let { put("adminUsername", it) }
+            payload.targetUsername?.let { put("targetUsername", it) }
+        }
+        is Payload.SpecEnded -> buildJsonObject {
+            put("adminUuid", payload.adminUuid)
+            put("targetUuid", payload.targetUuid)
+            payload.sessionId?.let { put("sessionId", it) }
+            payload.adminUsername?.let { put("adminUsername", it) }
+            payload.targetUsername?.let { put("targetUsername", it) }
+            payload.durationSec?.let { put("durationSec", it) }
             put("reason", payload.reason)
         }
         is Payload.Ack -> buildJsonObject {
@@ -222,6 +270,22 @@ class EnvelopeCodec(private val secret: String) {
             MessageType.ACCOUNT_DELETED -> Payload.AccountDeleted(
                 obj.stringOrThrow("minecraftUuid"),
                 obj.stringOrThrow("reason"),
+            )
+            MessageType.SPEC_STARTED -> Payload.SpecStarted(
+                obj.stringOrThrow("adminUuid"),
+                obj.stringOrThrow("targetUuid"),
+                obj.string("sessionId"),
+                obj.string("adminUsername"),
+                obj.string("targetUsername"),
+            )
+            MessageType.SPEC_ENDED -> Payload.SpecEnded(
+                obj.stringOrThrow("adminUuid"),
+                obj.stringOrThrow("targetUuid"),
+                obj.string("sessionId"),
+                obj.string("adminUsername"),
+                obj.string("targetUsername"),
+                obj.long("durationSec"),
+                obj.string("reason") ?: "NORMAL",
             )
             MessageType.ACK -> Payload.Ack(obj.stringOrThrow("ackedId"))
             MessageType.ERROR -> Payload.Error(obj.stringOrThrow("code"), obj.stringOrThrow("message"))

@@ -25,6 +25,8 @@ import java.util.concurrent.TimeUnit
 class PlayerPresenceService(
     private val plugin: Plugin,
     private val gateway: GatewayClient,
+    /** live count of active spec sessions, fed into every heartbeat */
+    private val activeSpecSessions: () -> Int = { 0 },
 ) : Listener {
 
     /** online players seen by this server: uuid -> username */
@@ -45,7 +47,7 @@ class PlayerPresenceService(
             { _ ->
                 gateway.send(
                     MessageType.SERVER_HEARTBEAT,
-                    Payload.ServerHeartbeat(onlineCount(), plugin.server.maxPlayers),
+                    Payload.ServerHeartbeat(onlineCount(), plugin.server.maxPlayers, activeSpecSessions()),
                 )
             },
             1,
