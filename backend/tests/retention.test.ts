@@ -8,6 +8,10 @@ class FakePurges {
   sessionsDeleted = 0
   prunedDeleted = 0
   snapshotsDeleted = 0
+  votingMessagesDeleted = 0
+  votesDeleted = 0
+  invitesDeleted = 0
+  applicationsDeleted = 0
   failAudit = false
 
   readonly auditPort = {
@@ -40,6 +44,30 @@ class FakePurges {
     },
     deleteBySessionId: async (): Promise<number> => 1,
   }
+  readonly votingMessagesPort = {
+    deleteDeadOlderThan: async (_cutoff?: Date): Promise<number> => {
+      this.votingMessagesDeleted += 1
+      return this.votingMessagesDeleted
+    },
+  }
+  readonly votesPort = {
+    deleteDecidedOlderThan: async (_cutoff?: Date): Promise<number> => {
+      this.votesDeleted += 1
+      return this.votesDeleted
+    },
+  }
+  readonly invitesPort = {
+    deleteDeadOlderThan: async (_cutoff?: Date, _usedCutoff?: Date): Promise<number> => {
+      this.invitesDeleted += 1
+      return this.invitesDeleted
+    },
+  }
+  readonly applicationsPort = {
+    deleteClosedOlderThan: async (_cutoff?: Date): Promise<number> => {
+      this.applicationsDeleted += 1
+      return this.applicationsDeleted
+    },
+  }
 }
 
 const silent = {
@@ -53,6 +81,10 @@ function buildService(purges: FakePurges, options: Partial<RetentionOptions> = {
     serverEvents: purges.eventsPort,
     sessions: purges.sessionsPort,
     snapshots: purges.snapshotsPort,
+    votingMessages: purges.votingMessagesPort,
+    invites: purges.invitesPort,
+    votes: purges.votesPort,
+    applications: purges.applicationsPort,
     options,
     logger: silent,
   })
@@ -67,6 +99,10 @@ describe("retention service", () => {
     expect(report.serverEventsDeleted).toBeGreaterThan(0)
     expect(report.sessionsDeleted).toBeGreaterThan(0)
     expect(report.guestSnapshotsDeleted).toBeGreaterThan(0)
+    expect(report.votingMessagesDeleted).toBeGreaterThan(0)
+    expect(report.votesDeleted).toBeGreaterThan(0)
+    expect(report.groupInvitesDeleted).toBeGreaterThan(0)
+    expect(report.applicationsDeleted).toBeGreaterThan(0)
   })
 
   test("cutoffs derive from the configured retention windows", async () => {
@@ -88,6 +124,10 @@ describe("retention service", () => {
       serverEvents: purges.eventsPort,
       sessions: purges.sessionsPort,
       snapshots: purges.snapshotsPort,
+      votingMessages: purges.votingMessagesPort,
+      invites: purges.invitesPort,
+      votes: purges.votesPort,
+      applications: purges.applicationsPort,
       options: { auditDays: 90, sessionDays: 60 },
       logger: silent,
     })
@@ -99,6 +139,39 @@ describe("retention service", () => {
     // 2026-08-26 and 2026-09-25 respectively
     expect(seenAuditCutoffs[0]?.toISOString()).toBe(new Date(now.getTime() - 90 * 86_400_000).toISOString())
     expect(seenSessionCutoffs[0]?.toISOString()).toBe(new Date(now.getTime() - 60 * 86_400_000).toISOString())
+  })
+
+  test("dead-data cutoffs follow the defaults: votes 90d, invites 30d, used invites 1y, applications 1y", async () => {
+    const purges = new FakePurges()
+    const votingCutoffs: Date[] = []
+    const inviteCutoffs: Date[] = []
+    const usedInviteCutoffs: Date[] = []
+    const applicationCutoffs: Date[] = []
+    purges.votesPort.deleteDecidedOlderThan = async (cutoff?: Date): Promise<number> => {
+      if (cutoff !== undefined) votingCutoffs.push(cutoff)
+      return 0
+    }
+    purges.invitesPort.deleteDeadOlderThan = async (cutoff?: Date, usedCutoff?: Date): Promise<number> => {
+      if (cutoff !== undefined && usedCutoff !== undefined) {
+        inviteCutoffs.push(cutoff)
+        usedInviteCutoffs.push(usedCutoff)
+      }
+      return 0
+    }
+    purges.applicationsPort.deleteClosedOlderThan = async (cutoff?: Date): Promise<number> => {
+      if (cutoff !== undefined) applicationCutoffs.push(cutoff)
+      return 0
+    }
+    const service = buildService(purges)
+
+    const now = new Date("2026-11-24T09:00:00Z")
+    await service.runOnce(now)
+    const daysAgo = (days: number): string => new Date(now.getTime() - days * 86_400_000).toISOString()
+
+    expect(votingCutoffs[0]?.toISOString()).toBe(daysAgo(90))
+    expect(inviteCutoffs[0]?.toISOString()).toBe(daysAgo(30))
+    expect(usedInviteCutoffs[0]?.toISOString()).toBe(daysAgo(365))
+    expect(applicationCutoffs[0]?.toISOString()).toBe(daysAgo(365))
   })
 
   test("one failing purge target never blocks the others", async () => {

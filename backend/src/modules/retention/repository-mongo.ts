@@ -1,8 +1,22 @@
+import { Types } from "mongoose"
+import { ApplicationModel } from "../../database/models/application.js"
 import { AuditLogModel } from "../../database/models/audit-log.js"
+import { GroupInviteModel } from "../../database/models/group-invite.js"
 import { GuestSnapshotModel } from "../../database/models/guest-snapshot.js"
 import { PlayerSessionModel } from "../../database/models/session.js"
 import { ServerEventModel } from "../../database/models/server-event.js"
-import type { AuditLogPurgePort, GuestSnapshotPurgePort, ServerEventPurgePort, SessionPurgePort } from "./retention-service.js"
+import { VotingMessageModel } from "../../database/models/voting-message.js"
+import { VoteModel } from "../../database/models/vote.js"
+import type {
+  ApplicationPurgePort,
+  AuditLogPurgePort,
+  GroupInvitePurgePort,
+  GuestSnapshotPurgePort,
+  ServerEventPurgePort,
+  SessionPurgePort,
+  VotePurgePort,
+  VotingMessagePurgePort,
+} from "./retention-service.js"
 
 export class MongoAuditLogPurge implements AuditLogPurgePort {
   async deleteOlderThan(cutoff: Date): Promise<number> {
@@ -70,6 +84,64 @@ export class MongoGuestSnapshotPurge implements GuestSnapshotPurgePort {
 
   async deleteBySessionId(sessionId: string): Promise<number> {
     const result = await GuestSnapshotModel.deleteMany({ sessionId })
+    return result.deletedCount ?? 0
+  }
+}
+
+export class MongoVotingMessagePurge implements VotingMessagePurgePort {
+  async deleteDeadOlderThan(cutoff: Date): Promise<number> {
+    // keep the keyboards of every live voting and of applications decided no
+    // earlier than the cutoff; what's left is either an old decision or an
+    // orphan whose application row is gone (crash between decide and cleanup)
+    const keep = (await ApplicationModel.distinct("_id", {
+      $or: [
+        { status: { $in: ["PENDING", "VOTING"] } },
+        { "voting.decidedAt": { $gte: cutoff } },
+      ],
+    })) as Types.ObjectId[]
+    const result = await VotingMessageModel.deleteMany({ applicationId: { $nin: keep } })
+    return result.deletedCount ?? 0
+  }
+}
+
+export class MongoVotePurge implements VotePurgePort {
+  async deleteDecidedOlderThan(cutoff: Date): Promise<number> {
+    // same keep-set as the messages: live votings and recent decisions
+    const keep = (await ApplicationModel.distinct("_id", {
+      $or: [
+        { status: { $in: ["PENDING", "VOTING"] } },
+        { "voting.decidedAt": { $gte: cutoff } },
+      ],
+    })) as Types.ObjectId[]
+    const result = await VoteModel.deleteMany({ applicationId: { $nin: keep } })
+    return result.deletedCount ?? 0
+  }
+}
+
+export class MongoGroupInvitePurge implements GroupInvitePurgePort {
+  async deleteDeadOlderThan(cutoff: Date, usedCutoff: Date): Promise<number> {
+    // three ways an invite record becomes dead: revoked long ago, never used
+    // and expired long ago (telegram-side expiry passed ages ago), or used so
+    // long ago that it no longer proves anything
+    const result = await GroupInviteModel.deleteMany({
+      $or: [
+        { status: "REVOKED", issuedAt: { $lt: cutoff } },
+        { status: "ISSUED", expiresAt: { $lt: cutoff } },
+        { status: "USED", issuedAt: { $lt: usedCutoff } },
+      ],
+    })
+    return result.deletedCount ?? 0
+  }
+}
+
+export class MongoApplicationPurge implements ApplicationPurgePort {
+  async deleteClosedOlderThan(cutoff: Date): Promise<number> {
+    // only dead ends; an approved application is the admission record behind
+    // a live account and is kept
+    const result = await ApplicationModel.deleteMany({
+      status: { $in: ["REJECTED", "EXPIRED"] },
+      "voting.decidedAt": { $lt: cutoff, $ne: null },
+    })
     return result.deletedCount ?? 0
   }
 }

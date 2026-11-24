@@ -23,7 +23,7 @@ Security is a design constraint, not a retrofit. This page documents the threat 
 - All tokens are **one-time use** and bound to exactly one session.
 - Only **hashes** are stored (`auth_requests.tokenHash`); plaintext tokens never touch the database or logs.
 - Login tokens expire in **60–90 seconds**; an expired request cannot be resurrected by a replayed callback.
-- Transient records use **TTL indexes** in MongoDB so expired artifacts disappear without manual cleanup. Core records — accounts, votes, audit — never TTL-expire.
+- Transient records use **TTL indexes** in MongoDB so expired artifacts disappear without manual cleanup. Core records — accounts, votes, audit — never TTL-expire; the retention sweep only drops votes of long-decided applications and dead-end applications on a much longer schedule.
 - Linking codes in deep links are single-use as well; a used code is dead.
 - Logs contain no secrets, no tokens, no full personal data.
 

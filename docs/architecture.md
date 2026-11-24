@@ -196,6 +196,8 @@ MongoDB is the single persistent store on the backend side. Principal collection
 
 Transient data (auth requests, expired artifacts) uses TTL indexes. Accounts, votes and audit records never expire via TTL.
 
+Dead rows also get a daily retention sweep on top of TTL: closed sessions (60 days), orphaned guest snapshots, vote cards and votes of applications decided more than 90 days ago, revoked or expired-unused group invites (30 days, used ones after a year) and rejected/expired applications older than a year. Accounts, approved applications and audit records stay.
+
 The plugin keeps its own small durable files next to its config: guest snapshots (`guest.snapshot-storage-path`), the durable outbox for guest lifecycle frames, and the local spec audit trail (`spec.audit.*`). These exist so the plugin survives its own restarts and backend outages without turning the game server into a second database.
 
 ## Performance posture
