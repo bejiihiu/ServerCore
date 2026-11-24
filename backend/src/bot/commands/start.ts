@@ -60,6 +60,7 @@ export async function handleStartCommand(ctx: Context, ui: BotUiDeps): Promise<v
   )
 }
 
+<<<<<<< HEAD
 /** /status — server + account status on one screen */
 export async function handleStatusCommand(ctx: Context, ui: BotUiDeps): Promise<void> {
   const chat = ctx.chat
@@ -108,4 +109,8 @@ export function registerStartCommand(bot: Bot, ui: BotUiDeps): void {
   bot.command("start", (ctx) => handleStartCommand(ctx, ui))
   bot.command("status", (ctx) => handleStatusCommand(ctx, ui))
   registerMenuCallbacks(bot, ui)
+=======
+export function registerStartCommand<C extends Context>(bot: Bot<C>): void {
+  bot.command("start", (ctx) => handleStartCommand(ctx))
+>>>>>>> feature/admission
 }

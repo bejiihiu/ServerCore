@@ -27,7 +27,7 @@ A bare `/start` without a valid code opens the bot interface but creates no Mine
 
 ## Stage 2 — Application
 
-The application is a step-by-step Telegram conversation: one question per message, inline-keyboard navigation, cancellable at any step, with intermediate progress saved.
+The application is a step-by-step Telegram conversation: one question per message, inline-keyboard navigation, cancellable at any step, with intermediate progress saved. The question list comes from the backend configuration (`APPLICATION_QUESTIONS_RU` / `APPLICATION_QUESTIONS_EN`, equal length), and every user-facing text is available in Russian and English — each account picks its interface language with `/language`.
 
 Typical questions:
 
@@ -46,9 +46,9 @@ Guarantees:
 
 ## Stage 3 — Voting
 
-Submission starts a community vote that runs for **3 hours**. Eligible voters are current members with an active account; the voter count is **frozen when the vote starts**, so later joins or leaves cannot change the bar an in-flight vote must clear.
+Submission starts a community vote that runs for **3 hours**. The vote is published **in the closed Telegram group**, not in private messages: one card, one live keyboard. Eligible voters are current members with an active account; the voter count is **frozen when the vote starts**, so later joins or leaves cannot change the bar an in-flight vote must clear.
 
-Members receive a card like:
+Members see a card like:
 
 ```text
 NEW APPLICATION
@@ -58,16 +58,19 @@ Player: bejiihiu
 Reason for joining:
 ...
 
-Voting ends in 3 hours.
+Voting ends at 21:00 MSK.
 
 [Accept (7)] [Reject (3)]
 ```
+
+Only group members who hold an active ServerCore account may vote — the bot verifies group membership (`chat_member`) and account status in the database before counting a ballot. The voter's confirmation arrives as an **ephemeral reply** visible only to them ("vote counted: FOR, N more votes until quorum"), so the group is not spammed with per-vote chatter.
 
 Vote integrity rules:
 
 - **One UUID, one vote** per application — enforced by a unique compound index on (application, voter).
 - You cannot vote on your own application.
 - You cannot vote without an active account.
+- You cannot vote without sitting in the group.
 - Multiple Telegram accounts linked to one UUID do not multiply votes.
 - Repeated or stale callback presses never change an already-recorded vote.
 - Every vote is persisted in MongoDB as its own record.
@@ -76,12 +79,12 @@ Vote integrity rules:
 
 Two separate conditions, both required:
 
-- **Quorum:** at least **50 %** of eligible voters (as frozen at start) cast a vote.
-- **Result:** strictly more than **50 %** of valid votes are in favour.
+- **Quorum:** strictly more than **50 %** of eligible voters (as frozen at start) cast a vote. Exactly 50 % is not a quorum.
+- **Result:** strictly more than **50 %** of valid votes are in favour; ties reject.
 
-Worked example: 20 eligible members, quorum threshold 10. Twelve votes arrive, 8 for and 4 against. Quorum is met and 8 > 50 % of 12 valid votes — approved.
+Worked example: 20 eligible members, quorum threshold is 11 (more than half). Twelve votes arrive, 8 for and 4 against. Quorum is met and 8 > 50 % of 12 valid votes — approved.
 
-If the window expires without quorum, the application is marked `EXPIRED` and routed to separate handling — an unfinished vote is **never** silently counted as approval.
+If the window expires without quorum, the vote is **auto-extended once by another 3 hours**. If the extension also ends without quorum, the application is marked `EXPIRED` and routed to the admins for manual review — an unfinished vote is **never** silently counted as approval. The result is published into the vote message, the applicant is notified in the bot, and the admin chat receives a duplicate of the decision.
 
 ## Stage 5 — Group membership
 

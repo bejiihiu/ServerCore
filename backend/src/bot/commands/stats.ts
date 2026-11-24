@@ -7,8 +7,8 @@ import { t, type Locale } from "../../services/i18n.js"
  * websocket state, session counters, backend uptime. every number comes from
  * the live in-memory state, nothing is synthesized.
  */
-export function registerStatsCommand(
-  bot: Bot,
+export function registerStatsCommand<C extends Context>(
+  bot: Bot<C>,
   deps: { stats: StatsService; adminIds: readonly number[]; locale: Locale },
 ): void {
   if (deps.adminIds.length === 0) return

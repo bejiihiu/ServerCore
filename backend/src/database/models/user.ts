@@ -1,5 +1,7 @@
 import { model, Schema } from "mongoose"
 
+export type UserLanguage = "ru" | "en"
+
 export const USER_STATUSES = [
   "UNREGISTERED",
   "APPLICATION_PENDING",
@@ -22,8 +24,12 @@ export interface User {
     id: string
     username: string | null
     linkedAt: Date | null
+    /** set when the user joined the closed group through their personal invite */
+    groupLinkedAt: Date | null
   }
   status: UserStatus
+  /** interface language for the bot's personal messages */
+  language: UserLanguage
   lastApplicationAt: Date | null
   createdAt: Date
   updatedAt: Date
@@ -41,8 +47,10 @@ const userSchema = new Schema<User>(
       id: { type: String, default: "" },
       username: { type: String, default: null },
       linkedAt: { type: Date, default: null },
+      groupLinkedAt: { type: Date, default: null },
     },
     status: { type: String, enum: USER_STATUSES, required: true },
+    language: { type: String, enum: ["ru", "en"], required: true, default: "ru" },
     lastApplicationAt: { type: Date, default: null },
   },
   { timestamps: true },

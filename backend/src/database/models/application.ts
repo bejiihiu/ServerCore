@@ -19,6 +19,12 @@ export interface Application {
     votesFor: number
     votesAgainst: number
     abstentions: number
+    /** how many times the voting was auto-extended for missing quorum */
+    extensionCount: number
+    /** filled in when the voting is decided */
+    votesCast: number | null
+    quorumReached: boolean | null
+    decidedAt: Date | null
   }
   createdAt: Date
 }
@@ -44,13 +50,22 @@ const applicationSchema = new Schema<Application>(
       votesFor: { type: Number, required: true, min: 0, default: 0 },
       votesAgainst: { type: Number, required: true, min: 0, default: 0 },
       abstentions: { type: Number, required: true, min: 0, default: 0 },
+      votesCast: { type: Number, default: null },
+      quorumReached: { type: Boolean, default: null },
+      decidedAt: { type: Date, default: null },
+      extensionCount: { type: Number, required: true, min: 0, default: 0 },
     },
   },
   { timestamps: true },
 )
 
-// a player can only have one live application at a time
-applicationSchema.index({ minecraftUuid: 1, status: 1 })
+// one live application per player at a time: the partial unique index only
+// bites while the application is still PENDING or VOTING. this is the
+// db-level anti-double-submit guard
+applicationSchema.index(
+  { minecraftUuid: 1, status: 1 },
+  { unique: true, partialFilterExpression: { status: { $in: ["PENDING", "VOTING"] } } },
+)
 applicationSchema.index({ "voting.expiresAt": 1 })
 
 export const ApplicationModel = model<Application>("Application", applicationSchema, "applications")
