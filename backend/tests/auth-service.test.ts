@@ -385,3 +385,45 @@ describe("telegram ui", () => {
     expect(row[1]).toMatchObject({ style: "danger", callback_data: "auth:reject:AbCdEfGhIjKlMnOp" })
   })
 })
+
+describe("sweep reentrancy", () => {
+  test("a slow sweep makes the next tick a no-op instead of overlapping", async () => {
+    const h = harness()
+    let calls = 0
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const realFind = h.store.findPendingExpired.bind(h.store)
+    h.store.findPendingExpired = async (now: number) => {
+      calls += 1
+      await gate
+      return realFind(now)
+    }
+
+    const first = h.service.sweep(1_000)
+    // the timer fires mid-pass: this call must return without touching the store
+    await h.service.sweep(1_000)
+    expect(calls).toBe(1)
+
+    release()
+    await first
+    expect(calls).toBe(1)
+
+    // the guard is released: the next tick runs normally
+    await h.service.sweep(1_100)
+    expect(calls).toBe(2)
+  })
+
+  test("a throwing sweep releases the guard", async () => {
+    const h = harness()
+    let calls = 0
+    h.store.findPendingExpired = async () => {
+      calls += 1
+      throw new Error("mongo gone")
+    }
+    await h.service.sweep(1_000).catch(() => undefined)
+    await h.service.sweep(1_100).catch(() => undefined)
+    expect(calls).toBe(2)
+  })
+})
