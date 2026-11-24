@@ -193,4 +193,78 @@ class WsAccountResolverTest {
 
         assertNull(resolver.pendingLink(uuid), "an expired one-time token is not handed out again")
     }
+
+    private fun linkToken(uuid: UUID, token: String = "abcd1234abcd1234") =
+        messageEnvelope(
+            MessageTypes.LINK_TOKEN,
+            kz.bejiihiu.servercore.ws.LinkTokenPayload(
+                minecraftUuid = uuid.toString(),
+                username = "player",
+                token = token,
+                expiresAt = System.currentTimeMillis() + 60_000,
+            ),
+        )
+
+    @Test
+    fun `a link token becomes the personal deep link and fires its hook`() {
+        val gateway = BackendGateway()
+        gateway.attach(RecordingLink())
+        val resolver = WsAccountResolver(gateway, newCache(), config())
+        val uuid = UUID.randomUUID()
+        var announced: UUID? = null
+        resolver.onLinkAvailable { announced = it }
+
+        resolver.onMessage(linkToken(uuid, "abcd1234abcd1234"))
+
+        val link = resolver.pendingLink(uuid)
+        assertEquals("https://t.me/ServerCoreBot?start=abcd1234abcd1234", link?.url)
+        assertEquals(uuid, announced)
+    }
+
+    @Test
+    fun `a link token rides through the gateway fan-out`() {
+        val gateway = BackendGateway()
+        gateway.attach(RecordingLink())
+        val resolver = WsAccountResolver(gateway, newCache(), config())
+        val uuid = UUID.randomUUID()
+
+        // the raw fan-out path: the ws bridge hands the envelope to the hub,
+        // the resolver sees it exactly like an auth verdict
+        gateway.receive(linkToken(uuid))
+
+        assertEquals("https://t.me/ServerCoreBot?start=abcd1234abcd1234", resolver.pendingLink(uuid)?.url)
+    }
+
+    @Test
+    fun `a link token with a broken uuid is dropped`() {
+        val gateway = BackendGateway()
+        gateway.attach(RecordingLink())
+        val resolver = WsAccountResolver(gateway, newCache(), config())
+
+        resolver.onMessage(
+            messageEnvelope(
+                MessageTypes.LINK_TOKEN,
+                kz.bejiihiu.servercore.ws.LinkTokenPayload(
+                    minecraftUuid = "not-a-uuid",
+                    username = "player",
+                    token = "abcd1234abcd1234",
+                    expiresAt = System.currentTimeMillis() + 60_000,
+                ),
+            ),
+        )
+
+        assertNull(resolver.pendingLink(UUID.randomUUID()))
+    }
+
+    @Test
+    fun `approval clears the pending link`() {
+        val gateway = BackendGateway()
+        gateway.attach(RecordingLink())
+        val resolver = WsAccountResolver(gateway, newCache(), config())
+        val uuid = UUID.randomUUID()
+        resolver.onMessage(linkToken(uuid))
+        resolver.onMessage(authDecision(MessageTypes.AUTH_APPROVED, uuid))
+
+        assertNull(resolver.pendingLink(uuid), "the one-time link was consumed by the decision")
+    }
 }

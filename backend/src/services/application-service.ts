@@ -245,13 +245,17 @@ export class ApplicationService {
       targetId: inserted.id,
       details: { eligibleVoters: voters.length },
     })
-
-    // the plugin state cache learns about the new application straight away
-    this.deps.plugin?.applicationSubmitted({
-      id: inserted.id,
-      minecraftUuid: check.user.uuid,
-      telegramId,
-    })
+    // the plugin state cache learns about the new application straight away.
+    // best effort: a broken push must never fail the submit itself
+    try {
+      this.deps.plugin?.applicationSubmitted({
+        id: inserted.id,
+        minecraftUuid: check.user.uuid,
+        telegramId,
+      })
+    } catch {
+      // a downed link is fine — the plugin re-seeds its cache on reconnect
+    }
 
     const application = await this.deps.applications.findById(inserted.id)
     if (!application) return { ok: false, reason: "NO_DRAFT" }

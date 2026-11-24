@@ -83,6 +83,14 @@ class ServerStateCacheTest {
     }
 
     @Test
+    fun `an expired voting lands as its own verdict`() {
+        val cache = cache()
+        cache.onApplicationSubmitted(uuid)
+        cache.onApplicationExpired(uuid)
+        assertEquals(ServerStateCache.APP_EXPIRED, cache.snapshot(uuid)!!.applicationStatus)
+    }
+
+    @Test
     fun `account deletion wipes the backend facts`() {
         val cache = cache()
         cache.onAuthApproved(uuid)

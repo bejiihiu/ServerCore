@@ -25,6 +25,7 @@ export const MESSAGE_TYPES = [
   "APPLICATION_SUBMITTED",
   "APPLICATION_APPROVED",
   "APPLICATION_REJECTED",
+  "APPLICATION_EXPIRED",
 
   // account
   "ACCOUNT_DELETED",
@@ -63,6 +64,7 @@ export const BACKEND_TO_PLUGIN_TYPES: readonly MessageType[] = [
   "AUTH_EXPIRED",
   "APPLICATION_APPROVED",
   "APPLICATION_REJECTED",
+  "APPLICATION_EXPIRED",
   "ACCOUNT_DELETED",
   "LINK_TOKEN",
   "SESSION_CHECK",
@@ -183,6 +185,11 @@ export const payloadSchemas = {
     applicationId: objectId,
     minecraftUuid,
     reason: z.string().max(512).optional(),
+  }),
+
+  APPLICATION_EXPIRED: z.object({
+    applicationId: objectId,
+    minecraftUuid,
   }),
 
   ACCOUNT_DELETED: z.object({

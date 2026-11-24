@@ -12,8 +12,6 @@ import kz.bejiihiu.servercore.ws.BackendGateway
 import kz.bejiihiu.servercore.ws.GuestEndedPayload
 import kz.bejiihiu.servercore.ws.GuestStartedPayload
 import kz.bejiihiu.servercore.ws.MessageTypes
-import kz.bejiihiu.servercore.ws.PlayerJoinedPayload
-import kz.bejiihiu.servercore.ws.PlayerLeftPayload
 import kz.bejiihiu.servercore.ws.SnapshotPayload
 import kz.bejiihiu.servercore.ws.messageEnvelope
 import kz.bejiihiu.servercore.ws.newSessionId
@@ -132,9 +130,8 @@ class GuestSessionService(
                 ),
             )
         }
-        sendEnvelope(
-            messageEnvelope(MessageTypes.PLAYER_LEFT, PlayerLeftPayload(uuid.toString(), player.name)),
-        )
+        // no PLAYER_LEFT here: the presence layer owns the join/left announcements
+        // (a second copy would make the backend close+cancel its session twice)
     }
 
     /** called from the ws resolver when the backend confirms a login, any thread */

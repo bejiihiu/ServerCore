@@ -116,6 +116,8 @@ class PlaceholderResolverTest {
         assertEquals("placeholders.application.approved", r.resolve("application_status", uuid))
         provider.state = state(applicationStatus = "REJECTED")
         assertEquals("placeholders.application.rejected", r.resolve("application_status", uuid))
+        provider.state = state(applicationStatus = "EXPIRED")
+        assertEquals("placeholders.application.expired", r.resolve("application_status", uuid))
         // no application ever seen
         provider.state = state(online = true)
         assertEquals("unknown", r.resolve("application_status", uuid))

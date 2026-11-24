@@ -20,7 +20,9 @@ object MessageTypes {
     const val APPLICATION_SUBMITTED = "APPLICATION_SUBMITTED"
     const val APPLICATION_APPROVED = "APPLICATION_APPROVED"
     const val APPLICATION_REJECTED = "APPLICATION_REJECTED"
+    const val APPLICATION_EXPIRED = "APPLICATION_EXPIRED"
     const val ACCOUNT_DELETED = "ACCOUNT_DELETED"
+    const val LINK_TOKEN = "LINK_TOKEN"
 }
 
 /** shared json setup: tolerate extra fields so backend additions never break us */
@@ -98,6 +100,25 @@ data class ApplicationRejectedPayload(
     val applicationId: String,
     val minecraftUuid: String,
     val reason: String? = null,
+)
+
+@Serializable
+data class ApplicationExpiredPayload(
+    val applicationId: String,
+    val minecraftUuid: String,
+)
+
+/**
+ * account linking: a fresh one-time deep-link token for a joined player.
+ * the guest prompt turns it into a personal t.me/<bot>?start=<token> url so
+ * the player can actually reach the linking conversation from the game chat.
+ */
+@Serializable
+data class LinkTokenPayload(
+    val minecraftUuid: String,
+    val username: String,
+    val token: String,
+    val expiresAt: Long,
 )
 
 // guest payloads live here too because the wire format is the contract, not an

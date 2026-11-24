@@ -133,7 +133,7 @@ export interface PluginPushPort {
   applicationSubmitted(application: { id: string; minecraftUuid: string; telegramId: string }): void
   applicationDecided(
     application: { id: string; minecraftUuid: string },
-    outcome: "APPROVED" | "REJECTED",
+    outcome: "APPROVED" | "REJECTED" | "EXPIRED",
   ): void
 }
 

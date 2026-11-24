@@ -69,6 +69,7 @@ The `hmac` is computed over the **canonical json** of the envelope without the h
 | `APPLICATION_SUBMITTED` | backend → plugin | An application entered voting (informational; used for in-game placeholders) |
 | `APPLICATION_APPROVED` | backend → plugin | Application accepted; account may become ACTIVE |
 | `APPLICATION_REJECTED` | backend → plugin | Application rejected |
+| `APPLICATION_EXPIRED` | backend → plugin | Voting window closed without quorum after the single auto-extension |
 | `ACCOUNT_DELETED` | backend → plugin | Account removed; any live session must be terminated |
 | `LINK_TOKEN` | backend → plugin | A fresh one-time deep-link token for a joined player; the game chat shows the personal bot link |
 | `SESSION_CHECK` | backend → plugin | Ownership probe: is this UUID in the game right now? |

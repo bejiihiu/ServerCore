@@ -88,6 +88,7 @@ placeholders:
     voting: "voting"
     approved: "approved"
     rejected: "rejected"
+    expired: "expired"
   last-seen:
     now: "now"
     minutes: "{n} min ago"

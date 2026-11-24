@@ -76,6 +76,7 @@ placeholders:
     voting: "на голосовании"
     approved: "одобрена"
     rejected: "отклонена"
+    expired: "истекла"
   last-seen:
     now: "сейчас"
     minutes: "{n} мин. назад"

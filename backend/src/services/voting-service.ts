@@ -340,12 +340,16 @@ export class VotingService {
       eligibleVoters: application.voting.eligibleVoters,
     })
 
-    // the plugin state cache tracks the verdict for its placeholders
-    if (outcome === "APPROVED" || outcome === "REJECTED") {
+    // the plugin state cache tracks the verdict for its placeholders,
+    // expiry included — an expired application must not render as "voting".
+    // best effort: a broken push must never fail the decision itself
+    try {
       this.deps.plugin?.applicationDecided(
         { id: application.id, minecraftUuid: application.minecraftUuid },
         outcome,
       )
+    } catch {
+      // a downed link is fine — the plugin re-seeds its cache on reconnect
     }
 
     if (outcome === "EXPIRED") {

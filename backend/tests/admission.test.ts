@@ -21,37 +21,33 @@ import { RateLimiter } from "../src/services/rate-limiter.js"
 import { NotificationService } from "../src/services/notification-service.js"
 import { AdmissionNotifier } from "../src/services/admission-notifier.js"
 import { StaticRecipients } from "../src/services/recipients.js"
+import type { PluginPushPort } from "../src/services/ports.js"
 import { QUESTIONNAIRE_DEFAULTS_MUTABLE } from "./helpers/config.js"
 const HOUR = 3_600_000
 const THREE_MONTHS = 90 * 24 * HOUR
 const VOTING_MS = 3 * HOUR
 const ADMIN_IDS = ["777", "778"]
 
-/** recording stand-in for the gateway push to the plugin state cache */
-function recordingPluginPush() {
-  return {
-    pushed: [] as { type: string; payload: Record<string, unknown> }[],
-    applicationSubmitted(application: { id: string; minecraftUuid: string; telegramId: string }) {
-      this.pushed.push({
-        type: "APPLICATION_SUBMITTED",
-        payload: {
-          applicationId: application.id,
-          minecraftUuid: application.minecraftUuid,
-          telegramId: application.telegramId,
-        },
-      })
-    },
-    applicationDecided(application: { id: string; minecraftUuid: string }, outcome: "APPROVED" | "REJECTED") {
-      this.pushed.push({
-        type: outcome === "APPROVED" ? "APPLICATION_APPROVED" : "APPLICATION_REJECTED",
-        payload: { applicationId: application.id, minecraftUuid: application.minecraftUuid },
-      })
-    },
+/** records the plugin-bound admission pushes; can be told to fail */
+class RecordingFanout implements PluginPushPort {
+  submittedCalls: { applicationId: string; minecraftUuid: string; telegramId: string }[] = []
+  decidedCalls: { applicationId: string; minecraftUuid: string; outcome: string }[] = []
+  fail = false
+
+  applicationSubmitted(application: { id: string; minecraftUuid: string; telegramId: string }): void {
+    if (this.fail) throw new Error("link down")
+    this.submittedCalls.push({ applicationId: application.id, minecraftUuid: application.minecraftUuid, telegramId: application.telegramId })
+  }
+
+  applicationDecided(application: { id: string; minecraftUuid: string }, outcome: "APPROVED" | "REJECTED" | "EXPIRED"): void {
+    if (this.fail) throw new Error("link down")
+    this.decidedCalls.push({ applicationId: application.id, minecraftUuid: application.minecraftUuid, outcome })
   }
 }
 
 /** wires the whole admission stack over in-memory seams */
-function build(opts: { groupChatId?: number | null; linkedRecipients?: string[] } = {}) {
+function build(opts: { groupChatId?: number | null; linkedRecipients?: string[]; fanout?: PluginPushPort } = {}) {
+  const fanout = opts.fanout ?? new RecordingFanout()
   const clock = new FixedClock()
   const users = new InMemoryUserRepository()
   const applications = new InMemoryApplicationRepository()
@@ -60,7 +56,6 @@ function build(opts: { groupChatId?: number | null; linkedRecipients?: string[] 
   const invites = new InMemoryGroupInviteRepository()
   const drafts = new InMemoryDraftRepository()
   const audit = new RecordingAuditSink()
-  const plugin = recordingPluginPush()
   const telegram = new FakeTelegramApi({
     groupChatId: opts.groupChatId === undefined ? -100_500 : opts.groupChatId,
   })
@@ -92,7 +87,7 @@ function build(opts: { groupChatId?: number | null; linkedRecipients?: string[] 
     votingDurationMs: VOTING_MS,
     questions: QUESTIONNAIRE_DEFAULTS_MUTABLE,
     defaultLanguage: "ru",
-    plugin,
+    plugin: fanout,
   })
 
   const voting = new VotingService({
@@ -108,7 +103,7 @@ function build(opts: { groupChatId?: number | null; linkedRecipients?: string[] 
     defaultLanguage: "ru",
     voteButtonIcons: { acceptId: null, rejectId: null },
     approvalEffectId: "effect-1",
-    plugin,
+    plugin: fanout,
   })
 
   const group = new GroupService({
@@ -130,7 +125,7 @@ function build(opts: { groupChatId?: number | null; linkedRecipients?: string[] 
     intervalMs: 60_000,
   })
 
-  return { clock, users, applications, votes, messages, invites, drafts, audit, telegram, sender, notifications, notifier, applications_, voting, group, scheduler, plugin }
+  return { clock, users, applications, votes, messages, invites, drafts, audit, telegram, sender, notifications, notifier, applications_, voting, group, scheduler, plugin: fanout as RecordingFanout }
 }
 
 /** completes the questionnaire draft for a telegram account */
@@ -498,11 +493,8 @@ describe("plugin state-cache push", () => {
     const submitted = await deps.applications_.submit("tg-u1")
     expect(submitted.ok).toBe(true)
     if (!submitted.ok) return
-    expect(deps.plugin.pushed).toEqual([
-      {
-        type: "APPLICATION_SUBMITTED",
-        payload: { applicationId: submitted.application.id, minecraftUuid: "u1", telegramId: "tg-u1" },
-      },
+    expect(deps.plugin.submittedCalls).toEqual([
+      { applicationId: submitted.application.id, minecraftUuid: "u1", telegramId: "tg-u1" },
     ])
   })
 
@@ -515,11 +507,11 @@ describe("plugin state-cache push", () => {
     const rejected = await seedVotingApplication(deps.applications, { eligibleVoters: 3, quorumState: { votesFor: 0, votesAgainst: 2 }, votes: deps.votes })
     await deps.voting.decide(rejected)
 
-    const types = deps.plugin.pushed.map((p) => p.type)
-    expect(types).toContain("APPLICATION_APPROVED")
-    expect(types).toContain("APPLICATION_REJECTED")
-    const approvedPush = deps.plugin.pushed.find((p) => p.type === "APPLICATION_APPROVED")
-    expect(approvedPush?.payload).toEqual({ applicationId: approved.id, minecraftUuid: approved.minecraftUuid })
+    const types = deps.plugin.decidedCalls.map((c) => c.outcome)
+    expect(types).toContain("APPROVED")
+    expect(types).toContain("REJECTED")
+    const approvedPush = deps.plugin.decidedCalls.find((c) => c.outcome === "APPROVED")
+    expect(approvedPush).toEqual({ applicationId: approved.id, minecraftUuid: approved.minecraftUuid, outcome: "APPROVED" })
   })
 
   test("an EXPIRED voting pushes nothing: the application stays known as submitted", async () => {
@@ -529,8 +521,8 @@ describe("plugin state-cache push", () => {
     await deps.voting.decideExpired() // extends
     deps.clock.advance(VOTING_MS + 1)
     await deps.voting.decideExpired() // EXPIRED
-    expect(deps.plugin.pushed.map((p) => p.type)).not.toContain("APPLICATION_APPROVED")
-    expect(deps.plugin.pushed.map((p) => p.type)).not.toContain("APPLICATION_REJECTED")
+    expect(deps.plugin.decidedCalls.map((c) => c.outcome)).not.toContain("APPROVED")
+    expect(deps.plugin.decidedCalls.map((c) => c.outcome)).not.toContain("REJECTED")
   })
 })
 
@@ -721,5 +713,67 @@ describe("audit trail", () => {
       decision: "ACCEPT",
     })
     expect(deps.audit.actionsOf("voting.vote_cast")).toHaveLength(1)
+  })
+})
+
+describe("plugin fan-out", () => {
+  test("submit pushes APPLICATION_SUBMITTED to the plugin", async () => {
+    const fanout = new RecordingFanout()
+    const deps = build({ fanout })
+    deps.users.add(user({ uuid: "applicant", status: "UNREGISTERED" }))
+    await fillDraft(deps, "tg-applicant")
+    const result = await deps.applications_.submit("tg-applicant")
+    expect(result.ok).toBe(true)
+    expect(fanout.submittedCalls).toEqual([
+      { applicationId: (result as { ok: true; application: { id: string } }).application.id, minecraftUuid: "applicant", telegramId: "tg-applicant" },
+    ])
+  })
+
+  test("a decided voting pushes its verdict to the plugin", async () => {
+    const fanout = new RecordingFanout()
+    const deps = build({ fanout })
+    const app = await seedVotingApplication(deps.applications, { eligibleVoters: 3, quorumState: { votesFor: 2, votesAgainst: 0 }, votes: deps.votes })
+    deps.users.add(user({ uuid: "applicant", status: "UNREGISTERED" }))
+    await deps.users.setStatus("applicant", ["UNREGISTERED"], "VOTING")
+    deps.clock.advance(VOTING_MS + 1)
+    await deps.voting.decideExpired()
+    expect(fanout.decidedCalls).toEqual([
+      { applicationId: app.id, minecraftUuid: "applicant", outcome: "APPROVED" },
+    ])
+  })
+
+  test("a quorum-shortfall voting pushes APPLICATION_EXPIRED", async () => {
+    const fanout = new RecordingFanout()
+    const deps = build({ fanout })
+    const app = await seedVotingApplication(deps.applications, { eligibleVoters: 4, quorumState: { votesFor: 1, votesAgainst: 0 }, votes: deps.votes })
+    deps.users.add(user({ uuid: "applicant", status: "UNREGISTERED" }))
+    await deps.users.setStatus("applicant", ["UNREGISTERED"], "VOTING")
+    deps.clock.advance(VOTING_MS + 1)
+    await deps.voting.decideExpired() // extends once
+    deps.clock.advance(VOTING_MS + 1)
+    const second = await deps.voting.decideExpired()
+    expect(second.decisions[0]?.status).toBe("EXPIRED")
+    expect(fanout.decidedCalls).toEqual([
+      { applicationId: app.id, minecraftUuid: "applicant", outcome: "EXPIRED" },
+    ])
+  })
+
+  test("a failing fan-out never breaks the admission flow", async () => {
+    const fanout = new RecordingFanout()
+    fanout.fail = true
+    const deps = build({ fanout })
+    deps.users.add(user({ uuid: "applicant", status: "UNREGISTERED" }))
+    await fillDraft(deps, "tg-applicant")
+    const submitted = await deps.applications_.submit("tg-applicant")
+    expect(submitted.ok).toBe(true)
+    const app = await seedVotingApplication(deps.applications, { uuid: "applicant2", eligibleVoters: 3, quorumState: { votesFor: 2, votesAgainst: 0 }, votes: deps.votes })
+    deps.users.add(user({ uuid: "applicant2", status: "UNREGISTERED" }))
+    await deps.users.setStatus("applicant2", ["UNREGISTERED"], "VOTING")
+    deps.clock.advance(VOTING_MS + 1)
+    const result = await deps.voting.decideExpired()
+    // both votings expire after the advance; the seeded one decides APPROVED
+    const decided2 = result.decisions.find((d) => d.minecraftUuid === "applicant2")
+    expect(decided2?.status).toBe("APPROVED")
+    expect((await deps.applications.findById(app.id))?.status).toBe("APPROVED")
   })
 })

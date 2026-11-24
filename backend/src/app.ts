@@ -9,6 +9,7 @@ import { broadcastToAll, createGateway, type Gateway } from "./websocket/gateway
 import { HandlerRegistry } from "./websocket/handlers/registry.js"
 import { registerAllHandlers } from "./websocket/handlers/wiring.js"
 import { ServerDirectory } from "./websocket/handlers/server-lifecycle.js"
+import { AccountJoinFlow } from "./websocket/handlers/account-handlers.js"
 import { SpecAuditService } from "./modules/audit/spec-audit-service.js"
 import { InMemoryTokenStore, TokenService } from "./services/token-service.js"
 import {
@@ -200,7 +201,19 @@ async function main(): Promise<void> {
   // spec audit trail: every observation start/end the plugin reports lands in
   // audit_logs (kind "spec"). the collection has no ttl index — the retention
   // job below purges it together with the rest of the audit rows at 90d
+  // spec audit trail: every observation start/end the plugin reports lands in
+  // audit_logs (kind "spec"). the collection has no ttl index — the retention
+  // job below purges it together with the rest of the audit rows at 90d
   const specAudit = new SpecAuditService({ sink: new MongoAuditRepository(), logger })
+
+  // one join = one pipeline: the account row first (the auth flow only ever
+  // answers ACTIVE+linked accounts and looks the row up by uuid), then the
+  // personal deep-link push for unlinked players, then the auth flow
+  const accountJoin = new AccountJoinFlow({ accounts, gateway, logger })
+  const joinPipeline = async (event: { minecraftUuid: string; username: string; serverId: string }) => {
+    await accountJoin.onPlayerJoined(event)
+    await authService.handlePlayerJoined(event, Date.now())
+  }
 
   // every websocket handler registers exactly once, here. this runs in the
   // same synchronous block as createGateway above, so the gateway cannot
@@ -208,7 +221,6 @@ async function main(): Promise<void> {
   registerAllHandlers(handlers, {
     directory,
     logger,
-    accounts,
     verifier,
     specAudit,
     hooks: {
@@ -223,7 +235,7 @@ async function main(): Promise<void> {
         })
       },
       onPlayerJoined: (event) => {
-        void authService.handlePlayerJoined(event, Date.now()).catch((error) => {
+        void joinPipeline(event).catch((error) => {
           logger.error({ err: error, uuid: event.minecraftUuid }, "player join handling failed")
         })
       },
