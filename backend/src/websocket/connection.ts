@@ -1,0 +1,221 @@
+import { signEnvelope, verifyWireMessage, type VerifyFailure } from "./protocol/signing.js"
+import { newMessageId, ReplayGuard } from "./security/replay-guard.js"
+import { NO_ACK_TYPES, type Envelope, type MessageType, type PayloadOf } from "./protocol/message-types.js"
+import type { JsonValue } from "../utils/crypto.js"
+import type { Logger } from "../logging/logger.js"
+
+/** extra data bun attaches to each server websocket */
+export type GatewaySocketData = {
+  serverId: string
+  connectedAt: number
+  connection?: ServerConnection
+}
+
+export type ConnectionOptions = {
+  secret: string
+  heartbeatIntervalMs: number
+  heartbeatTimeoutMs: number
+  maxPacketBytes: number
+  replayWindowMs: number
+  replayGuardTtlMs: number
+}
+
+type PendingAck = {
+  resolve: (value: void) => void
+  reject: (error: Error) => void
+  timer: ReturnType<typeof setTimeout>
+}
+
+const MAX_BUFFERED_BYTES = 5 * 1024 * 1024
+const ACK_TIMEOUT_MS = 30_000
+const CLOSE_GRACE_MS = 5_000
+
+/**
+ * one authenticated game-server connection. owns signing, replay protection,
+ * heartbeat and ack correlation for its socket. the handshake itself lives in
+ * the gateway (pre-upgrade, see auth.ts) — by the time this object exists the
+ * peer already proved it knows the per-server secret.
+ */
+export class ServerConnection {
+  readonly serverId: string
+  private readonly socket: Bun.ServerWebSocket<GatewaySocketData>
+  private readonly logger: Logger
+  private readonly options: ConnectionOptions
+  private readonly replayGuard: ReplayGuard
+  private readonly pendingAcks = new Map<string, PendingAck>()
+
+  private alive = true
+  private awaitingPong = false
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null
+  private closeTimer: ReturnType<typeof setTimeout> | null = null
+  private lastSeenAt: number
+
+  constructor(serverId: string, socket: Bun.ServerWebSocket<GatewaySocketData>, options: ConnectionOptions, logger: Logger) {
+    this.serverId = serverId
+    this.socket = socket
+    this.options = options
+    this.logger = logger
+    this.replayGuard = new ReplayGuard(options.replayGuardTtlMs)
+    this.lastSeenAt = Date.now()
+  }
+
+  /** starts the heartbeat loop. call once right after construction. */
+  start(): void {
+    this.heartbeatTimer = setInterval(() => {
+      if (!this.alive) return
+      if (this.awaitingPong) {
+        this.logger.warn({ serverId: this.serverId }, "heartbeat timeout, terminating connection")
+        this.close(1001, "heartbeat timeout")
+        return
+      }
+      this.awaitingPong = true
+      this.socket.ping()
+    }, this.options.heartbeatIntervalMs)
+  }
+
+  /** wired by the gateway to the socket's pong handler */
+  onPong(): void {
+    this.awaitingPong = false
+    this.lastSeenAt = Date.now()
+  }
+
+  /**
+   * handles a raw inbound frame. returns null when the frame was consumed
+   * (valid + routed), or a failure when the connection must close.
+   */
+  handleFrame(
+    raw: string,
+    now: number,
+    route: (envelope: Envelope, conn: ServerConnection) => Promise<void>,
+  ): VerifyFailure | null {
+    if (!this.alive) return { reason: "BAD_ENVELOPE", detail: "connection is closing" }
+
+    const result = verifyWireMessage(raw, this.options.secret, now, {
+      maxSkewMs: this.options.replayWindowMs,
+      maxPacketBytes: this.options.maxPacketBytes,
+    })
+    if (!result.ok) return result.failure
+
+    const envelope = result.envelope
+
+    if (envelope.type === "SERVER_HELLO") {
+      // hello is obsolete: auth happens pre-upgrade now, so a hello here is
+      // either an old client or an attempted downgrade of the auth layer
+      return { reason: "BAD_ENVELOPE", detail: "unexpected handshake after upgrade" }
+    }
+
+    if (!this.replayGuard.checkAndRecord(envelope.id, now)) {
+      // duplicate id = replayed frame, protocol violation
+      return { reason: "BAD_ENVELOPE", detail: `replayed message id ${envelope.id}` }
+    }
+
+    this.lastSeenAt = now
+
+    const correlationId = envelope.correlationId
+    if (envelope.type === "ACK" && correlationId) {
+      const ack = this.pendingAcks.get(correlationId)
+      if (ack) {
+        clearTimeout(ack.timer)
+        this.pendingAcks.delete(correlationId)
+        ack.resolve()
+      }
+      return null
+    }
+
+    if (!NO_ACK_TYPES.includes(envelope.type)) {
+      this.sendRaw("ACK", { ackedId: envelope.id }, envelope.id)
+    }
+
+    // handler errors must not kill the connection — log and keep going
+    void route(envelope, this).catch((error: unknown) => {
+      this.logger.error({ err: error, serverId: this.serverId, type: envelope.type }, "message handler failed")
+    })
+
+    return null
+  }
+
+  /** signs and sends an envelope, optionally awaiting the peer's ack */
+  send<T extends MessageType>(
+    type: T,
+    payload: PayloadOf<T>,
+    options: { correlationId?: string; awaitAck?: boolean } = {},
+  ): Promise<void> {
+    const awaitAck = options.awaitAck ?? false
+    const correlationId = options.correlationId ?? (awaitAck ? newMessageId() : undefined)
+
+    if (!awaitAck || !correlationId) {
+      this.sendRaw(type, payload as JsonValue, correlationId)
+      return Promise.resolve()
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingAcks.delete(correlationId)
+        reject(new Error(`ack timeout for ${type}`))
+      }, ACK_TIMEOUT_MS)
+      this.pendingAcks.set(correlationId, { resolve, reject, timer })
+      this.sendRaw(type, payload as JsonValue, correlationId)
+    })
+  }
+
+  private sendRaw(type: MessageType, payload: JsonValue, correlationId?: string): void {
+    if (!this.alive) return
+
+    if (this.socket.getBufferedAmount() > MAX_BUFFERED_BYTES) {
+      // peer is not draining, kill it instead of ballooning memory
+      this.logger.warn({ serverId: this.serverId }, "send buffer overflow, terminating")
+      this.close(1013, "slow consumer")
+      return
+    }
+
+    const wire = signEnvelope(
+      {
+        id: newMessageId(),
+        type,
+        timestamp: Date.now(),
+        ...(correlationId !== undefined ? { correlationId } : {}),
+        payload,
+      },
+      this.options.secret,
+    )
+
+    try {
+      this.socket.sendText(JSON.stringify(wire))
+    } catch (error: unknown) {
+      this.logger.warn({ err: error, serverId: this.serverId }, "socket send failed")
+    }
+  }
+
+  close(code: number, reason: string): void {
+    if (!this.alive) return
+    this.alive = false
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer)
+    if (this.closeTimer) clearTimeout(this.closeTimer)
+    for (const [, ack] of this.pendingAcks) {
+      clearTimeout(ack.timer)
+      ack.reject(new Error("connection closed"))
+    }
+    this.pendingAcks.clear()
+    try {
+      this.socket.close(code, reason.slice(0, 100))
+    } catch {
+      // already gone
+    }
+    // hard terminate shortly after in case the peer never answers the close
+    this.closeTimer = setTimeout(() => {
+      try {
+        this.socket.terminate()
+      } catch {
+        // already gone
+      }
+    }, CLOSE_GRACE_MS)
+  }
+
+  get isAlive(): boolean {
+    return this.alive
+  }
+
+  get lastSeen(): number {
+    return this.lastSeenAt
+  }
+}

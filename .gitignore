@@ -23,8 +23,9 @@ IDEA.md
 !.env.example
 backend/.env
 
-# node
+# backend (bun)
 backend/node_modules/
+backend/dist/
 
 # os junk
 Thumbs.db
