@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
 /** effects port that records instead of touching a world, for state machine tests */
-private class RecordingEffects : SpecEffects {
+internal class RecordingEffects : SpecEffects {
 
     val begun = mutableListOf<SpecSession>()
     val ended = mutableListOf<Pair<SpecSession, ExitReason>>()
