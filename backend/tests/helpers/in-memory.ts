@@ -304,20 +304,6 @@ export class InMemoryGroupInviteRepository implements GroupInviteRepository {
     invite.usedAt = usedAt
     return "used"
   }
-
-  async listIssuedByUuid(uuid: string): Promise<GroupInviteInfo[]> {
-    return [...this.invites.values()]
-      .filter((i) => i.minecraftUuid === uuid && i.status === "ISSUED")
-      .map((i) => ({ ...i }))
-  }
-
-  async markRevoked(name: string, at: Date): Promise<void> {
-    const invite = this.invites.get(name)
-    if (invite && invite.status === "ISSUED") {
-      invite.status = "REVOKED"
-      invite.usedAt = at
-    }
-  }
 }
 
 export class InMemoryDraftRepository implements ApplicationDraftRepository {
