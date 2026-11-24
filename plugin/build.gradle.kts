@@ -74,9 +74,11 @@ tasks {
     }
 
     processResources {
+        // yaml single-quoted scalars escape an apostrophe by doubling it, so a
+        // free-text description can never break plugin metadata again
         val props = mapOf(
             "version" to project.version,
-            "description" to project.description,
+            "description" to project.description.orEmpty().replace("'", "''"),
         )
         inputs.properties(props)
         filesMatching("paper-plugin.yml") {
