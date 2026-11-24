@@ -42,6 +42,11 @@ class PacketResyncExecutor(
      */
     override fun apply(viewer: UUID, target: UUID, state: ViewState, assignment: DisguiseAssignment?) {
         if (viewer == target) return
+        // engine snapshots trail the death event by up to a check interval, so
+        // a settle computed from a pre-death snapshot must not overwrite the
+        // DEAD pin or put a disguise back onto a corpse. respawn is the only
+        // path allowed to clear the pin, and it runs through resyncTarget
+        if (state != ViewState.DEAD && states.get(viewer, target) == ViewState.DEAD) return
         when (state) {
             ViewState.VISIBLE -> states.clear(viewer, target)
             else -> states.set(viewer, target, state)
