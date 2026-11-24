@@ -17,6 +17,9 @@ object MessageTypes {
     const val AUTH_EXPIRED = "AUTH_EXPIRED"
     const val GUEST_STARTED = "GUEST_STARTED"
     const val GUEST_ENDED = "GUEST_ENDED"
+    const val APPLICATION_SUBMITTED = "APPLICATION_SUBMITTED"
+    const val APPLICATION_APPROVED = "APPLICATION_APPROVED"
+    const val APPLICATION_REJECTED = "APPLICATION_REJECTED"
     const val ACCOUNT_DELETED = "ACCOUNT_DELETED"
 }
 
@@ -73,6 +76,28 @@ data class AuthDecisionPayload(
 data class AccountDeletedPayload(
     val minecraftUuid: String,
     val reason: String,
+)
+
+// admission fan-outs, backend -> plugin, informational (placeholders + logs)
+
+@Serializable
+data class ApplicationSubmittedPayload(
+    val applicationId: String,
+    val minecraftUuid: String,
+    val telegramId: String,
+)
+
+@Serializable
+data class ApplicationApprovedPayload(
+    val applicationId: String,
+    val minecraftUuid: String,
+)
+
+@Serializable
+data class ApplicationRejectedPayload(
+    val applicationId: String,
+    val minecraftUuid: String,
+    val reason: String? = null,
 )
 
 // guest payloads live here too because the wire format is the contract, not an

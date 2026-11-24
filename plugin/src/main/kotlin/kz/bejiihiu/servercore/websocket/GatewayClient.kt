@@ -10,6 +10,7 @@ import java.util.concurrent.CompletionStage
 import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.serialization.json.JsonObject
 
 /** connection knobs, loaded from the plugin config */
 data class GatewayConfig(
@@ -42,6 +43,16 @@ interface GatewayListener {
     fun onDisconnected() {}
     fun onLinkToken(payload: Payload.LinkToken) {}
     fun onAccountDeleted(payload: Payload.AccountDeleted) {}
+
+    /**
+     * every decoded inbound frame as raw json, fired before the typed
+     * callbacks. covers the types this build has no typed payload for (auth
+     * verdicts, application events, locale pushes, unknown future types) so
+     * consumers speaking the documented wire names get them without the
+     * transport layer knowing each one. default empty, existing listeners
+     * keep compiling.
+     */
+    fun onWireMessage(wireType: String, payload: JsonObject, correlationId: String?, timestamp: Long) {}
 }
 
 /**
@@ -231,8 +242,8 @@ class GatewayClient(
     }
 
     private fun handleFrame(webSocket: WebSocket, raw: String) {
-        val envelope = try {
-            codec.decode(raw, System.currentTimeMillis(), config.maxSkewMs, config.maxPacketBytes).envelope
+        val decoded = try {
+            codec.decode(raw, System.currentTimeMillis(), config.maxSkewMs, config.maxPacketBytes)
         } catch (e: ProtocolException) {
             // protocol violations are fatal on both ends — drop and retry later
             handleDisconnect(webSocket, "protocol violation: ${e.message}")
@@ -241,12 +252,19 @@ class GatewayClient(
             handleDisconnect(webSocket, "malformed frame: ${e.message}")
             return
         }
+        val envelope = decoded.envelope
+
+        // raw fan-out first: consumers speaking wire types the typed layer has
+        // no payload vocabulary for (auth verdicts, application events, locale
+        // pushes, unknown future types) get the plain json here
+        val wireName = (envelope.payload as? Payload.Raw)?.wireType ?: envelope.type.wire
+        listener.onWireMessage(wireName, decoded.rawPayload, envelope.correlationId, envelope.timestamp)
 
         when (envelope.type) {
             MessageType.LINK_TOKEN -> listener.onLinkToken(envelope.payload as Payload.LinkToken)
             MessageType.ACCOUNT_DELETED -> listener.onAccountDeleted(envelope.payload as Payload.AccountDeleted)
             MessageType.SESSION_CHECK -> answerSessionCheck(webSocket, envelope)
-            MessageType.ACK, MessageType.ERROR -> Unit // transport-level, nothing to do
+            MessageType.ACK, MessageType.ERROR, MessageType.UNKNOWN -> Unit // transport-level, nothing to do
             else -> Unit
         }
 

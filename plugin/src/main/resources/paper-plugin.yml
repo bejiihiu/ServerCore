@@ -8,7 +8,8 @@ load: POSTWORLD
 bootstrapper: kz.bejiihiu.servercore.boot.ServerCoreBootstrapper
 
 # packetevents must be up before us (its listeners hook the netty pipeline first).
-# flectonepulse is a soft pair — moderation lives there, we only read its api.
+# flectonepulse and placeholderapi are soft pairs — moderation lives there, we
+# only read their api; without papi the placeholders are simply absent.
 # luckperms is the permissions authority (soft: without it the plugin falls
 # back to the static config map); load-before so its api is present at enable.
 dependencies:
@@ -18,6 +19,10 @@ dependencies:
       required: true
       join-classpath: true
     FlectonePulse:
+      load: BEFORE
+      required: false
+      join-classpath: true
+    PlaceholderAPI:
       load: BEFORE
       required: false
       join-classpath: true

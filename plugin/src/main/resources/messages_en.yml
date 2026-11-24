@@ -74,3 +74,24 @@ luckperms:
     primary-mark: " (primary)"
     none: "<gray>The player is not a member of any group.</gray>"
     lookup-failed: "<red>Could not read the player's groups, details are in the server log.</red>"
+# %servercore_*% placeholder output, human-readable parts only
+placeholders:
+  "yes": "yes"
+  "no": "no"
+  status:
+    active: "active"
+    banned: "banned"
+    guest: "guest"
+  application:
+    voting: "voting"
+    approved: "approved"
+    rejected: "rejected"
+  last-seen:
+    now: "now"
+    minutes: "{n} min ago"
+    hours: "{n} h ago"
+    days: "{n} d ago"
+  duration:
+    h: "{n}h"
+    m: "{n}m"
+    s: "{n}s"
