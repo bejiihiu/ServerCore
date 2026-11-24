@@ -10,6 +10,7 @@ import kz.bejiihiu.servercore.ws.AuthDecisionPayload
 import kz.bejiihiu.servercore.ws.AuthRequestPayload
 import kz.bejiihiu.servercore.ws.BackendGateway
 import kz.bejiihiu.servercore.ws.GatewayListener
+import kz.bejiihiu.servercore.ws.LinkTokenPayload
 import kz.bejiihiu.servercore.ws.MessageTypes
 import kz.bejiihiu.servercore.ws.WsEnvelope
 import kz.bejiihiu.servercore.ws.decodePayload
@@ -22,6 +23,9 @@ import kz.bejiihiu.servercore.ws.decodePayload
  *
  * also remembers durable account facts in the local cache and keeps the latest
  * personal deep link per player so the guest prompt can carry a one-time token.
+ * personal links arrive as LINK_TOKEN (account linking, pushed on every join
+ * of an unlinked account) or inside an AUTH_REQUEST (auth approval extension);
+ * the freshest one wins, whatever its kind.
  */
 class WsAccountResolver(
     private val gateway: BackendGateway,
@@ -73,8 +77,18 @@ class WsAccountResolver(
             MessageTypes.AUTH_APPROVED -> decode<AuthDecisionPayload>(envelope)?.let { onApproved(it) }
             MessageTypes.AUTH_REJECTED, MessageTypes.AUTH_EXPIRED ->
                 decode<AuthDecisionPayload>(envelope)?.let { release(it.minecraftUuid, AccountStatus.GuestPendingLogin(null)) }
+            MessageTypes.APPLICATION_EXPIRED -> Unit // placeholders only, see the state cache listener
+            MessageTypes.LINK_TOKEN -> decode<LinkTokenPayload>(envelope)?.let { onLinkToken(it) }
             MessageTypes.ACCOUNT_DELETED -> decode<AccountDeletedPayload>(envelope)?.let { onAccountDeleted(it) }
         }
+    }
+
+    /** personal linking deep link: the token rides the bot start payload */
+    private fun onLinkToken(payload: LinkTokenPayload) {
+        val uuid = parseUuid(payload.minecraftUuid) ?: return
+        val url = "https://t.me/${config.botUsername}?start=${payload.token}"
+        pendingLinks[uuid] = GuestLink(url, System.currentTimeMillis())
+        linkAvailableListeners.forEach { runCatching { it(uuid) } }
     }
 
     private fun onAuthRequest(payload: AuthRequestPayload) {

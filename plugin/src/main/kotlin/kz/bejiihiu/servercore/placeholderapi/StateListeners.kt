@@ -3,6 +3,7 @@ package kz.bejiihiu.servercore.placeholderapi
 import kz.bejiihiu.servercore.guest.LocalAccountCache
 import kz.bejiihiu.servercore.ws.AccountDeletedPayload
 import kz.bejiihiu.servercore.ws.ApplicationApprovedPayload
+import kz.bejiihiu.servercore.ws.ApplicationExpiredPayload
 import kz.bejiihiu.servercore.ws.ApplicationRejectedPayload
 import kz.bejiihiu.servercore.ws.ApplicationSubmittedPayload
 import kz.bejiihiu.servercore.ws.AuthDecisionPayload
@@ -45,6 +46,9 @@ class StateWsListener(private val cache: ServerStateCache) : GatewayListener {
             MessageTypes.APPLICATION_REJECTED -> decode<ApplicationRejectedPayload>(envelope)
                 ?.uuidOrNull()?.let(cache::onApplicationRejected)
 
+            MessageTypes.APPLICATION_EXPIRED -> decode<ApplicationExpiredPayload>(envelope)
+                ?.uuidOrNull()?.let(cache::onApplicationExpired)
+
             MessageTypes.ACCOUNT_DELETED -> decode<AccountDeletedPayload>(envelope)
                 ?.uuidOrNull()?.let(cache::onAccountDeleted)
         }
@@ -65,6 +69,7 @@ class StateWsListener(private val cache: ServerStateCache) : GatewayListener {
         is ApplicationSubmittedPayload -> runCatching { UUID.fromString(minecraftUuid) }.getOrNull()
         is ApplicationApprovedPayload -> runCatching { UUID.fromString(minecraftUuid) }.getOrNull()
         is ApplicationRejectedPayload -> runCatching { UUID.fromString(minecraftUuid) }.getOrNull()
+        is ApplicationExpiredPayload -> runCatching { UUID.fromString(minecraftUuid) }.getOrNull()
         is AccountDeletedPayload -> runCatching { UUID.fromString(minecraftUuid) }.getOrNull()
         else -> null
     }

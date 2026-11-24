@@ -107,6 +107,7 @@ class PlaceholderResolver(
             ServerStateCache.APP_VOTING,
             ServerStateCache.APP_APPROVED,
             ServerStateCache.APP_REJECTED,
+            ServerStateCache.APP_EXPIRED,
         )
         val base = if (status.uppercase() in known) {
             strings.text("placeholders.application.${status.lowercase()}")

@@ -84,6 +84,11 @@ class ServerStateCache(
         it.copy(applicationStatus = APP_REJECTED)
     }
 
+    /** the voting window closed without quorum, the application is dead */
+    fun onApplicationExpired(uuid: UUID) = mutate(uuid, null, backendStamped = true) {
+        it.copy(applicationStatus = APP_EXPIRED)
+    }
+
     /** the account is gone: every backend fact we held about it dies with it */
     fun onAccountDeleted(uuid: UUID) = mutate(uuid, null, backendStamped = true) {
         it.copy(
@@ -184,6 +189,7 @@ class ServerStateCache(
         const val APP_VOTING = "VOTING"
         const val APP_APPROVED = "APPROVED"
         const val APP_REJECTED = "REJECTED"
+        const val APP_EXPIRED = "EXPIRED"
 
         const val DEFAULT_MAX_ENTRIES = 10_000
     }
