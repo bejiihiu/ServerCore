@@ -27,10 +27,13 @@ class GuestSessionCounter(path: Path, io: Executor) {
     private val file = AtomicJsonFile(path, CounterFile.serializer(), io, json)
     private val counts = ConcurrentHashMap<UUID, Int>()
 
-    /** blocking, startup only */
+    /** blocking, startup only; a corrupt or hand-mangled file resets with a warning */
     fun load() {
         file.read()?.counts?.forEach { (key, value) ->
-            runCatching { UUID.fromString(key) }.getOrNull()?.let { uuid -> counts[uuid] = value }
+            runCatching { UUID.fromString(key) }.getOrNull()?.let { uuid ->
+                // hand-edited values get sane bounds, the accounting only counts forward
+                counts[uuid] = value.coerceIn(0, MAX_TRUSTED_COUNT)
+            }
         }
     }
 
@@ -55,5 +58,10 @@ class GuestSessionCounter(path: Path, io: Executor) {
 
     private fun flush() {
         file.write(CounterFile(counts = counts.mapKeys { (uuid, _) -> uuid.toString() }))
+    }
+
+    private companion object {
+        /** anything past this in a hand-edited file is nonsense, not a real count */
+        const val MAX_TRUSTED_COUNT = 1_000_000
     }
 }

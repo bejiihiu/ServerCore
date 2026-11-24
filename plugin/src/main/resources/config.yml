@@ -35,6 +35,10 @@ guest:
   kick-after-limit: true
   # subtle actionbar reminder while a guest waits for authorization
   reminder-interval-seconds: 60
+  # how often the gamemode drift sweep re-checks that a guest is still in
+  # spectator (another plugin may force a different mode); actual corrections
+  # are throttled further so it never becomes a per-tick fight
+  gamemode-sweep-seconds: 2
   # ui language, picks messages_<lang>.yml from the plugin data folder
   # (bundled: en, ru; edit the file to customise every message)
   lang: ru
