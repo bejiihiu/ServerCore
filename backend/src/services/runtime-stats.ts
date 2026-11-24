@@ -1,5 +1,6 @@
 import type { GatewayStats } from "../websocket/gateway.js"
 import type { ServerDirectory } from "../websocket/handlers/server-lifecycle.js"
+import type { StatsCountsSource } from "./stats-counts.js"
 
 /**
  * in-memory session counters. the gateway owns server presence; session-level
@@ -34,6 +35,10 @@ export type StatsSnapshot = {
     guestSessions: number
     pendingAuths: number
   }
+  /** null when the counts source is absent or failed: never guess a number */
+  admission: { openVotings: number } | null
+  /** null when the counts source is absent or failed: never guess a number */
+  accounts: { activeUsers: number } | null
 }
 
 /** minimal gateway surface for stats */
@@ -48,20 +53,24 @@ export class StatsService {
   private readonly gateway: StatsGateway
   private readonly directory: ServerDirectory
   private readonly counters: SessionCounters
+  private readonly counts: StatsCountsSource | null
 
   constructor(deps: {
     startedAt: number
     gateway: StatsGateway
     directory: ServerDirectory
     counters: SessionCounters
+    /** mongo-backed domain counters, null while the database is down */
+    counts?: StatsCountsSource | null
   }) {
     this.startedAt = deps.startedAt
     this.gateway = deps.gateway
     this.directory = deps.directory
     this.counters = deps.counters
+    this.counts = deps.counts ?? null
   }
 
-  snapshot(now = Date.now()): StatsSnapshot {
+  async snapshot(now = Date.now()): Promise<StatsSnapshot> {
     const servers: ServerStatsEntry[] = this.directory.list().map((server) => ({
       serverId: server.serverId,
       ...(server.state !== undefined ? { state: server.state } : {}),
@@ -73,6 +82,16 @@ export class StatsService {
       secondsSinceLastSeen: Math.max(0, Math.floor((now - server.lastSeenAt) / 1000)),
     }))
 
+    // a failed count must not take the whole snapshot down: the section just
+    // goes missing and the admin sees the rest of the picture
+    let admission: { openVotings: number } | null = null
+    let accounts: { activeUsers: number } | null = null
+    if (this.counts !== null) {
+      const [votings, users] = await Promise.allSettled([this.counts.openVotings(), this.counts.activeUsers()])
+      if (votings.status === "fulfilled") admission = { openVotings: votings.value }
+      if (users.status === "fulfilled") accounts = { activeUsers: users.value }
+    }
+
     return {
       uptimeSeconds: Math.max(0, Math.floor((now - this.startedAt) / 1000)),
       wsConnections: this.gateway.stats.connections,
@@ -83,6 +102,8 @@ export class StatsService {
         guestSessions: this.counters.guestSessions,
         pendingAuths: this.counters.pendingAuths,
       },
+      admission,
+      accounts,
     }
   }
 }

@@ -168,7 +168,7 @@ describe("active spec sessions counter wiring", () => {
       envelope("SERVER_HEARTBEAT", { onlinePlayers: 5, maxPlayers: 20, activeSpecSessions: 2 }),
       fakeConnection("game-1"),
     )
-    const snap = stats.snapshot()
+    const snap = await stats.snapshot()
     expect(snap.servers[0]?.activeSpecSessions).toBe(2)
   })
 
@@ -188,7 +188,7 @@ describe("active spec sessions counter wiring", () => {
     expect(directory.get("game-1")?.activeSpecSessions).toBe(1)
 
     // aggregates to the total the /stats line renders
-    const snap = stats.snapshot()
+    const snap = await stats.snapshot()
     expect(snap.servers.reduce((sum, s) => sum + (s.activeSpecSessions ?? 0), 0)).toBe(1)
   })
 })
