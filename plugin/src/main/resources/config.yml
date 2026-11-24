@@ -1,0 +1,38 @@
+# servercore ops configuration
+# every knob lives under ops:; secrets never go here - the panel api key and
+# the github token are read from environment variables named below.
+
+ops:
+  update:
+    # self-update from github releases (tags build-*)
+    enabled: true
+    # owner/repo to poll for the latest build-* release
+    repo: "bejiihiu/ServerCore"
+    # how often to check, minutes
+    check-interval-minutes: 30
+    # restart automatically after a verified swap; false = install and wait
+    # for a manual/scheduled restart
+    auto-restart: true
+    # env var holding a github token (optional, lifts the api rate limit)
+    github-token-env: "GITHUB_TOKEN"
+
+  restart:
+    # pterodactyl panel integration. all three values empty = feature off,
+    # restarts fall back to a console `stop` - which only acts like a restart
+    # when the server has AUTO-RESTART enabled in the panel.
+    pterodactyl:
+      # base url, e.g. https://panel.example.com
+      panel-url: ""
+      # the identifier of this server in the panel (the short id from the url)
+      server-id: ""
+      # env var with a pterodactyl CLIENT api key (ptlc_...)
+      api-key-env: "PTERO_API_KEY"
+
+    # daily restart times, wall clock hh:mm, europe/moscow
+    daily-times: ["05:00"]
+    # seconds of in-game warning (title + actionbar countdown) before kick
+    grace-seconds: 60
+    # player-facing texts: ru | en
+    locale: "ru"
+    # timezone for daily-times and logs (any java zone id)
+    timezone: "Europe/Moscow"

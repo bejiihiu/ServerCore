@@ -34,6 +34,16 @@ dependencies {
 
     // folia ships no kotlin at runtime, so the stdlib has to ride inside the fat jar
     implementation(libs.kotlin.stdlib)
+
+    // kotlinx serialization is used at runtime by the ops module (github api
+    // payloads + ws dto), so it is bundled like the stdlib
+    implementation(libs.kotlinx.serialization.json)
+
+    testImplementation(kotlin("test"))
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 kotlin {
