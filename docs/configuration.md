@@ -1,0 +1,116 @@
+# Configuration
+
+ServerCore is configured in two places: the backend's environment file and the plugin's `config.yml`. This page documents every option.
+
+## Backend — environment variables
+
+All variables come from `.env` (copy `.env.example` as the starting point). Placeholder names below are the real keys.
+
+### Database
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `DATABASE_URI` | yes | — | MongoDB connection string, including credentials and database name |
+| `DATABASE_NAME` | yes | `servercore` | Database name. Must match the name embedded in `DATABASE_URI` |
+
+### Telegram bot
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `BOT_TOKEN` | yes | — | Token issued by [@BotFather](https://t.me/BotFather) |
+| `BOT_USERNAME` | no | — | Bot username without `@`, used to render deep links (inferred from the token when omitted) |
+| `TELEGRAM_GROUP_ID` | yes | — | Numeric chat ID of the private community group the bot administers |
+| `TELEGRAM_API_BASE` | no | Telegram default | Override for self-hosted Bot API servers |
+
+### WebSocket gateway
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `WS_HOST` | yes | `0.0.0.0` | Bind address for the gateway |
+| `WS_PORT` | yes | `8443` | Port the plugin connects to |
+| `WS_PATH` | no | `/gateway` | WebSocket endpoint path |
+| `WS_MAX_PAYLOAD_BYTES` | no | `65536` | Hard limit on incoming message size; larger frames are rejected |
+| `SERVER_SECRET_<ID>` | yes (per server) | — | Per-server HMAC secret, shared with that server's plugin config. One entry per registered Minecraft server |
+
+### Runtime behaviour
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `LOG_LEVEL` | no | `info` | Pino level: `trace`, `debug`, `info`, `warn`, `error`, `fatal` |
+| `ADMISSION_VOTE_HOURS` | no | `3` | Voting window duration |
+| `ADMISSION_QUORUM_PERCENT` | no | `50` | Minimum share of eligible voters who must vote |
+| `ADMISSION_APPROVAL_PERCENT` | no | `50` | Minimum share of valid votes that must be in favour (strictly greater) |
+| `ADMISSION_COOLDOWN_MONTHS` | no | `3` | Reapplication cooldown per Minecraft UUID |
+| `AUTH_TOKEN_TTL_SECONDS` | no | `75` | One-time login token lifetime (allowed range 60–90) |
+| `AUTH_RATE_LIMIT_PER_HOUR` | no | `30` | Maximum auth requests per account per hour |
+
+Secrets never belong in the repository or in logs — keep them only in the environment.
+
+## Plugin — config.yml
+
+Located at `plugins/ServerCore/config.yml`, generated on first start. The plugin stays inert until the `backend` section is filled in.
+
+### backend
+
+| Key | Default | Description |
+|---|---|---|
+| `backend.url` | — | Full WebSocket URL of the backend gateway, `wss://…` |
+| `backend.secret` | — | The per-server HMAC secret matching `SERVER_SECRET_<ID>` on the backend |
+| `backend.reconnect.initial-delay-seconds` | `2` | First reconnect delay after a disconnect |
+| `backend.reconnect.max-delay-seconds` | `120` | Cap for exponential backoff |
+| `backend.heartbeat-interval-seconds` | `15` | Interval between heartbeat frames |
+
+### guest
+
+| Key | Default | Description |
+|---|---|---|
+| `guest.enabled` | `true` | Master switch. When disabled, unauthenticated players are disconnected instead of entering guest mode |
+| `guest.restore-on-restart` | `true` | Rebuild guest sessions and restore snapshots after a server restart |
+
+### guest.restrictions
+
+Per-guest interaction toggles. Each defaults to `true` (restricted):
+
+`guest.restrictions.block-interaction`, `block-break`, `block-place`, `item-pickup`, `item-use`, `container-interaction`, `entity-damage`, `commands`, `gamemode-change`, `portals`, `inventory-edit`
+
+Only free flight and world observation are guaranteed to guests; everything above is denied by design.
+
+### anti-esp
+
+| Key | Default | Description |
+|---|---|---|
+| `anti-esp.enabled` | `true` | Master switch for the visibility layer |
+| `anti-esp.max-distance` | `48` | Beyond this distance targets are not evaluated (clients cannot see that far anyway) |
+| `anti-esp.check-interval-ticks` | `10` | Base evaluation cadence per viewer; movement may trigger earlier re-evaluation |
+| `anti-esp.sneak-hides` | `true` | Players currently sneaking resolve to `HIDDEN` for observers without line of sight |
+| `anti-esp.disguise.enabled` | `true` | Replace hidden players with a per-viewer synthetic entity instead of removing them outright |
+| `anti-esp.disguise.mobs` | `zombie, skeleton, spider, cow, pig, sheep` | Candidate disguise types, chosen randomly per pair |
+| `anti-esp.cache.ttl-ticks` | `40` | How long a line-of-sight result is reused before re-evaluation |
+
+### spec (hidden observation)
+
+| Key | Default | Description |
+|---|---|---|
+| `spec.enabled` | `true` | Master switch for `/spec` |
+| `spec.live-inventory` | `true` | Real-time read-only inventory viewer while observing |
+| `spec.log-to-audit` | `true` | Every session start/end is written to `audit_logs` |
+
+### protection
+
+| Key | Default | Description |
+|---|---|---|
+| `protection.blocked-commands` | built-in list | Extra command names to block for all game accounts. The built-in list (`/op`, `/deop`, `/fill`, `/clone`, `/setblock`, `/summon`, `/gamemode`, `/tp`, `/teleport`, `/give`, `/item`, `/execute`, `/effect`, `/attribute`, `/kill`, `/difficulty`, `/time`, `/weather`, `/gamerule`, `/worldborder`, `/stop`, `/reload`) always applies and cannot be removed here |
+| `protection.enforce-gamemode` | `true` | Force players back to Survival when a non-sanctioned gamemode change is detected |
+
+### placeholders
+
+| Key | Default | Description |
+|---|---|---|
+| `placeholders.cache-ttl-milliseconds` | `2000` | Freshness window of the local cache behind PlaceholderAPI expansions. Values are served from cache only — no synchronous database access |
+
+## Configuration principles
+
+- **Fail closed.** If the backend is unreachable, new logins are refused — never auto-approved.
+- **Secrets stay out of the repo.** The `backend.secret` and all tokens exist only on the hosts that need them.
+- **Least privilege.** Plugin permissions mirror LuckPerms groups; nothing is granted "just in case".
+- **Restart-safe.** Guest snapshots and session state are persisted in MongoDB and survive both server restarts and backend outages.
