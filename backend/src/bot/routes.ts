@@ -142,7 +142,7 @@ export async function handleStatsCommand(ctx: BotContext, deps: BotDeps): Promis
   const lines: string[] = []
 
   if (deps.stats !== null) {
-    const snap = deps.stats.snapshot()
+    const snap = await deps.stats.snapshot()
     lines.push(
       t(locale, "ops.stats.uptime", { uptime: formatDuration(snap.uptimeSeconds) }),
       t(locale, "ops.stats.ws", {
@@ -159,6 +159,14 @@ export async function handleStatsCommand(ctx: BotContext, deps: BotDeps): Promis
         count: snap.servers.reduce((sum, server) => sum + (server.activeSpecSessions ?? 0), 0),
       }),
     )
+    // domain counters arrive when mongo is reachable; a failed count drops
+    // its line instead of faking a number
+    if (snap.admission !== null) {
+      lines.push(t(locale, "ops.stats.admission", { count: snap.admission.openVotings }))
+    }
+    if (snap.accounts !== null) {
+      lines.push(t(locale, "ops.stats.accounts", { count: snap.accounts.activeUsers }))
+    }
     if (snap.servers.length === 0) {
       lines.push(t(locale, "ops.stats.no_servers"))
     } else {

@@ -30,6 +30,7 @@ import { NotificationService } from "./services/notification-service.js"
 import { GrammySender } from "./services/telegram-sender.js"
 import { OpsNotifier, eventForState } from "./services/ops-notifier.js"
 import type { PluginPushPort } from "./services/ports.js"
+import { MongoStatsCounts } from "./services/stats-counts.js"
 import { OfflineWatcher } from "./services/offline-watcher.js"
 import { SessionCounters, StatsService } from "./services/runtime-stats.js"
 import { VotingScheduler } from "./services/voting-scheduler.js"
@@ -291,6 +292,8 @@ async function main(): Promise<void> {
     gateway,
     directory,
     counters,
+    // domain counters for /stats; mongo down means the sections just vanish
+    counts: databaseReady() ? new MongoStatsCounts() : null,
   })
 
   // retention: the backend owns the database, so it does the housekeeping.
@@ -369,7 +372,14 @@ async function main(): Promise<void> {
     logger,
     thresholdMs: config.serverOfflineAlertMinutes * 60_000,
   })
-  offlineWatcher.onReconnect = (serverId) => opsNotifier.forget(serverId)
+  offlineWatcher.onReconnect = (serverId) => {
+    // the dedupe memory must go: the next state flip re-announces. and the
+    // admin who got the crash alert also gets the all-clear
+    opsNotifier.forget(serverId)
+    void opsNotifier.serverBack(serverId).catch((error) => {
+      logger.error({ err: error, serverId }, "server-back notification failed")
+    })
+  }
   offlineWatcher.onAlert = (alert) => {
     void opsNotifier
       .offlineAlert(alert.serverId, alert.minutesUnreachable, config.notifyUsersOnOffline)

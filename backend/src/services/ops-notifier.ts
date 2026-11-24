@@ -101,6 +101,18 @@ export class OpsNotifier {
     }
   }
 
+  /** crash resolved: the admin chat learns the server is answering again */
+  async serverBack(serverId: string): Promise<void> {
+    this.logger.info({ serverId }, "server back online")
+    if (this.notifications === null) return
+    try {
+      await this.notifications.broadcast(t(this.locale, "ops.admin.server_back", { server: serverId }), this.adminChatIds)
+    } catch (error) {
+      // a failed broadcast must never break the ops flow itself
+      this.logger.error({ err: error, serverId }, "server-back broadcast failed")
+    }
+  }
+
   /** clears the dedupe memory so a reconnecting server re-announces */
   forget(serverId: string): void {
     this.lastEventByServer.delete(serverId)

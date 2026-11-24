@@ -74,6 +74,14 @@ const messages = {
     ru: "👥 Сессии: активных {active}, гостевых {guests}, ожидают авторизации {pending}",
     en: "👥 Sessions: active {active}, guest {guests}, pending auth {pending}",
   },
+  "ops.stats.admission": {
+    ru: "🗳 Голосования: открытых {count}",
+    en: "🗳 Votings: open {count}",
+  },
+  "ops.stats.accounts": {
+    ru: "👤 Аккаунты: активных {count}",
+    en: "👤 Accounts: active {count}",
+  },
   "ops.stats.spec": {
     ru: "👁 Наблюдения: активных {count}",
     en: "👁 Observations: active {count}",
