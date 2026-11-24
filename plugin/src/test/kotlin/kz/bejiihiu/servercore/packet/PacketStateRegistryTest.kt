@@ -13,7 +13,7 @@ class PacketStateRegistryTest {
     private val target = UUID.fromString("00000000-0000-0000-0000-000000000002")
     private val other = UUID.fromString("00000000-0000-0000-0000-000000000003")
 
-    private fun registry() = PacketStateRegistry(CachedViewStateStore(60_000L, 64, 64))
+    private fun registry() = PacketStateRegistry(CachedViewStateStore(64, 64))
 
     @Test
     fun `spawned entity ids resolve to their target per viewer`() {
@@ -34,22 +34,51 @@ class PacketStateRegistryTest {
     }
 
     @Test
+    fun `unbind drops a plain vanilla row with the last id`() {
+        val reg = registry()
+        reg.bindEntityId(viewer, 1, target)
+        reg.set(viewer, target, EntityViewState.VISIBLE)
+
+        val dropped = reg.unbindEntityIds(viewer, intArrayOf(1))
+        assertEquals(setOf(target), dropped)
+        assertNull(reg.state(viewer, target))
+    }
+
+    @Test
+    fun `override rows survive tracking-out so a retrack stays suppressed`() {
+        val reg = registry()
+        reg.bindEntityId(viewer, 1, target)
+        reg.set(viewer, target, EntityViewState.HIDDEN)
+
+        // the client stopped holding the entity, but the policy row must live
+        // on: the retrack spawn is only cancelled while the row says hidden
+        val dropped = reg.unbindEntityIds(viewer, intArrayOf(1))
+        assertEquals(setOf(target), dropped)
+        assertEquals(
+            EntityViewState.HIDDEN,
+            reg.state(viewer, target),
+            "hidden row lost on tracking-out would flash the player back visible",
+        )
+        assertNull(reg.targetOf(viewer, 1))
+    }
+
+    @Test
     fun `unbind drops state only when the target has no ids left`() {
         val reg = registry()
         reg.bindEntityId(viewer, 1, target)
         reg.bindEntityId(viewer, 2, target)
         reg.set(viewer, target, EntityViewState.DISGUISED)
 
-        // first id destroyed: passenger-style double binding keeps the state alive
+        // first id destroyed: passenger-style double binding keeps everything
         var dropped = reg.unbindEntityIds(viewer, intArrayOf(1))
         assertTrue(dropped.isEmpty())
         assertEquals(EntityViewState.DISGUISED, reg.state(viewer, target))
         assertEquals(target, reg.targetOf(viewer, 2))
 
-        // last id destroyed: state goes with it
+        // last id destroyed: the binding is gone, the override row stays
         dropped = reg.unbindEntityIds(viewer, intArrayOf(2))
         assertEquals(setOf(target), dropped)
-        assertNull(reg.state(viewer, target))
+        assertEquals(EntityViewState.DISGUISED, reg.state(viewer, target))
         assertNull(reg.targetOf(viewer, 2))
     }
 

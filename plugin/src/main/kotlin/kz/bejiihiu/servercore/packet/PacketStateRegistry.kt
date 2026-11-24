@@ -34,9 +34,15 @@ class PacketStateRegistry(private val store: ViewStateStore) {
 
     /**
      * after a destroy packet: forget the ids and, once a target has no more
-     * bound ids for this viewer, forget its state too. returns the targets
-     * that lost their last binding (the ones the viewer genuinely stopped
-     * knowing about).
+     * bound ids for this viewer, clean up its row. returns the targets
+     * that lost their last binding (the ones the client genuinely stopped
+     * holding).
+     *
+     * override rows (hidden/disguised) deliberately SURVIVE the last unbind:
+     * tracking-out is not a policy change, and the retrack spawn is only
+     * suppressed while the row still says hidden — dropping it here would
+     * flash a hidden player back visible on the next approach. vanilla rows
+     * are recomputable defaults and go with the binding.
      */
     fun unbindEntityIds(viewer: UUID, ids: IntArray): Set<UUID> {
         if (ids.isEmpty()) return emptySet()
@@ -46,9 +52,14 @@ class PacketStateRegistry(private val store: ViewStateStore) {
             map.remove(id)?.let { freed.add(it) }
         }
         // keep state for targets the client still knows under another id
-        val dropped = freed.filterNot { target -> hasBinding(map, target) }
-        dropped.forEach { store.remove(viewer, it) }
-        return dropped.toSet()
+        val lost = freed.filterNot { target -> hasBinding(map, target) }
+        lost.forEach { target ->
+            when (store.get(viewer, target)) {
+                null, EntityViewState.VISIBLE -> store.remove(viewer, target)
+                else -> {} // an override row outlives the tracking gap
+            }
+        }
+        return lost.toSet()
     }
 
     /**
