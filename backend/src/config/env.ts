@@ -29,6 +29,20 @@ const envSchema = z.object({
 
   // one-time login/link token lifetime, must stay in the 60-90 band
   AUTH_REQUEST_TTL_SECONDS: z.coerce.number().int().min(60).max(90).default(75),
+
+  // ops: telegram admin ids (comma separated), get event copies + /stats
+  ADMIN_TELEGRAM_IDS: z.string().default(""),
+  // locale for ops notifications ("ru" | "en")
+  OPS_LOCALE: z.enum(["ru", "en"]).default("ru"),
+  // ws silent for this long => server presumed offline, admins alerted
+  SERVER_OFFLINE_ALERT_MINUTES: z.coerce.number().int().min(1).max(1440).default(5),
+  // crash alert also goes to all linked users, not just admins
+  NOTIFY_USERS_ON_OFFLINE: z
+    .string()
+    .default("false")
+    .transform((raw) => ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase())),
+  // outbound broadcast rate ceiling (telegram allows ~30/s)
+  NOTIFICATION_RATE_PER_SECOND: z.coerce.number().int().min(1).max(30).default(30),
 })
 
 export type AppConfig = {
@@ -47,6 +61,11 @@ export type AppConfig = {
   wsReplayWindowMs: number
   wsNonceTtlMs: number
   authRequestTtlSeconds: number
+  adminTelegramIds: number[]
+  opsLocale: "ru" | "en"
+  serverOfflineAlertMinutes: number
+  notifyUsersOnOffline: boolean
+  notificationRatePerSecond: number
 }
 
 export class ConfigError extends Error {
@@ -73,6 +92,16 @@ function parseServerCredentials(raw: string): Record<string, string> {
   return result.data
 }
 
+/** "123, 456" -> [123, 456]; empty string means no admins configured */
+function parseAdminIds(raw: string): number[] {
+  return raw
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+    .map((part) => Number.parseInt(part, 10))
+    .filter((id) => Number.isInteger(id) && id > 0)
+}
+
 export function loadConfig(env: Record<string, string | undefined> = process.env): AppConfig {
   const result = envSchema.safeParse(env)
   if (!result.success) {
@@ -95,5 +124,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     wsReplayWindowMs: result.data.WS_REPLAY_WINDOW_MS,
     wsNonceTtlMs: result.data.WS_NONCE_TTL_MS,
     authRequestTtlSeconds: result.data.AUTH_REQUEST_TTL_SECONDS,
+    adminTelegramIds: parseAdminIds(result.data.ADMIN_TELEGRAM_IDS),
+    opsLocale: result.data.OPS_LOCALE,
+    serverOfflineAlertMinutes: result.data.SERVER_OFFLINE_ALERT_MINUTES,
+    notifyUsersOnOffline: result.data.NOTIFY_USERS_ON_OFFLINE,
+    notificationRatePerSecond: result.data.NOTIFICATION_RATE_PER_SECOND,
   }
 }
