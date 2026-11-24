@@ -1,6 +1,7 @@
 package kz.bejiihiu.servercore.integration.flectonepulse
 
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import java.util.logging.Logger
 import kz.bejiihiu.servercore.ServerCorePlugin
@@ -54,12 +55,18 @@ class FlectonePulseBridge(
         // registerPermanent listeners survive fp reloads and there is no
         // unregister-one api, so a disable/enable cycle in the same
         // classloader must not stack duplicates
-        @Volatile
-        private var listenerRegistered = false
+        private val listenerRegistered = AtomicBoolean(false)
     }
 
     private val state = AtomicReference(State.NOT_PRESENT)
     private var reason: String = "not detected"
+
+    // one cache for the whole bridge lifetime: the permanent listener is
+    // registered exactly once with this instance and keeps invalidating it
+    // across reloads — a per-connect cache would strand every load/quit
+    // invalidation in an orphaned object while the live query serves stale
+    // answers until the ttl runs out
+    private val cache: PunishmentCache = PunishmentCache(config.punishmentCacheTtlMillis)
 
     @Volatile
     private var query: PunishmentQuery = PunishmentQuery.None
@@ -165,13 +172,11 @@ class FlectonePulseBridge(
             return
         }
 
-        val cache = PunishmentCache(config.punishmentCacheTtlMillis)
         query = FlectonePulsePunishmentQuery(services.players, services.moderation, cache, logger)
         suppression = FlectonePulseNotificationSuppression(disableTg = { config.disableTg }, telegramModuleEnabled = services.telegramEnabled)
 
-        if (reRegister && !listenerRegistered) {
+        if (reRegister && listenerRegistered.compareAndSet(false, true)) {
             services.registry.registerPermanent(FlectonePulseStateListener(cache) { revalidate() })
-            listenerRegistered = true
         }
 
         state.set(State.CONNECTED)

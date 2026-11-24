@@ -28,6 +28,9 @@ class FakeModerationService(
     var lookupCalls = 0
         private set
 
+    /** when set, getValid throws it — simulates an fp/db hiccup */
+    var lookupFailure: Throwable? = null
+
     fun addValid(uuid: UUID, type: Moderation.Type, moderation: Moderation) {
         validByPlayer.getOrPut(uuid to type) { mutableListOf() }.add(moderation)
     }
@@ -39,6 +42,7 @@ class FakeModerationService(
 
     override fun getValid(fPlayer: FPlayer, type: Moderation.Type): Optional<Moderation> {
         lookupCalls++
+        lookupFailure?.let { throw it }
         val found = validByPlayer[fPlayer.uuid() to type]
             ?.firstOrNull { it.valid() && (it.isPermanent() || !it.isExpired()) }
         return Optional.ofNullable(found)

@@ -166,6 +166,21 @@ class PunishmentQueryTest {
     }
 
     @Test
+    fun `a failed lookup is not cached as a clean no-punishment`() {
+        val fp = FakeModerationService()
+        fp.lookupFailure = RuntimeException("db blip")
+        val query = queryWith(fp)
+
+        assertNull(query.activeMute(uuid))
+
+        // fp recovered: the next call must re-ask the service, not trust a
+        // cached "no punishment" that was really a lookup failure
+        fp.lookupFailure = null
+        assertNull(query.activeMute(uuid))
+        assertEquals(2, fp.lookupCalls)
+    }
+
+    @Test
     fun `the read-only boundary holds - no mutation method is ever called`() {
         val fp = FakeModerationService()
         fp.addValid(uuid, Moderation.Type.MUTE, timedModeration(Moderation.Type.MUTE, now, 100_000))

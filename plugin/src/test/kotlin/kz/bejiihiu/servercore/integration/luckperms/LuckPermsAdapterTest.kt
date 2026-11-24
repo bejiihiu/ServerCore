@@ -41,8 +41,17 @@ class LuckPermsAdapterTest {
         }
     }
 
+    /** lp's cached-data access blew up mid-check, the adapter must still deny */
+    private class ThrowingUser : LpUserView {
+        override fun permissionValue(node: String): Boolean = throw IllegalStateException("cached data not loaded")
+        override fun groupNames(): Set<String> = emptySet()
+        override fun primaryGroup(): String? = null
+        override fun addGroupNode(group: String): Boolean = false
+        override fun removeGroupNode(group: String): Boolean = false
+    }
+
     private class FakeLpSource : LpUserSource {
-        val users = mutableMapOf<UUID, FakeUser>()
+        val users = mutableMapOf<UUID, LpUserView>()
         var loadFailure: Throwable? = null
         private val consumers = CopyOnWriteArrayList<(UUID) -> Unit>()
 
@@ -87,6 +96,13 @@ class LuckPermsAdapterTest {
     }
 
     @Test
+    fun permissionCheckFailsClosedWhenLpEvaluationThrows() {
+        val (adapter, lp) = adapter()
+        lp.users[uuid] = ThrowingUser()
+        assertFalse(adapter.hasPermission(uuid, ServerCorePermissions.ADMIN).awaitCompleted())
+    }
+
+    @Test
     fun groupsReturnEffectiveNamesAndPrimary() {
         val (adapter, lp) = adapter()
         lp.users[uuid] = FakeUser(groups = setOf("default", "moderator"), primary = "moderator")
@@ -117,7 +133,7 @@ class LuckPermsAdapterTest {
         val (adapter, lp) = adapter()
         val result = adapter.addGroup(uuid, RankGroup.MODERATOR).awaitCompleted()
         assertEquals(GroupMutationResult.APPLIED, result)
-        assertEquals(listOf("+moderator"), lp.users.getValue(uuid).mutations)
+        assertEquals(listOf("+moderator"), (lp.users.getValue(uuid) as FakeUser).mutations)
         assertEquals(setOf("moderator"), lp.users.getValue(uuid).groupNames())
     }
 
@@ -133,7 +149,7 @@ class LuckPermsAdapterTest {
     fun mutationOnAMissingNodeIsRejected() {
         val (adapter, lp) = adapter()
         assertEquals(GroupMutationResult.REJECTED, adapter.removeGroup(uuid, RankGroup.ADMIN).awaitCompleted())
-        assertTrue(lp.users.getValue(uuid).mutations.isNotEmpty())
+        assertTrue((lp.users.getValue(uuid) as FakeUser).mutations.isNotEmpty())
     }
 
     @Test
