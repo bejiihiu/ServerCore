@@ -9,7 +9,7 @@ The WebSocket channel is the only transport between the backend and the Minecraf
 - **Handshake authentication.** Connection auth happens **before the upgrade**: the plugin appends `?server=<id>&ts=<ms>&nonce=<n>&sig=<hmac>` to the upgrade request, and the backend verifies the HMAC over `server|ts|nonce` before the socket ever exists. A stale timestamp or a replayed nonce is rejected outright. Legacy `SERVER_HELLO` frames after an upgrade are refused.
 - **Message signing.** Every frame in both directions carries an HMAC signature computed over the canonical json of the envelope (id, type, timestamp, payload) minus the hmac field.
 - **Replay protection.** Timestamps must fall within a tolerance window; per-frame envelope ids are tracked and duplicates are re-acked but never reprocessed.
-- **Schema validation.** Every inbound message is validated against its type's schema — Zod on the backend, typed DTOs with kotlinx.serialization on the plugin. A type an old build does not know decodes to a raw passthrough instead of killing the connection.
+- **Schema validation.** Every inbound message is validated against its type's schema — Zod on the backend, typed DTOs with kotlinx.serialization on the plugin. A type an old build does not know decodes to a raw passthrough instead of killing the connection. Both sides are additionally tested against the shared field contract in `protocol/messages.json` (see [Changing the protocol](#changing-the-protocol)).
 - **Size limit.** Oversized frames are rejected outright (`WS_MAX_PACKET_BYTES`, default 262144).
 
 ## Message envelope
@@ -125,6 +125,23 @@ Push semantics:
 - Every fresh connection receives one `LOCALE_PUSH` immediately after its registration `SERVER_STATUS` is acknowledged. The push is not repeated for the status frames that follow on the same socket; a reconnect is a new socket and gets a fresh push.
 - `LOCALE_ACK` is tracked per server id. The backend distinguishes an applied bundle, a rejection (with the plugin's reason), and an ack for a revision this process no longer serves. A missing ack is not retried on the same connection — the next registration re-delivers the current revision.
 - Old plugins without a `LOCALE_PUSH` consumer simply never ack: the push stays unacknowledged on that connection and the next registration re-delivers it. An older backend never sends the frame at all, and a newer one is harmless to a build that does not know the type.
+
+## Changing the protocol
+
+`protocol/messages.json` is the machine-readable contract for every wire type, and both sides are tested against it. One entry per type carries:
+
+- `type` — the wire name
+- `direction` — `plugin_to_backend`, `backend_to_plugin` or `both`
+- `fields[]` — the payload contract: `uuid` / `objectId` / `string` / `integer` / `number` / `boolean` / `enum` (with `values`) / `object` (with nested `fields`), each flagged `required` or not
+- `example` — one complete, schema-valid payload
+- `pluginTransport` (`typed` / `raw` / `absent`) and, when the ws layer decodes it, `pluginDto`
+
+Two suites check themselves against that file:
+
+- `backend/tests/protocol-contract.test.ts` walks the zod schemas: every manifest type has a payload schema and every schema is in the manifest, field names / required-ness / types / enum values line up both ways, `BACKEND_TO_PLUGIN_TYPES` matches the declared directions, and every example validates.
+- `plugin/src/test/kotlin/kz/bejiihiu/servercore/websocket/ProtocolContractTest.kt` checks the kotlinx side: `MessageType` lists exactly the carried types, each typed payload branch parses its example and re-emits every required field, each raw type decodes to `Payload.Raw` with the wire name intact, and every ws DTO declares the manifest fields with the same optionality and parses the example.
+
+**Adding or changing a message is one change across four places:** the manifest entry, the backend zod schema (plus `MESSAGE_TYPES` / `BACKEND_TO_PLUGIN_TYPES`), the plugin `MessageType` and payload (or DTO), and any handler. `bun test` and `./gradlew :plugin:test` fail the build when they drift — a renamed or removed required field, a required↔optional flip, a direction change, an enum value the other side does not know, a type or field missing from one of the two sides, or an example that no longer parses. Types marked `status: "reserved"` are documented but not on the wire; the plugin deliberately does not carry them.
 
 ## Handshake flow
 

@@ -134,6 +134,9 @@ current, unreleased state of the codebase.
 - Backend test suite covering protocol and envelope validation, authentication, admission and voting
   math, account lifecycle and deletion, retention, WebSocket wiring and resilience, i18n and bot
   screens.
+- Cross-language protocol contract: one manifest (`protocol/messages.json`) describing every wire
+  type, its direction and payload fields, checked against the zod schemas and the plugin codec/DTOs by
+  tests on both sides, so schema drift fails the build instead of production.
 - Plugin tests for guest logic, protocol compatibility, permissions and packet-state behaviour.
 - Documentation set: architecture, installation, configuration, WebSocket protocol, admission,
   authentication, security, FAQ and the in-game UI design system.
