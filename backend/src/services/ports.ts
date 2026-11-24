@@ -186,11 +186,15 @@ export interface ApplicationRepository {
     id: string,
     decision: VoteDecision,
   ): Promise<{ votesFor: number; votesAgainst: number } | null>
-  /** stores the final decision fields on the voting */
+  /**
+   * stores the final decision fields on the voting. guarded like setStatus:
+   * only a voting that is still VOTING can be decided, so a second pass that
+   * lost the race gets false and must skip its side effects (dms, invites)
+   */
   saveDecision(
     id: string,
     decision: { status: ApplicationStatus; votesCast: number; quorumReached: boolean; decidedAt: Date },
-  ): Promise<void>
+  ): Promise<boolean>
   /**
    * one-shot auto-extension of a running voting: shifts the expiry and
    * bumps the extension counter, only while still VOTING and not yet

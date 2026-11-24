@@ -293,8 +293,12 @@ export class VotingService {
    * decides a finished voting: quorum check, status transition, result
    * publication, applicant notification + admin copy. the caller must have
    * verified the voting actually expired.
+   *
+   * returns null when another pass already decided this voting (the guarded
+   * write lost the race): the winner owns the side effects, so the loser must
+   * not publish or notify a second time.
    */
-  async decide(application: ApplicationInfo): Promise<VotingDecision> {
+  async decide(application: ApplicationInfo): Promise<VotingDecision | null> {
     const counts = await this.deps.votes.countByDecision(application.id)
     const votesCast = counts.votesFor + counts.votesAgainst
     const quorumReached = hasQuorum(votesCast, application.voting.eligibleVoters)
@@ -302,12 +306,13 @@ export class VotingService {
     const now = new Date(this.deps.clock.nowMs())
     const lang = this.deps.defaultLanguage
 
-    await this.deps.applications.saveDecision(application.id, {
+    const committed = await this.deps.applications.saveDecision(application.id, {
       status: outcome,
       votesCast,
       quorumReached,
       decidedAt: now,
     })
+    if (!committed) return null
 
     // approved accounts move on to APPROVED, the rest go back so they can
     // apply again later (still blocked by the 3-month cooldown)
@@ -481,7 +486,9 @@ export class VotingService {
           continue
         }
       }
-      decisions.push(await this.decide(application))
+      const decision = await this.decide(application)
+      // null = another pass already decided it; it owns the side effects
+      if (decision !== null) decisions.push(decision)
     }
     return { decisions, extended }
   }

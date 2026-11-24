@@ -187,13 +187,15 @@ export class InMemoryApplicationRepository implements ApplicationRepository {
   async saveDecision(
     id: string,
     decision: { status: ApplicationStatus; votesCast: number; quorumReached: boolean; decidedAt: Date },
-  ): Promise<void> {
+  ): Promise<boolean> {
     const app = this.apps.get(id)
-    if (!app) return
+    // mirrors the store guard: only a still-running voting can be decided
+    if (!app || app.status !== "VOTING") return false
     app.status = decision.status
     app.voting.votesCast = decision.votesCast
     app.voting.quorumReached = decision.quorumReached
     app.voting.decidedAt = decision.decidedAt
+    return true
   }
 
   async extendVoting(id: string, newExpiresAt: Date): Promise<boolean> {

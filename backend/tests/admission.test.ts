@@ -515,6 +515,26 @@ describe("plugin state-cache push", () => {
     expect(approvedPush).toEqual({ applicationId: approved.id, minecraftUuid: approved.minecraftUuid, outcome: "APPROVED" })
   })
 
+  test("a rejected decision pass after the first one publishes nothing twice", async () => {
+    const deps = build()
+    const app = await seedVotingApplication(deps.applications, {
+      eligibleVoters: 3,
+      quorumState: { votesFor: 2, votesAgainst: 0 },
+      votes: deps.votes,
+    })
+
+    const first = await deps.voting.decide(app)
+    expect(first?.status).toBe("APPROVED")
+    const pushesAfterFirst = deps.plugin.decidedCalls.length
+
+    // a second pass still holding the pre-decision snapshot loses the guarded
+    // write: it must not republish the result or re-run the fan-out
+    const second = await deps.voting.decide(app)
+    expect(second).toBeNull()
+    expect(deps.plugin.decidedCalls.length).toBe(pushesAfterFirst)
+    expect((await deps.voting.decideExpired()).decisions).toHaveLength(0)
+  })
+
   test("an EXPIRED voting pushes nothing: the application stays known as submitted", async () => {
     const deps = build()
     await seedVotingApplication(deps.applications, { eligibleVoters: 4, quorumState: { votesFor: 1, votesAgainst: 0 }, votes: deps.votes })
