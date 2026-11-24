@@ -329,6 +329,24 @@ class ServerCorePlugin : JavaPlugin() {
         wsGateway = client
         gatewayLink = GatewayLink(client)
 
+        // the ops bus rides the gateway: every state publication becomes a
+        // SERVER_STATUS frame, carrying the fp telegram flag so the backend
+        // can de-duplicate announcements. no sink means restart/update/state
+        // events never leave the plugin
+        opsBus.register { _, _, payload ->
+            client.send(
+                MessageType.SERVER_STATUS,
+                Payload.ServerStatus(
+                    onlinePlayers = payload.onlinePlayers,
+                    maxPlayers = payload.maxPlayers,
+                    version = payload.version ?: stats.serverVersion(),
+                    state = payload.state,
+                    detail = payload.detail,
+                    telegramSuppressed = payload.telegramSuppressed,
+                ),
+            )
+        }
+
         val presenceService = PlayerPresenceService(this, client, { specRegistry?.activeCount() ?: 0 })
         presence = presenceService
         server.pluginManager.registerEvents(presenceService, this)
