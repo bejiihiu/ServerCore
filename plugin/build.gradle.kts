@@ -29,11 +29,25 @@ dependencies {
     // when used so shadow bundles it (the server has no coroutines at runtime)
     compileOnly(libs.kotlinx.coroutines.core)
 
-    // dto layer will use this later; compileOnly until something actually serializes at runtime
-    compileOnly(libs.kotlinx.serialization.json)
+    // the snapshot + wire dto + locale layer serializes at runtime, so it gets bundled
+    implementation(libs.kotlinx.serialization.json)
 
     // folia ships no kotlin at runtime, so the stdlib has to ride inside the fat jar
     implementation(libs.kotlin.stdlib)
+
+    // kotlinx serialization is used at runtime by the ops module (github api
+    // payloads + ws dto), so it is bundled like the stdlib
+    implementation(libs.kotlinx.serialization.json)
+
+    // folia ships no kotlin at runtime, so the stdlib has to ride inside the fat jar
+    implementation(libs.kotlin.stdlib)
+
+    // tests need the adventure + snakeyaml transitives on the classpath;
+    // pure-logic tests also touch bukkit enums (GameMode), the api jar is enough
+    testImplementation(libs.folia.api)
+    testImplementation(libs.junit.jupiter)
+    testImplementation(kotlin("test"))
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 kotlin {
@@ -48,6 +62,10 @@ runPaper {
 tasks {
     build {
         dependsOn(shadowJar)
+    }
+
+    test {
+        useJUnitPlatform()
     }
 
     withType<RunServer> {

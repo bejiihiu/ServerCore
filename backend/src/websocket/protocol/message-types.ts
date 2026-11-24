@@ -72,6 +72,23 @@ export const NO_ACK_TYPES: readonly MessageType[] = [
 
 export const MINECRAFT_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+/**
+ * ops-level server lifecycle states, reported by the plugin inside
+ * SERVER_STATUS. old plugin builds that never set the field stay valid -
+ * absence just means "no explicit ops state", the metrics fields are the
+ * source of truth for those.
+ */
+export const SERVER_STATES = [
+  "STARTING",
+  "RUNNING",
+  "RESTARTING",
+  "STOPPING",
+  "OFFLINE",
+  "UPDATE_READY",
+] as const
+
+export type ServerState = (typeof SERVER_STATES)[number]
+
 const minecraftUuid = z.string().regex(MINECRAFT_UUID_PATTERN, "not a valid minecraft uuid")
 const serverId = z.string().min(1).max(64).regex(/^[a-z0-9._-]+$/)
 const username = z.string().min(1).max(16).regex(/^[A-Za-z0-9_]+$/)
@@ -174,6 +191,8 @@ export const payloadSchemas = {
     maxPlayers: z.number().int().min(0),
     tps: z.number().min(0).max(1000).optional(),
     version: z.string().max(64).optional(),
+    state: z.enum(SERVER_STATES).optional(),
+    detail: z.string().max(512).optional(),
   }),
 
   SERVER_HEARTBEAT: z.object({
