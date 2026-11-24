@@ -192,8 +192,22 @@ export class AccountDeletionService {
     const user = await this.users.findByUuid(minecraftUuid)
     if (!user) throw new AccountError("ACCOUNT_NOT_FOUND", `account ${minecraftUuid} not found`)
 
-    // identity check: only the linked telegram account may delete
-    if (user.telegramId !== "" && user.telegramId !== requesterTelegramId) {
+    // identity check: only the linked telegram account may delete. if the user
+    // record lost its telegram id (the pipeline already passed UNLINKED on a
+    // failed attempt), fall back to the link ledger: it still binds this uuid
+    // to the former owner's telegram id, so a legitimate retry gets through
+    // while everyone else is refused. no proof at all => fail closed
+    if (user.telegramId === "") {
+      const priorLink = await this.links.findByUuid(minecraftUuid)
+      const isFormerOwner = priorLink !== null && priorLink.telegramId === requesterTelegramId
+      if (!isFormerOwner) {
+        this.logger.warn(
+          { minecraftUuid, requesterTelegramId },
+          "deletion refused: account has no linked telegram account to verify identity",
+        )
+        throw new AccountError("DELETION_FAILED", "account has no linked telegram account to verify identity")
+      }
+    } else if (user.telegramId !== requesterTelegramId) {
       throw new AccountError("DELETION_FAILED", "requester is not the linked telegram account")
     }
 

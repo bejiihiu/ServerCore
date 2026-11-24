@@ -269,9 +269,11 @@ export class MongooseApplicationRepository implements ApplicationRepository {
   async saveDecision(
     id: string,
     decision: { status: ApplicationStatus; votesCast: number; quorumReached: boolean; decidedAt: Date },
-  ): Promise<void> {
-    await ApplicationModel.updateOne(
-      { _id: id },
+  ): Promise<boolean> {
+    // defense in depth on top of the scheduler reentrancy guard: only a voting
+    // still in VOTING may be decided, a lost race returns false
+    const result = await ApplicationModel.updateOne(
+      { _id: id, status: "VOTING" },
       {
         $set: {
           status: decision.status,
@@ -281,6 +283,7 @@ export class MongooseApplicationRepository implements ApplicationRepository {
         },
       },
     )
+    return result.modifiedCount === 1
   }
 
   async extendVoting(id: string, newExpiresAt: Date): Promise<boolean> {

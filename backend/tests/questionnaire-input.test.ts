@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   classifyQuestionInput,
   classifySummaryInput,
+  isSummaryAction,
 } from "../src/bot/conversations/application-questionnaire.js"
 
 describe("questionnaire input classification", () => {
@@ -49,5 +50,22 @@ describe("summary input classification", () => {
 
   test("stale vote buttons at the summary stage are dropped", () => {
     expect(classifySummaryInput({ callbackQuery: { data: "vote:507f1f77bcf86cd799439011:ACCEPT" } })).toBeNull()
+  })
+})
+
+describe("summary action predicate", () => {
+  test("only submit and cancel are decisions", () => {
+    expect(isSummaryAction({ callbackQuery: { data: "app:submit" } })).toBe(true)
+    expect(isSummaryAction({ callbackQuery: { data: "app:cancel" } })).toBe(true)
+    expect(isSummaryAction({ message: { text: "/cancel" } })).toBe(true)
+  })
+
+  test("free text does not satisfy the wait, so it gets nudged instead of swallowed", () => {
+    expect(isSummaryAction({ message: { text: "готово" } })).toBe(false)
+  })
+
+  test("stickers and stale keyboards do not satisfy the wait either", () => {
+    expect(isSummaryAction({ message: {} })).toBe(false)
+    expect(isSummaryAction({ callbackQuery: { data: "vote:507f1f77bcf86cd799439011:ACCEPT" } })).toBe(false)
   })
 })

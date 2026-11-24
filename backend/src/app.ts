@@ -36,10 +36,14 @@ import { SessionCounters, StatsService } from "./services/runtime-stats.js"
 import { VotingScheduler } from "./services/voting-scheduler.js"
 import { RetentionService } from "./modules/retention/retention-service.js"
 import {
+  MongoApplicationPurge,
   MongoAuditLogPurge,
+  MongoGroupInvitePurge,
   MongoGuestSnapshotPurge,
   MongoServerEventPurge,
   MongoSessionPurge,
+  MongoVotePurge,
+  MongoVotingMessagePurge,
 } from "./modules/retention/repository-mongo.js"
 import { MongoCollectionStats } from "./modules/retention/collection-stats.js"
 import { createBot } from "./bot/bot.js"
@@ -299,13 +303,18 @@ async function main(): Promise<void> {
   })
 
   // retention: the backend owns the database, so it does the housekeeping.
-  // audit/server_events 90d, closed sessions 60d, orphaned guest snapshots —
+  // audit/server_events 90d, closed sessions 60d, orphaned guest snapshots,
+  // old votes/keyboards 90d, dead invites 30d, dead-end applications 1y —
   // atlas m0 has 512mb and dead rows add up fast
   const retention = new RetentionService({
     audit: new MongoAuditLogPurge(),
     serverEvents: new MongoServerEventPurge(),
     sessions: new MongoSessionPurge(),
     snapshots: snapshotPurge,
+    votingMessages: new MongoVotingMessagePurge(),
+    invites: new MongoGroupInvitePurge(),
+    votes: new MongoVotePurge(),
+    applications: new MongoApplicationPurge(),
     options: {
       auditDays: config.retentionAuditDays,
       sessionDays: config.retentionSessionDays,

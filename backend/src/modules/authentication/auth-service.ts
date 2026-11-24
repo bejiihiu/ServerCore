@@ -106,6 +106,11 @@ export class AuthenticationService {
   /** local mirror of open sessions, feeds the /stats counters */
   private readonly openSessions = new Map<string, SessionStatus>()
 
+  // the sweeper runs on a fixed interval but a pass (mongo + telegram fan-out)
+  // can take longer than that; overlapping passes would re-deliver prompts to
+  // the same players, so a tick that arrives mid-pass is skipped
+  private sweeping = false
+
   constructor(deps: {
     store: AuthenticationStore
     config: AuthModuleConfig
@@ -388,39 +393,47 @@ export class AuthenticationService {
 
   /**
    * expires dead requests, retries undelivered prompts, flushes the outbox.
-   * called on a timer by the wiring; safe to call at any rate.
+   * called on a timer by the wiring; safe to call at any rate — a pass that is
+   * still running makes the next call a no-op instead of stacking overlaps.
    */
   async sweep(now: number): Promise<void> {
-    for (const request of await this.store.findPendingExpired(now)) {
-      const claimed = await this.store.claimPendingAuthRequest(request.id, "EXPIRED", now)
-      if (!claimed) continue
-      // the player keeps playing as guest after the window closes
-      const session = await this.store.findOpenSession(request.minecraftUuid)
-      if (session !== null && session.status === "WAITING_AUTH" && session.sessionId === request.sessionId) {
-        await this.store.updateOpenSessionStatus(request.minecraftUuid, "GUEST")
-        this.openSessions.set(request.minecraftUuid, "GUEST")
-        await this.enqueue(
-          session.serverId,
-          "AUTH_EXPIRED",
-          { minecraftUuid: request.minecraftUuid, sessionId: request.sessionId },
-          request.id,
-          now,
-        )
+    if (this.sweeping) return
+    this.sweeping = true
+    try {
+      for (const request of await this.store.findPendingExpired(now)) {
+        const claimed = await this.store.claimPendingAuthRequest(request.id, "EXPIRED", now)
+        if (!claimed) continue
+        // the player keeps playing as guest after the window closes
+        const session = await this.store.findOpenSession(request.minecraftUuid)
+        if (session !== null && session.status === "WAITING_AUTH" && session.sessionId === request.sessionId) {
+          await this.store.updateOpenSessionStatus(request.minecraftUuid, "GUEST")
+          this.openSessions.set(request.minecraftUuid, "GUEST")
+          await this.enqueue(
+            session.serverId,
+            "AUTH_EXPIRED",
+            { minecraftUuid: request.minecraftUuid, sessionId: request.sessionId },
+            request.id,
+            now,
+          )
+        }
+        this.logger.info({ uuid: request.minecraftUuid }, "auth request expired")
       }
-      this.logger.info({ uuid: request.minecraftUuid }, "auth request expired")
-    }
 
-    if (this.sendPrompt !== null) {
-      for (const request of await this.store.findPendingUndelivered()) {
-        await this.deliver(request, now)
+      if (this.sendPrompt !== null) {
+        for (const request of await this.store.findPendingUndelivered()) {
+          await this.deliver(request, now)
+        }
       }
+
+      await this.flushOutbox(now)
+
+      this.joinLimiter.prune(now)
+      this.promptLimiter.prune(now)
+      this.approvalLimiter.prune(now)
+    } finally {
+      // a throwing pass must release the guard, or the sweeper dies for good
+      this.sweeping = false
     }
-
-    await this.flushOutbox(now)
-
-    this.joinLimiter.prune(now)
-    this.promptLimiter.prune(now)
-    this.approvalLimiter.prune(now)
   }
 
   /** drops queued pushes that never got a live connection back */
