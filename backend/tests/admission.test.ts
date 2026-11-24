@@ -9,6 +9,7 @@ import {
   InMemoryVoteRepository,
   InMemoryVotingMessageRepository,
   RecordingAuditSink,
+  RecordingMessageSender,
   seedVotingApplication,
   user,
 } from "./helpers/in-memory.js"
@@ -17,14 +18,17 @@ import { VotingService } from "../src/services/voting-service.js"
 import { GroupService } from "../src/services/group-service.js"
 import { VotingScheduler } from "../src/services/voting-scheduler.js"
 import { RateLimiter } from "../src/services/rate-limiter.js"
+import { NotificationService } from "../src/services/notification-service.js"
+import { AdmissionNotifier } from "../src/services/admission-notifier.js"
+import { StaticRecipients } from "../src/services/recipients.js"
 import { QUESTIONNAIRE_DEFAULTS_MUTABLE } from "./helpers/config.js"
-
 const HOUR = 3_600_000
 const THREE_MONTHS = 90 * 24 * HOUR
 const VOTING_MS = 3 * HOUR
+const ADMIN_IDS = ["777", "778"]
 
 /** wires the whole admission stack over in-memory seams */
-function build(opts: { groupChatId?: number | null } = {}) {
+function build(opts: { groupChatId?: number | null; linkedRecipients?: string[] } = {}) {
   const clock = new FixedClock()
   const users = new InMemoryUserRepository()
   const applications = new InMemoryApplicationRepository()
@@ -35,7 +39,20 @@ function build(opts: { groupChatId?: number | null } = {}) {
   const audit = new RecordingAuditSink()
   const telegram = new FakeTelegramApi({
     groupChatId: opts.groupChatId === undefined ? -100_500 : opts.groupChatId,
-    adminChatId: 777,
+  })
+  const sender = new RecordingMessageSender()
+
+  // shared fan-out path: admission notifications reuse the ops notification
+  // service (rate-limited broadcast + admin copies), exactly like prod wiring
+  const notifications = new NotificationService({
+    sender,
+    recipients: new StaticRecipients(opts.linkedRecipients ?? []),
+    logger: { info() {}, warn() {}, debug() {}, error() {} } as never,
+  })
+  const notifier = new AdmissionNotifier({
+    notifications,
+    adminChatIds: ADMIN_IDS,
+    locale: "ru",
   })
 
   const applications_ = new ApplicationService({
@@ -44,6 +61,7 @@ function build(opts: { groupChatId?: number | null } = {}) {
     drafts,
     audit,
     telegram,
+    notifier,
     rateLimiter: new RateLimiter(10, 60_000, clock),
     clock,
     cooldownMs: THREE_MONTHS,
@@ -59,6 +77,7 @@ function build(opts: { groupChatId?: number | null } = {}) {
     messages,
     audit,
     telegram,
+    notifier,
     clock,
     groupChatId: opts.groupChatId === undefined ? -100_500 : opts.groupChatId,
     defaultLanguage: "ru",
@@ -70,6 +89,7 @@ function build(opts: { groupChatId?: number | null } = {}) {
     users,
     invites,
     telegram,
+    notifier,
     audit,
     clock,
     groupChatId: opts.groupChatId === undefined ? -100_500 : opts.groupChatId,
@@ -84,7 +104,7 @@ function build(opts: { groupChatId?: number | null } = {}) {
     intervalMs: 60_000,
   })
 
-  return { clock, users, applications, votes, messages, invites, drafts, audit, telegram, applications_, voting, group, scheduler }
+  return { clock, users, applications, votes, messages, invites, drafts, audit, telegram, sender, notifications, notifier, applications_, voting, group, scheduler }
 }
 
 /** completes the questionnaire draft for a telegram account */
@@ -228,8 +248,9 @@ describe("voting", () => {
     expect(accept?.style).toBe("success")
     expect(reject?.text).toContain("Отклонить (0)")
     expect(reject?.style).toBe("danger")
-    // admins get a duplicate
-    expect(deps.telegram.adminSent()).toHaveLength(2) // submit + voting announcements
+    // the shared notification fan-out reached both configured admin chats
+    expect(deps.sender.to("777")).toHaveLength(1) // vote_opened duplicate
+    expect(deps.sender.to("778")).toHaveLength(1)
   })
 
   test("vote from an active group member counts and updates the keyboard", async () => {
@@ -379,9 +400,11 @@ describe("voting expiry processing", () => {
     expect(stored?.voting.votesCast).toBe(4)
     // applicant notification + admin copy went out
     expect(deps.telegram.sent.some((s) => s.target === "user:tg-applicant" && s.effectId === "effect-1")).toBe(true)
-    expect(deps.telegram.adminSent().some((text) => text.includes("Итог"))).toBe(true)
+    // the shared fan-out delivered the verdict to both admin chats (verdict
+    // wording is the admin variant, the dm text went to linked users)
+    expect(deps.sender.to("777").some((text: string) => text.includes("Голосование завершено"))).toBe(true)
+    expect(deps.sender.to("778").some((text: string) => text.includes("Голосование завершено"))).toBe(true)
   })
-
   test("exactly 50% of eligible voted -> no quorum -> auto-extended once", async () => {
     const deps = build()
     // 2 of 4 voted: exactly 50%, no quorum
@@ -396,8 +419,8 @@ describe("voting expiry processing", () => {
     expect(stored?.voting.extensionCount).toBe(1)
     // the vote message text was updated with the extension notice
     expect(deps.telegram.editedTexts.some((e) => e.text.includes("продлено"))).toBe(true)
-    // admin chat got the extension notice too
-    expect(deps.telegram.adminSent().some((text) => text.includes("продлено"))).toBe(true)
+    // the shared fan-out delivered the extension notice to the admin chats
+    expect(deps.sender.to("777").some((text: string) => text.includes("продлено"))).toBe(true)
   })
 
   test("second shortfall decides EXPIRED and notifies admins for review", async () => {
@@ -413,8 +436,8 @@ describe("voting expiry processing", () => {
     expect(second.decisions[0]?.status).toBe("EXPIRED")
     const stored = await deps.applications.findById(app.id)
     expect(stored?.status).toBe("EXPIRED")
-    // admin notification about manual review
-    expect(deps.telegram.adminSent().some((text) => text.includes("рассмотрение администрации"))).toBe(true)
+    // admin notification about manual review (fan-out via notifier)
+    expect(deps.sender.to("777").some((text: string) => text.includes("рассмотрение администрации"))).toBe(true)
     // the user status went back so a new application becomes possible later
     const applicant = await deps.users.findByUuid("applicant")
     expect(applicant?.status).toBe("UNREGISTERED")

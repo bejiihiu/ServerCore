@@ -4,9 +4,9 @@ import type { Lang } from "../../services/ports.js"
 import type { VotingService } from "../../services/voting-service.js"
 import type { CastVoteReason } from "../../services/voting-service.js"
 import { parseVoteCallbackData } from "../../services/voting-format.js"
-import { t, type TextKey } from "../../services/i18n.js"
+import { t, type MessageKey } from "../../services/i18n.js"
 
-const FEEDBACK_BY_REASON: Record<CastVoteReason, TextKey> = {
+const FEEDBACK_BY_REASON: Record<CastVoteReason, MessageKey> = {
   VOTER_NOT_FOUND: "vote.feedbackUnknown",
   NO_APPLICATION: "vote.feedbackUnknown",
   NOT_IN_VOTING: "vote.feedbackClosed",

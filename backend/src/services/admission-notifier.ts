@@ -60,7 +60,7 @@ export class AdmissionNotifier {
   }
 
   /** quorum shortfall: the voting window moved, admins + users informed */
-  async voteExtended(input: { username: string; newEndsAt: Date; endTimeText: string }): Promise<void> {
+  async voteExtended(input: { username: string; endTimeText: string }): Promise<void> {
     await this.broadcast(
       t(this.deps.locale, "vote.extended", { endTime: input.endTimeText }),
       t(this.deps.locale, "admission.admin.vote_extended", {
@@ -105,12 +105,16 @@ export class AdmissionNotifier {
   private async broadcast(userText: string, adminText: string): Promise<void> {
     if (this.deps.notifications === null) return
     try {
-      await this.deps.notifications.broadcast(userText, this.deps.adminChatIds)
+      if (adminText === userText) {
+        // identical copy: the broadcast already includes the admin chats
+        await this.deps.notifications.broadcast(userText, this.deps.adminChatIds)
+      } else {
+        // distinct wording: users get the dm text, admins their own copy
+        await this.deps.notifications.broadcast(userText)
+        await this.notifyAdmins(adminText)
+      }
     } catch {
       // a failed notification must never break the admission flow itself
-    }
-    if (adminText !== userText) {
-      await this.notifyAdmins(adminText)
     }
   }
 

@@ -384,6 +384,8 @@ export class VotingService {
    * its original duration. the second shortfall is final (EXPIRED).
    */
   private async extend(application: ApplicationInfo): Promise<boolean> {
+    const applicant = await this.deps.users.findByUuid(application.minecraftUuid)
+    const applicantUsername = applicant?.username ?? application.minecraftUuid
     const durationMs = application.voting.expiresAt.getTime() - application.voting.startedAt.getTime()
     const newExpiresAt = new Date(application.voting.expiresAt.getTime() + durationMs)
     const extended = await this.deps.applications.extendVoting(application.id, newExpiresAt)
@@ -391,7 +393,8 @@ export class VotingService {
 
     const lang = this.deps.defaultLanguage
     const counts = await this.deps.votes.countByDecision(application.id)
-    const text = `${t(lang, "vote.extended", { endTime: formatMoscowTime(newExpiresAt) })}`
+    const endTimeText = formatMoscowTime(newExpiresAt)
+    const text = t(lang, "vote.extended", { endTime: endTimeText })
     const messages = await this.deps.messages.listByApplication(application.id)
     for (const message of messages) {
       if (message.kind !== "group") continue
@@ -411,9 +414,10 @@ export class VotingService {
       targetId: application.id,
       details: { newExpiresAt: newExpiresAt.toISOString() },
     })
-    await this.deps.telegram.sendAdminNotification(
-      `${text}\n\n#voting:${application.id}`,
-    )
+    await this.deps.notifier.voteExtended({
+      username: applicantUsername,
+      endTimeText,
+    })
     return true
   }
 

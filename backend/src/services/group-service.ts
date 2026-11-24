@@ -8,6 +8,7 @@ import type {
   TelegramApi,
   UserRepository,
 } from "./ports.js"
+import type { AdmissionNotifier } from "./admission-notifier.js"
 import { t } from "./i18n.js"
 
 export type IssueInviteOutcome =
@@ -33,6 +34,7 @@ export class GroupService {
       users: UserRepository
       invites: GroupInviteRepository
       telegram: TelegramApi
+      notifier: AdmissionNotifier
       audit: AuditSink
       clock: Clock
       /** closed group chat id, null disables the group flow entirely */
@@ -83,17 +85,17 @@ export class GroupService {
       })
       const applicant = await this.deps.users.findByUuid(application.minecraftUuid)
       const langUser = applicant?.language ?? lang
-      const sent = await this.deps.telegram.sendUserMessage(
+      await this.deps.telegram.sendUserMessage(
         application.telegramId,
         t(langUser, "group.inviteText", {
           url: link.url,
           hours: Math.round(this.deps.inviteTtlMs / 3_600_000),
         }),
       )
-      if (!sent) return { ok: false, reason: "NO_TELEGRAM" }
-      await this.deps.telegram.sendAdminNotification(
-        `Одноразовое приглашение выдано: ${applicant?.username ?? application.minecraftUuid} (${name})\n#invite:${name}`,
-      )
+      await this.deps.notifier.inviteIssued({
+        username: applicant?.username ?? application.minecraftUuid,
+        inviteName: name,
+      })
       const invite: GroupInviteInfo = {
         name,
         applicationId: application.id,
@@ -192,9 +194,7 @@ export class GroupService {
       targetId: String(this.deps.groupChatId ?? ""),
       details: inviteName === undefined ? {} : { inviteName },
     })
-    await this.deps.telegram.sendAdminNotification(
-      `Подозрительное событие в группе: ${kind}, telegram ${telegramId}${inviteName ? `, ссылка ${inviteName}` : ""}`,
-    )
+    await this.deps.notifier.anomaly({ kind, telegramId, inviteName })
   }
 
   /**
@@ -240,9 +240,11 @@ export class GroupService {
       targetId: uuid,
       details: { kicked, revokedInvites: revoked },
     })
-    await this.deps.telegram.sendAdminNotification(
-      `Участник удалён из группы: ${user.username}, кик: ${kicked ? "да" : "нет"}, отозвано ссылок: ${revoked}`,
-    )
+    await this.deps.notifier.memberKicked({
+      username: user.username,
+      kicked,
+      revoked,
+    })
     return { ok: true, kicked, revokedInvites: revoked }
   }
 }

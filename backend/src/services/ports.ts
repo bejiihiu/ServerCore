@@ -286,9 +286,4 @@ export interface TelegramApi {
   unbanChatMember(chatId: number, userId: string): Promise<void>
   /** chat_member lookup used to verify the voter actually sits in the group */
   getChatMember(chatId: number, userId: string): Promise<ChatMembership>
-  /**
-   * duplicates a key event into the admin chat. silently drops the message
-   * when no admin chat is configured — admin notifications are best-effort.
-   */
-  sendAdminNotification(text: string): Promise<void>
 }

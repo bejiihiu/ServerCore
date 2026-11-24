@@ -373,10 +373,7 @@ export class FakeTelegramApi implements TelegramApi {
   private readonly linkUrls = new Map<string, string>()
 
   constructor(
-    private readonly opts: { groupChatId: number | null; adminChatId: number | null } = {
-      groupChatId: -100_500,
-      adminChatId: 777,
-    },
+    private readonly opts: { groupChatId: number | null } = { groupChatId: -100_500 },
   ) {}
 
   async sendUserMessage(
@@ -461,21 +458,27 @@ export class FakeTelegramApi implements TelegramApi {
     return state
   }
 
-  async sendAdminNotification(text: string) {
-    if (this.opts.adminChatId === null) return
-    this.sent.push({ target: "admin", text })
-  }
-
   urlOf(name: string): string {
     return this.linkUrls.get(name) ?? ""
   }
 
-  adminSent(): string[] {
-    return this.sent.filter((s) => s.target === "admin").map((s) => s.text)
-  }
-
   groupSent(): { text: string; keyboard?: InlineKeyboard }[] {
     return this.sent.filter((s) => s.target === "group")
+  }
+}
+
+/** recording MessageSender for NotificationService-based fan-outs in tests */
+export class RecordingMessageSender {
+  readonly sent: { chatId: string; text: string }[] = []
+  failures = new Set<string>()
+
+  async send(chatId: string, text: string): Promise<void> {
+    if (this.failures.has(chatId)) throw new Error(`delivery to ${chatId} failed`)
+    this.sent.push({ chatId, text })
+  }
+
+  to(chatId: string): string[] {
+    return this.sent.filter((s) => s.chatId === chatId).map((s) => s.text)
   }
 }
 

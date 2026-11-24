@@ -10,6 +10,7 @@ import type {
   UserRepository,
   VoterInfo,
 } from "./ports.js"
+import type { AdmissionNotifier } from "./admission-notifier.js"
 import { t } from "./i18n.js"
 import { formatMoscowTime } from "./moscow-time.js"
 import { isDraftComplete, validateAnswer } from "./questionnaire.js"
@@ -53,6 +54,7 @@ export class ApplicationService {
       drafts: ApplicationDraftRepository
       audit: AuditSink
       telegram: TelegramApi
+      notifier: AdmissionNotifier
       rateLimiter: RateLimiter
       clock: Clock
       /** how long after a submit a new application is blocked (3 months) */
@@ -244,17 +246,6 @@ export class ApplicationService {
 
     const application = await this.deps.applications.findById(inserted.id)
     if (!application) return { ok: false, reason: "NO_DRAFT" }
-
-    // admin chat gets a duplicate of the key event
-    await this.deps.telegram.sendAdminNotification(
-      `${t(this.deps.defaultLanguage, "vote.announce", {
-        username: check.user.username,
-        answers: application.answers
-          .map((pair, i) => `${i + 1}. ${pair.question}\n${pair.answer}`)
-          .join("\n\n"),
-        endTime: formatMoscowTime(application.voting.expiresAt),
-      })}\n\n#application:${application.id}`,
-    )
 
     return { ok: true, application, voters }
   }

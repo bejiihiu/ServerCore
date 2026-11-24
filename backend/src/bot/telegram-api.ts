@@ -81,18 +81,15 @@ function toMembership(status: string): ChatMembership {
 export class GrammYTelegramApi implements TelegramApi {
   private readonly api: Api
   private readonly groupChatId: number | null
-  private readonly adminChatId: number | null
 
   constructor(
     bot: Bot<BotContext>,
     opts: {
       groupChatId: number | null
-      adminChatId: number | null
     },
   ) {
     this.api = bot.api
     this.groupChatId = opts.groupChatId
-    this.adminChatId = opts.adminChatId
   }
 
   async sendUserMessage(
@@ -278,14 +275,5 @@ export class GrammYTelegramApi implements TelegramApi {
   async getChatMember(chatId: number, userId: string): Promise<ChatMembership> {
     const member = await this.api.getChatMember(chatId, Number(userId))
     return toMembership(member.status)
-  }
-
-  async sendAdminNotification(text: string): Promise<void> {
-    if (this.adminChatId === null) return
-    try {
-      await this.api.sendMessage(this.adminChatId, text)
-    } catch {
-      // admin chat unreachable — notifications are best-effort by design
-    }
   }
 }

@@ -10,12 +10,16 @@ import { RateLimiter } from "../services/rate-limiter.js"
 import { ApplicationService } from "../services/application-service.js"
 import { VotingService } from "../services/voting-service.js"
 import { GroupService } from "../services/group-service.js"
+import type { NotificationService } from "../services/notification-service.js"
+import { AdmissionNotifier } from "../services/admission-notifier.js"
+import type { StatsService } from "../services/runtime-stats.js"
 import { GrammYTelegramApi } from "./telegram-api.js"
 import { createApplicationConversation } from "./conversations/application-questionnaire.js"
 import { registerVoteCallbacks } from "./handlers/vote-callbacks.js"
 import { registerChatMemberHandler } from "./handlers/chat-member.js"
 import { registerAdmissionCommands } from "./commands/admission.js"
 import { registerStartCommand } from "./commands/start.js"
+import { registerStatsCommand } from "./commands/stats.js"
 
 export type AdmissionBot = {
   bot: Bot<BotContext>
@@ -27,15 +31,19 @@ export type AdmissionBot = {
 export const APPLICATION_CONVERSATION_ID = "application"
 
 /**
- * builds the telegram bot with the full admission flow: questionnaire
- * conversation, group voting, invites, join tracking. returns null when no
- * token is configured — the backend then runs without the bot instead of
- * crashing. the caller owns start/stop lifecycle.
+ * builds the telegram bot with the full admission flow plus the ops /stats
+ * command: questionnaire conversation, group voting, invites, join tracking.
+ * returns null when no token is configured — the backend then runs without
+ * the bot instead of crashing. the caller owns start/stop lifecycle.
  */
 export function createAdmissionBot(
   config: AppConfig,
   logger: Logger,
   repos: AdmissionRepositories,
+  deps: {
+    notifications: NotificationService
+    stats: StatsService
+  },
 ): AdmissionBot | null {
   if (!config.botToken) {
     logger.warn("no bot token configured, telegram bot disabled")
@@ -49,7 +57,14 @@ export function createAdmissionBot(
 
   const telegram = new GrammYTelegramApi(bot, {
     groupChatId: config.groupChatId,
-    adminChatId: config.adminChatId,
+  })
+
+  // admin chat ids for key-event duplicates come from the shared ops config
+  const adminChatIds = config.adminTelegramIds.map(String)
+  const notifier = new AdmissionNotifier({
+    notifications: deps.notifications,
+    adminChatIds,
+    locale: config.defaultLanguage,
   })
 
   const applications = new ApplicationService({
@@ -58,6 +73,7 @@ export function createAdmissionBot(
     drafts: repos.drafts,
     audit: repos.audit,
     telegram,
+    notifier,
     rateLimiter: new RateLimiter(
       config.applicationStartLimit,
       config.applicationStartWindowMs,
@@ -77,6 +93,7 @@ export function createAdmissionBot(
     messages: repos.votingMessages,
     audit: repos.audit,
     telegram,
+    notifier,
     clock: systemClock,
     groupChatId: config.groupChatId,
     defaultLanguage: config.defaultLanguage,
@@ -91,6 +108,7 @@ export function createAdmissionBot(
     users: repos.users,
     invites: repos.invites,
     telegram,
+    notifier,
     audit: repos.audit,
     clock: systemClock,
     groupChatId: config.groupChatId,
@@ -121,6 +139,11 @@ export function createAdmissionBot(
   })
   registerVoteCallbacks(bot, { voting, defaultLanguage: config.defaultLanguage })
   registerChatMemberHandler(bot, { group, logger })
+  registerStatsCommand(bot, {
+    stats: deps.stats,
+    adminIds: config.adminTelegramIds,
+    locale: config.opsLocale,
+  })
 
   return { bot, applications, voting, group }
 }
