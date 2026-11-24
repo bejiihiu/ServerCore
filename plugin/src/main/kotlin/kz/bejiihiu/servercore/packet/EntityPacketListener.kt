@@ -3,6 +3,7 @@ package kz.bejiihiu.servercore.packet
 import com.github.retrooper.packetevents.event.PacketListenerAbstract
 import com.github.retrooper.packetevents.event.PacketListenerPriority
 import com.github.retrooper.packetevents.event.PacketSendEvent
+import com.github.retrooper.packetevents.event.UserDisconnectEvent
 import com.github.retrooper.packetevents.protocol.packettype.PacketType
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerDestroyEntities
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityEquipment
@@ -77,9 +78,14 @@ class EntityPacketListener(
         if (viewer == target) return
         registry.bindEntityId(viewer, entityId, target)
         applier().onSpawn(viewer, target, entityId)?.let { registry.set(viewer, target, it) }
-        // fresh pair defaults to visible: record it explicitly so every known
-        // pair always has a state, hidden ones lose the packet right here
-        if (registry.state(viewer, target) == null) {
+        // a fresh PLAYER pair defaults to visible: record it explicitly so the
+        // pair always has a state and hidden ones lose the spawn right here.
+        // generic entity spawns get no row: rows only exist for suppression
+        // and mobs are never suppressed — auto-rows for every mob would churn
+        // the store and evict real player rows under the per-viewer cap
+        if (event.packetType == PacketType.Play.Server.SPAWN_PLAYER &&
+            registry.state(viewer, target) == null
+        ) {
             registry.set(viewer, target, EntityViewState.VISIBLE)
         }
         if (registry.state(viewer, target) == EntityViewState.HIDDEN) event.setCancelled(true)
@@ -89,5 +95,14 @@ class EntityPacketListener(
         val target = registry.targetOf(viewer, entityId) ?: return
         if (target == viewer) return
         if (applier().shouldSuppressEntityData(viewer, target)) event.setCancelled(true)
+    }
+
+    /**
+     * a disconnecting viewer's id bindings and rows die with the connection -
+     * nobody else cleans them, and the fresh client on reconnect gets its
+     * picture rebuilt from the sync registry's policy rows, not from here.
+     */
+    override fun onUserDisconnect(event: UserDisconnectEvent) {
+        registry.removeViewer(event.user.uuid)
     }
 }
