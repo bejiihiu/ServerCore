@@ -3,9 +3,10 @@ package kz.bejiihiu.servercore.locale
 import kotlinx.serialization.Serializable
 
 /**
- * locale channel of the ws protocol. the backend hosts the locale files on
- * github, renders the canonical content and pushes the full file to every
- * connected server — the plugin never fetches anything itself (no http).
+ * locale channel of the ws protocol. the backend owns the canonical bundle
+ * (shipped in its image), renders the canonical content and pushes the full
+ * file to every connected server — the plugin never fetches anything itself
+ * (no http).
  */
 object LocaleProtocol {
 

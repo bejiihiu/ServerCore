@@ -47,6 +47,11 @@ export const MESSAGE_TYPES = [
   "SERVER_STATUS",
   "SERVER_HEARTBEAT",
 
+  // localization: the backend owns the canonical bundle and pushes the full
+  // file on every fresh connection; the plugin answers with an ack
+  "LOCALE_PUSH",
+  "LOCALE_ACK",
+
   // transport-level
   "SERVER_HELLO",
   "SERVER_READY",
@@ -70,6 +75,7 @@ export const BACKEND_TO_PLUGIN_TYPES: readonly MessageType[] = [
   "SESSION_CHECK",
   "SPEC_STARTED",
   "SPEC_ENDED",
+  "LOCALE_PUSH",
   "SERVER_READY",
   "ACK",
   "ERROR",
@@ -262,6 +268,24 @@ export const payloadSchemas = {
     maxPlayers: z.number().int().min(0),
     tps: z.number().min(0).max(1000).optional(),
     activeSpecSessions: z.number().int().min(0).max(4096).optional(),
+  }),
+
+  LOCALE_PUSH: z.object({
+    // language tag, canonical "ru"; the plugin accepts nothing else right now
+    locale: z.string().min(2).max(16).regex(/^[a-z]{2}(?:-[A-Za-z]{2,8})?$/),
+    // opaque backend revision id (content hash), echoed back in the ack
+    revision: z.string().min(1).max(64),
+    // the FULL yaml file, never a diff. ceiling matches the service guard and
+    // stays under the plugin's default packet cap
+    content: z.string().min(1).max(200_000),
+  }),
+
+  LOCALE_ACK: z.object({
+    locale: z.string().min(2).max(16),
+    revision: z.string().min(1).max(64),
+    accepted: z.boolean(),
+    // present when accepted is false: why the plugin kept its old store
+    reason: z.string().max(512).optional(),
   }),
 
   SERVER_HELLO: z.object({

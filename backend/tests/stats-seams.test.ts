@@ -14,6 +14,7 @@ import { OpsNotifier, eventForState, type OpsEvent } from "../src/services/ops-n
 import { NotificationService, type MessageSender } from "../src/services/notification-service.js"
 import { SessionCounters, StatsService } from "../src/services/runtime-stats.js"
 import type { StatsCountsSource } from "../src/services/stats-counts.js"
+import { LocaleService } from "../src/services/locale-service.js"
 
 function logger(): Logger {
   return pino({ level: "silent" })
@@ -134,6 +135,7 @@ function buildScenario() {
     logger: logger(),
     verifier: stubVerifier(),
     specAudit: stubSpecAudit(),
+    locale: new LocaleService({ logger: logger() }),
     hooks: {
       onStateChange: (serverId, state, _previous, options) => {
         const telegram = options?.telegramSuppressed === true ? false : true

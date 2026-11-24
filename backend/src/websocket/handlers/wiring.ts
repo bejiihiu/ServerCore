@@ -6,12 +6,16 @@ import type { SpecAuditService } from "../../modules/audit/spec-audit-service.js
 import { registerLifecycleHandlers } from "./server-lifecycle.js"
 import { registerAccountHandlers } from "./account-handlers.js"
 import { registerSpecHandlers } from "./spec-handlers.js"
+import { registerLocaleHandlers } from "./locale-handlers.js"
+import type { LocaleService } from "../../services/locale-service.js"
 
 export type HandlerWiringDeps = {
   directory: ServerDirectory
   logger: Logger
   verifier: GatewayOwnershipVerifier
   specAudit: SpecAuditService
+  /** canonical locale bundle + ack bookkeeping, fed by LOCALE_ACK */
+  locale: LocaleService
   /** module hooks fired from the lifecycle events (ops, authentication) */
   hooks: LifecycleHooks
 }
@@ -38,6 +42,11 @@ export function registerAllHandlers(registry: HandlerRegistry, deps: HandlerWiri
 
   registerSpecHandlers(registry, {
     audit: deps.specAudit,
+    logger: deps.logger,
+  })
+
+  registerLocaleHandlers(registry, {
+    locale: deps.locale,
     logger: deps.logger,
   })
 }
