@@ -3,7 +3,6 @@ package kz.bejiihiu.servercore.spectator
 import com.github.retrooper.packetevents.event.PacketListenerAbstract
 import com.github.retrooper.packetevents.event.PacketListenerPriority
 import com.github.retrooper.packetevents.event.PacketSendEvent
-import com.github.retrooper.packetevents.protocol.item.ItemStack
 import com.github.retrooper.packetevents.protocol.packettype.PacketType
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerOpenWindow
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSetSlot

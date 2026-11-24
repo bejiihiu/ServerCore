@@ -51,15 +51,6 @@ interface PunishmentQuery {
  */
 object ModerationMapper {
 
-    /** fp types servercore reads; anything else (whitelist, maintenance...) is out of scope */
-    fun toKind(type: Moderation.Type): PunishmentKind? = when (type) {
-        Moderation.Type.BAN -> PunishmentKind.BAN
-        Moderation.Type.MUTE -> PunishmentKind.MUTE
-        Moderation.Type.WARN -> PunishmentKind.WARN
-        Moderation.Type.KICK -> PunishmentKind.KICK
-        else -> null
-    }
-
     /** fp type for a servercore kind, used on the way in */
     fun toFpType(kind: PunishmentKind): Moderation.Type = when (kind) {
         PunishmentKind.BAN -> Moderation.Type.BAN

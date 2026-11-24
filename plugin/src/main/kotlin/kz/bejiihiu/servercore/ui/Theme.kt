@@ -41,9 +41,8 @@ object Theme {
     const val PULSE_A = "▸" // actionbar pulse, filled phase
     const val PULSE_B = "▹" // actionbar pulse, hollow phase
 
-    // chat block geometry: rule width and card width in glyph units
+    // chat block geometry: rule width in glyph units
     const val FRAME_WIDTH = 40
-    const val CARD_WIDTH = 38
 
     /**
      * slate translucent backing for world-anchored text, ARGB. the alpha keeps

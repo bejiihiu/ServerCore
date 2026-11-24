@@ -165,9 +165,6 @@ class SpecAuditTrail(
     /** total entries dropped because their session went over the cap */
     fun droppedForSessionCap(): Long = droppedBySessionCap.get()
 
-    /** entries waiting for the next drain, for tests and shutdown checks */
-    fun pendingCount(): Int = synchronized(drainLock) { buffer.size }
-
     /** blocking drain, for shutdown and tests */
     fun flushNow() {
         drainBlocking()

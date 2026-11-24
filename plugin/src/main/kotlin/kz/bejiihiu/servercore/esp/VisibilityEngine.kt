@@ -10,7 +10,6 @@ import kotlin.math.floor
 import kotlin.math.sqrt
 import org.bukkit.entity.Player
 import org.bukkit.plugin.Plugin
-import org.bukkit.plugin.java.JavaPlugin
 
 /**
  * orchestrates the whole anti-esp pipeline:

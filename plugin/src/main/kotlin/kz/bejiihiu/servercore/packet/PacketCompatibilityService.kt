@@ -24,10 +24,6 @@ class PacketCompatibilityService {
         cachedApi = runCatching { PacketEvents.getAPI() }.getOrNull()
     }
 
-    fun packetEventsPlugin(): Plugin? = cachedPlugin
-
-    fun api(): PacketEventsAPI<*>? = cachedApi
-
     /** plugin present, enabled, and its api instance is live */
     fun isAvailable(): Boolean {
         val plugin = cachedPlugin ?: return false

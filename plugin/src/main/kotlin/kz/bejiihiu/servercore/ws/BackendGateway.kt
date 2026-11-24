@@ -70,8 +70,4 @@ class BackendGateway : BackendLink {
         listeners.add(listener)
         if (connected) listener.onConnected()
     }
-
-    fun removeListener(listener: GatewayListener) {
-        listeners.remove(listener)
-    }
 }

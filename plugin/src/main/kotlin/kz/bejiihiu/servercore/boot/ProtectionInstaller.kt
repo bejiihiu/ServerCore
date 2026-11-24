@@ -12,15 +12,15 @@ import kz.bejiihiu.servercore.protection.GamemodeGuardListener
 import kz.bejiihiu.servercore.protection.OpLockdown
 import kz.bejiihiu.servercore.protection.ProtectionConfig
 import kz.bejiihiu.servercore.protection.ProtectionLifecycle
-import kz.bejiihiu.servercore.protection.ServerCoreCommands
 import org.bukkit.Bukkit
 
 /**
  * Protection stack: command denial + alias expansion, gamemode guard with its
- * sweep, command block audit, op lockdown and the /servercore admin command.
+ * sweep, command block audit and the op lockdown behind /servercore deop-all.
  *
- * The gamemode override registry is created even when protection is disabled:
- * the spec stack sanctions its own mode grants through it either way.
+ * The gamemode override registry and the op lockdown are created even when
+ * protection is disabled: the spec stack sanctions its own mode grants through
+ * the registry either way, and the admin command tree is always present.
  */
 class ProtectionInstaller(
     private val ctx: PluginContext,
@@ -30,6 +30,10 @@ class ProtectionInstaller(
     lateinit var overrideRegistry: AllowedGamemodeOverrideRegistry
         private set
 
+    /** backs /servercore deop-all; exists even with the guards switched off */
+    var opLockdown: OpLockdown? = null
+        private set
+
     private var gamemodeGuard: GamemodeGuardListener? = null
     private var commandBlockAuditor: CommandBlockAuditor? = null
 
@@ -37,14 +41,20 @@ class ProtectionInstaller(
         val config = ProtectionConfig.load(ctx.plugin.config, ctx.logger)
         val registry = AllowedGamemodeOverrideRegistry()
         overrideRegistry = registry
+        val lockdown = OpLockdown(ctx.plugin, ctx.logger)
+        opLockdown = lockdown
         if (config.enabled) {
-            setup(config, registry)
+            setup(config, registry, lockdown)
         } else {
             ctx.logger.warning("protection disabled in config: command and gamemode guards are off")
         }
     }
 
-    private fun setup(protectionConfig: ProtectionConfig, registry: AllowedGamemodeOverrideRegistry) {
+    private fun setup(
+        protectionConfig: ProtectionConfig,
+        registry: AllowedGamemodeOverrideRegistry,
+        opLockdown: OpLockdown,
+    ) {
         val plugin = ctx.plugin
         val i18n = ctx.i18n
         val dispatcherRef = AtomicReference<CommandDispatcher<CommandSourceStack>?>(null)
@@ -80,13 +90,11 @@ class ProtectionInstaller(
         auditor.start()
         commandBlockAuditor = auditor
 
-        val opLockdown = OpLockdown(plugin, ctx.logger)
         opLockdown.verifyOps()
         ProtectionLifecycle(
             plugin = plugin,
             dispatcherRef = dispatcherRef,
             onAliasesChanged = { service.refreshAliases() },
-            serverCoreCommands = ServerCoreCommands(plugin, opLockdown),
         ).attach()
     }
 

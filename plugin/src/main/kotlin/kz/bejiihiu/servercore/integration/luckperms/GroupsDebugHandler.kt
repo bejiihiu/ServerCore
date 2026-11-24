@@ -3,7 +3,7 @@ package kz.bejiihiu.servercore.integration.luckperms
 import io.papermc.paper.command.brigadier.CommandSourceStack
 import java.util.UUID
 import java.util.logging.Logger
-import kz.bejiihiu.servercore.boot.GroupsDebugCommand
+import kz.bejiihiu.servercore.boot.ServerCoreCommand
 import kz.bejiihiu.servercore.ui.UiScheduler.uiNow
 import kz.bejiihiu.servercore.util.I18n
 import net.kyori.adventure.text.Component
@@ -26,7 +26,7 @@ class GroupsDebugHandler(
     private val source: PermissionSource,
     private val i18n: I18n,
     private val logger: Logger,
-) : GroupsDebugCommand.Handler {
+) : ServerCoreCommand.Groups {
 
     override fun execute(stack: CommandSourceStack, args: Array<out String>) {
         if (args.size != 1) {

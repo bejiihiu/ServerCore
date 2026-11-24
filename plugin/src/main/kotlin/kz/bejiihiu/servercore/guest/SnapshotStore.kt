@@ -7,7 +7,6 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executor
 import kz.bejiihiu.servercore.util.AtomicJsonFile
-import kotlinx.serialization.builtins.MapSerializer
 
 /** one durable guest snapshot: captured once, never overwritten by later sessions */
 @Serializable

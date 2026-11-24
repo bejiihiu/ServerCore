@@ -173,15 +173,10 @@ class GuestSessionService(
         }
     }
 
-    fun resendPrompt(player: Player) {
-        // user asked for it explicitly, the once-per-session rule does not apply
-        showPrompt(player, null, force = true)
-    }
-
     /** remembers what was shown so the deep-link prompt goes out once per session */
-    private fun showPrompt(player: Player, personalUrl: String?, force: Boolean = false) {
+    private fun showPrompt(player: Player, personalUrl: String?) {
         val url = personalUrl ?: linkSource.pendingLink(player.uniqueId)?.url ?: config.fallbackBotUrl
-        if (!force && shownLinks[player.uniqueId] == url) return
+        if (shownLinks[player.uniqueId] == url) return
         shownLinks[player.uniqueId] = url
         messages.sendPrompt(player, url)
     }

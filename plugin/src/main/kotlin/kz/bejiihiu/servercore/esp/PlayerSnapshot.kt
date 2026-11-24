@@ -3,7 +3,6 @@ package kz.bejiihiu.servercore.esp
 import org.bukkit.GameMode
 import org.bukkit.entity.Player
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 
 /** tiny value type so the pure layers never touch bukkit vectors */
 data class Vec3(val x: Double, val y: Double, val z: Double) {

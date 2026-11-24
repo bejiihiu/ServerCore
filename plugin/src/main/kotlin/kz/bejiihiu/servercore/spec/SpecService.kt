@@ -1,7 +1,6 @@
 package kz.bejiihiu.servercore.spec
 
 import java.util.UUID
-import kz.bejiihiu.servercore.spectator.SpecSessionReader
 import kz.bejiihiu.servercore.ui.UiScheduler.uiNow
 import kz.bejiihiu.servercore.util.I18n
 import net.kyori.adventure.text.Component
@@ -128,9 +127,6 @@ class SpecService(
     fun onQuit(playerId: UUID) {
         coordinator.handleQuit(playerId)
     }
-
-    /** read-side seam for the live inventory viewer: who is this admin watching right now */
-    fun readerFor(adminId: UUID): SpecSessionReader = CoordinatorSessionReader(coordinator, adminId)
 
     /** join hook: replays a pending restore for an admin who left mid-session */
     fun onJoin(player: Player) {

@@ -5,7 +5,6 @@ import com.github.retrooper.packetevents.event.PacketListenerPriority
 import com.github.retrooper.packetevents.event.PacketSendEvent
 import com.github.retrooper.packetevents.protocol.packettype.PacketType
 import com.github.retrooper.packetevents.util.Vector3d
-import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerActionBar
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerCollectItem
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerDamageEvent
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityAnimation

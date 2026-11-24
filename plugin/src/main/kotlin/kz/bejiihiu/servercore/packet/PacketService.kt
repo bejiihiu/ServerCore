@@ -2,8 +2,6 @@ package kz.bejiihiu.servercore.packet
 
 import com.github.retrooper.packetevents.PacketEvents
 import com.github.retrooper.packetevents.event.PacketListenerCommon
-import com.github.retrooper.packetevents.wrapper.PacketWrapper
-import java.util.UUID
 import java.util.logging.Logger
 import org.bukkit.plugin.java.JavaPlugin
 
@@ -45,14 +43,6 @@ class PacketService(
     var applier: ViewStateApplier = DefaultViewStateApplier(registry)
 
     private var listener: PacketListenerCommon? = null
-
-    /** plugin onLoad phase: pre-check the dependency while loading, cached for boot */
-    fun preLoad() {
-        compatibility.refresh()
-        if (compatibility.packetEventsPlugin() == null) {
-            logger.warning("packetevents plugin not present, packet layer will idle")
-        }
-    }
 
     /** onEnable phase: attach the listener unless disabled or unavailable */
     fun start() {
@@ -108,21 +98,4 @@ class PacketService(
         runCatching { PacketEvents.getAPI().getEventManager().unregisterListener(listener) }
             .onFailure { logger.warning("scoped listener detach failed: ${it.message}") }
     }
-
-    /**
-     * send a packet to a viewer from any thread. the player lookup and the
-     * send run on the viewer's entity scheduler — folia-correct by construction.
-     */
-    fun sendTo(viewer: UUID, wrapper: PacketWrapper<*>) {
-        threads.forPlayer(viewer) { player ->
-            PacketEvents.getAPI().getPlayerManager().sendPacket(player, wrapper)
-        }
-    }
-
-    /** state change entry point for behaviour modules, folia-safe from any thread */
-    fun setState(viewer: UUID, target: UUID, state: EntityViewState) {
-        registry.set(viewer, target, state)
-    }
-
-    fun state(viewer: UUID, target: UUID): EntityViewState? = registry.state(viewer, target)
 }

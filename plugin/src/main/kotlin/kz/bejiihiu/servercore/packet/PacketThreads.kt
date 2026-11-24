@@ -1,7 +1,6 @@
 package kz.bejiihiu.servercore.packet
 
 import java.util.UUID
-import java.util.concurrent.TimeUnit
 import org.bukkit.entity.Player
 import org.bukkit.plugin.java.JavaPlugin
 
@@ -29,18 +28,5 @@ class PacketThreads(private val plugin: JavaPlugin) {
     fun forPlayer(uuid: UUID, task: (Player) -> Unit) {
         val player = plugin.server.getPlayer(uuid) ?: return
         player.scheduler.run(plugin, { t -> task(player); t.cancel() }, null)
-    }
-
-    /**
-     * delay then run async, in ticks — the periodic visibility check loop of
-     * later modules hangs off this.
-     */
-    fun asyncLater(delayTicks: Long, task: Runnable) {
-        plugin.server.asyncScheduler.runDelayed(
-            plugin,
-            { task.run() },
-            delayTicks * 50L,
-            TimeUnit.MILLISECONDS,
-        )
     }
 }

@@ -1,7 +1,6 @@
 package kz.bejiihiu.servercore.protection
 
 import java.util.logging.Logger
-import org.bukkit.OfflinePlayer
 import org.bukkit.plugin.java.JavaPlugin
 
 /**

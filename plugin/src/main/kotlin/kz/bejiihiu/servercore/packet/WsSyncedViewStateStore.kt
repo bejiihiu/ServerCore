@@ -28,11 +28,6 @@ class WsSyncedViewStateStore(
     @Volatile private var sink: ViewStateSink? = null,
 ) : ViewStateStore {
 
-    /** wire or replace the replication sink at runtime, sync module's seam */
-    fun bindSink(sink: ViewStateSink?) {
-        this.sink = sink
-    }
-
     override fun get(viewer: UUID, target: UUID): EntityViewState? = backing.get(viewer, target)
 
     override fun set(viewer: UUID, target: UUID, state: EntityViewState) {

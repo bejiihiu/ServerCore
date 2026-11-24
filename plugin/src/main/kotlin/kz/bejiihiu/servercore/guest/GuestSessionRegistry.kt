@@ -69,7 +69,4 @@ class GuestSessionRegistry {
             if (sessions.containsKey(uuid) || uuid in authorized || !allowed()) null
             else create().also { sessions[uuid] = it }
         }
-
-    /** runs arbitrary bookkeeping under the same mutex [start] uses */
-    fun <T> withStartLock(block: () -> T): T = synchronized(lock) { block() }
 }

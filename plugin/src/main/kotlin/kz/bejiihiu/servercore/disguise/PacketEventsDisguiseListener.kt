@@ -8,7 +8,6 @@ import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEn
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityMetadata
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSpawnEntity
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSpawnPlayer
-import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import java.util.UUID
 

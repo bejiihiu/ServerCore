@@ -2,7 +2,6 @@ package kz.bejiihiu.servercore.integration.flectonepulse
 
 import java.util.UUID
 import java.util.logging.Logger
-import net.flectone.pulse.model.entity.FPlayer
 import net.flectone.pulse.service.FPlayerService
 import net.flectone.pulse.service.ModerationService
 

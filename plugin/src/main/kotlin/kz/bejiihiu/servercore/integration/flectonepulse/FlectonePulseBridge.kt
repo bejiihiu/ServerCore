@@ -59,7 +59,6 @@ class FlectonePulseBridge(
     }
 
     private val state = AtomicReference(State.NOT_PRESENT)
-    private var reason: String = "not detected"
 
     // one cache for the whole bridge lifetime: the permanent listener is
     // registered exactly once with this instance and keeps invalidating it
@@ -78,14 +77,8 @@ class FlectonePulseBridge(
 
     fun currentState(): State = state.get()
 
-    /** why the bridge is not connected, for logs and diagnostics */
-    fun currentReason(): String = reason
-
     /** the punishment lookup, empty until fp is actually connected */
     fun punishmentQuery(): PunishmentQuery = query
-
-    /** the telegram de-duplication check notification senders consult */
-    fun notificationSuppression(): NotificationSuppression = suppression
 
     /**
      * value for SERVER_STATUS frames: true = backend should not announce this
@@ -100,7 +93,6 @@ class FlectonePulseBridge(
         val manager = Bukkit.getPluginManager()
         val fp = manager.getPlugin(PLUGIN_NAME)
         if (fp == null || !manager.isPluginEnabled(PLUGIN_NAME)) {
-            reason = "plugin not installed, integration off"
             logger.info("flectonepulse not present, running without moderation lookups")
             return
         }
@@ -108,7 +100,6 @@ class FlectonePulseBridge(
         val missing = FlectonePulseApiCompat.firstMissingClass(::classPresent)
         if (missing != null) {
             state.set(State.INCOMPATIBLE)
-            reason = "api surface mismatch: $missing missing"
             logger.severe(
                 "flectonepulse api artifact does not match the expected " +
                     "${FlectonePulseApiCompat.TARGET_VERSION} surface (missing $missing) — " +
@@ -118,7 +109,6 @@ class FlectonePulseBridge(
         }
 
         state.set(State.CONNECTING)
-        reason = "waiting for the fp injector"
         logger.info("flectonepulse ${fp.pluginMeta.version} detected, wiring the api bridge")
         attemptConnect(reRegister = true, attemptsLeft = READY_ATTEMPTS)
     }
@@ -140,7 +130,6 @@ class FlectonePulseBridge(
         val ready = fp != null && runCatching { fp.isReady }.getOrDefault(false)
         if (fp == null || !ready) {
             if (attemptsLeft <= 0) {
-                reason = "fp injector not ready after $READY_ATTEMPTS attempts"
                 logger.severe(
                     "flectonepulse is installed but its api never became ready — " +
                         "moderation lookups stay off, check the flectonepulse log",
@@ -167,7 +156,6 @@ class FlectonePulseBridge(
                 telegramEnabled = telegramProbe(fp),
             )
         }.getOrElse { error ->
-            reason = "service resolution failed: ${error.message}"
             logger.severe("flectonepulse api services unavailable: ${error.message} — integration disabled")
             return
         }
@@ -180,7 +168,6 @@ class FlectonePulseBridge(
         }
 
         state.set(State.CONNECTED)
-        reason = "connected"
         logger.info("flectonepulse bridge connected: read-only punishment lookups on")
     }
 
