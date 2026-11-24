@@ -10,7 +10,8 @@
     "tzShort": "MSK",
     "errorTitle": "That did not work",
     "error": "Something went wrong. Try again in a minute.",
-    "staleButton": "This button is no longer active"
+    "staleButton": "This button is no longer active",
+    "busy": "Another bot dialog is already open. Finish it and try again."
   },
   "menu": {
     "title": "ServerCore",

@@ -300,8 +300,8 @@ function busyScreen(locale: Locale): ScreenMessage {
     t,
     e: emoji,
     tone: "attention",
-    title: t.t("common.error"),
-    body: t.t("bot.conversation.busy"),
+    title: t.t("common.errorTitle"),
+    body: t.t("common.busy"),
   })
 }
 
