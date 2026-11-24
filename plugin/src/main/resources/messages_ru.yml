@@ -49,6 +49,18 @@ auth:
     title: "<red>В авторизации отказано</red>"
   expired:
     actionbar: "<yellow>Запрос на вход истёк, используйте <bold>/link</bold>, чтобы повторить</yellow>"
+spec:
+  inventory-title: "<secondary>Инвентарь</secondary> <muted>·</muted> <gold>{target}</gold>"
+  started: "<green>Наблюдение начато: <white>{target}</white>. Выйдите командой /spec</green>"
+  exited: "<green>Наблюдение завершено, ваше состояние восстановлено</green>"
+  aborted: "<red>Наблюдение за {target} не удалось начать</red>"
+  disabled: "<red>Наблюдение отключено на этом сервере</red>"
+  no-target: "<red>Игрок {target} не в сети</red>"
+  self: "<red>За собой наблюдать нельзя</red>"
+  busy-admin: "<red>Вы уже наблюдаете за {target}. Завершите текущую сессию</red>"
+  busy-target: "<red>{target} уже под наблюдением другого администратора</red>"
+  not-observing: "<red>Вы сейчас ни за кем не наблюдаете</red>"
+  denied-permission: "<red>У вас нет доступа к наблюдению</red>"
   denied-level: "<red>Нельзя наблюдать за {target}: его уровень доступа выше вашего</red>"
 protection:
   denied:
