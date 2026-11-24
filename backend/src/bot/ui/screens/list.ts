@@ -33,7 +33,7 @@ export function paginatedListScreen(params: PaginatedListParams): ScreenMessage 
   )
 
   const rows = [paginationRow({ page, totalPages, callbackPrefix: paginationPrefix })]
-  if (backTarget !== undefined) rows.push([backButton(backTarget)])
+  if (backTarget !== undefined) rows.push([backButton(backTarget, t.t("common.back"))])
 
   if (items.length === 0) {
     return { text: t.t("common.empty"), markup: inlineKeyboard(rows) }

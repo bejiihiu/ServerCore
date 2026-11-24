@@ -115,14 +115,15 @@ export function paginationRow(spec: PaginationSpec): InlineButton[] {
 /**
  * back-navigation: the return target travels inside the callback data, so
  * keyboards stay stateless. the target must be a registered callback id
- * ("menu:back" etc) — the flow's handler owns where back leads.
+ * ("menu:back" etc) and the label comes from the caller's translator — this
+ * layer never carries copy of its own.
  */
-export function backButton(target: string, label = "‹ Назад"): InlineButton {
+export function backButton(target: string, label: string): InlineButton {
   return toInlineButton({ label, callbackData: target })
 }
 
 /** one back button on its own row */
-export function backRow(target: string, label?: string): InlineButton[] {
+export function backRow(target: string, label: string): InlineButton[] {
   return [backButton(target, label)]
 }
 
@@ -169,7 +170,7 @@ export function confirmKeyboard(spec: ConfirmSpec): InlineButton[][] {
   ]
 }
 
-/** standalone cancel button (own row) */
-export function cancelButton(callbackData: string, label = "✕ Отмена"): InlineButton {
+/** standalone cancel button (own row); the caller owns the label */
+export function cancelButton(callbackData: string, label: string): InlineButton {
   return toInlineButton({ label, callbackData })
 }

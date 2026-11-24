@@ -63,7 +63,7 @@ describe("providers", () => {
 
   test("the default provider renders ru", () => {
     expect(i18n.locale).toBe("ru")
-    expect(i18n.t("common.back")).toBe("Назад")
+    expect(i18n.t("common.back")).toBe("‹ Назад")
   })
 
   test("unknown keys stay visible through the provider", () => {

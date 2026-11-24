@@ -99,7 +99,9 @@ export class AdmissionNotifier {
       t(this.deps.locale, "admission.admin.anomaly", {
         kind: input.kind,
         telegram: input.telegramId,
-        invite: input.inviteName ? `, ссылка ${input.inviteName}` : "",
+        invite: input.inviteName
+          ? t(this.deps.locale, "admission.admin.invite_ref", { name: input.inviteName })
+          : "",
       }),
     )
   }

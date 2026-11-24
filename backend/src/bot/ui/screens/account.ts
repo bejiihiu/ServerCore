@@ -35,7 +35,7 @@ export function accountCardScreen(params: AccountCardParams): ScreenMessage {
       "",
       expandableQuote(t.t("account.notLinkedHint")),
     )
-    return { text, markup: inlineKeyboard([[backButton(ACCOUNT_CALLBACK.back)]]) }
+    return { text, markup: inlineKeyboard([[backButton(ACCOUNT_CALLBACK.back, t.t("common.back"))]]) }
   }
 
   const text = joinLines(
@@ -50,7 +50,7 @@ export function accountCardScreen(params: AccountCardParams): ScreenMessage {
     text,
     markup: inlineKeyboard([
       actionRow([{ label: t.t("account.action.refresh"), callbackData: ACCOUNT_CALLBACK.open }]),
-      [backButton(ACCOUNT_CALLBACK.back)],
+      [backButton(ACCOUNT_CALLBACK.back, t.t("common.back"))],
     ]),
   }
 }

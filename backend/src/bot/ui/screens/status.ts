@@ -39,7 +39,7 @@ export function statusScreen(params: StatusScreenParams): ScreenMessage {
     text,
     markup: inlineKeyboard([
       actionRow([{ label: t.t("common.refresh"), callbackData: MENU_CALLBACK.status }]),
-      [backButton(MENU_CALLBACK.back)],
+      [backButton(MENU_CALLBACK.back, t.t("common.back"))],
     ]),
   }
 }

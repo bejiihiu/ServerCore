@@ -100,17 +100,9 @@ const messages = {
   },
 
   // admission: questionnaire
-  "app.intro": {
-    ru: "Заявка на вступление\n\nОтвечай на вопросы сообщениями — по одному ответу на вопрос.",
-    en: "Membership application\n\nAnswer with messages — one answer per question.",
-  },
   "app.question": {
     ru: "Вопрос {n} из {total}\n\n{question}",
     en: "Question {n} of {total}\n\n{question}",
-  },
-  "app.answerReceived": {
-    ru: "Принято.",
-    en: "Saved.",
   },
   "app.answerEmpty": {
     ru: "Ответ пустой. Напиши что-нибудь.",
@@ -127,10 +119,6 @@ const messages = {
   "app.submitButton": {
     ru: "Отправить анкету",
     en: "Submit application",
-  },
-  "app.viewButton": {
-    ru: "Моя заявка",
-    en: "My application",
   },
   "app.summary": {
     ru: "Заявка на вступление\n\nMinecraft: {username}\n\n{answers}",
@@ -306,14 +294,6 @@ const messages = {
     ru: "Аккаунт не найден. Зайди на сервер и пройди регистрацию по ссылке из игры.",
     en: "Account not found. Join the server and register via the in-game link.",
   },
-  "status.reply": {
-    ru: "Minecraft: {username}\nСтатус: {status}\nTelegram: подключён",
-    en: "Minecraft: {username}\nStatus: {status}\nTelegram: connected",
-  },
-  "help.text": {
-    ru: "Команды:\n/application — заполнить заявку на вступление\n/myapplication — посмотреть последнюю заявку\n/language — сменить язык интерфейса\n/status — статус аккаунта\n/help — эта справка",
-    en: "Commands:\n/application — fill in the membership application\n/myapplication — view your latest application\n/language — switch the interface language\n/status — account status\n/help — this help",
-  },
   "error.generic": {
     ru: "Что-то пошло не так, попробуй позже.",
     en: "Something went wrong, try again later.",
@@ -332,10 +312,6 @@ const messages = {
     ru: "Голосование завершено: {username} — {verdict}",
     en: "Voting finished: {username} — {verdict}",
   },
-  "admission.admin.vote_expired": {
-    ru: "Голосование завершилось без кворума: заявка {username} требует ручного рассмотрения. Голоса: за — {for}, против — {against}, проголосовало {cast} из {eligible}.",
-    en: "Voting ended without quorum: {username}'s application needs manual review. Votes: for — {for}, against — {against}, {cast} of {eligible} voted.",
-  },
   "admission.admin.vote_extended": {
     ru: "Голосование по заявке {username} продлено до {endTime} МСК (кворум не собран).",
     en: "Voting for {username}'s application extended until {endTime} MSK (quorum not reached).",
@@ -351,6 +327,10 @@ const messages = {
   "admission.admin.anomaly": {
     ru: "Подозрительное событие в группе: {kind}, telegram {telegram}{invite}",
     en: "Suspicious group event: {kind}, telegram {telegram}{invite}",
+  },
+  "admission.admin.invite_ref": {
+    ru: ", ссылка {name}",
+    en: ", invite {name}",
   },
   "admission.admin.yes": {
     ru: "да",
@@ -451,10 +431,6 @@ const messages = {
     ru: "Статус аккаунта изменён: {from} → {to}.",
     en: "Account status changed: {from} → {to}.",
   },
-  "bot.error.generic": {
-    ru: "Что-то пошло не так. Попробуй ещё раз позже.",
-    en: "Something went wrong. Please try again later.",
-  },
   "bot.conversation.busy": {
     ru: "Сейчас активен другой диалог с ботом. Заверши его и попробуй снова.",
     en: "Another bot dialog is already active. Finish it and try again.",
@@ -506,15 +482,10 @@ const messages = {
   "account.status.BANNED": { ru: "Заблокирован", en: "Banned" },
   "account.status.DELETION_PENDING": { ru: "Ожидает удаления", en: "Pending deletion" },
 
-  "ops.stats.collections": {
-    ru: "🗂 Коллекции: {sizes}",
-    en: "🗂 Collections: {sizes}",
-  },
-
   // bot ui: shared bits every screen uses
   "common.back": {
-    ru: "Назад",
-    en: "Back",
+    ru: "‹ Назад",
+    en: "‹ Back",
   },
   "common.refresh": {
     ru: "Обновить",

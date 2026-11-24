@@ -129,8 +129,8 @@ describe("paginationRow", () => {
 
 describe("back navigation", () => {
   test("the return target is the callback data itself", () => {
-    expect(backButton("menu:back")).toEqual({ text: "‹ Назад", callback_data: "menu:back" })
-    expect(backRow("menu:back")).toEqual([{ text: "‹ Назад", callback_data: "menu:back" }])
+    expect(backButton("menu:back", "‹ Назад")).toEqual({ text: "‹ Назад", callback_data: "menu:back" })
+    expect(backRow("menu:back", "‹ Назад")).toEqual([{ text: "‹ Назад", callback_data: "menu:back" }])
   })
 
   test("custom label", () => {
@@ -191,8 +191,8 @@ describe("confirmKeyboard", () => {
 })
 
 describe("cancelButton", () => {
-  test("default and custom label", () => {
-    expect(cancelButton("a:cancel")).toEqual({ text: "✕ Отмена", callback_data: "a:cancel" })
+  test("renders the caller's label verbatim", () => {
+    expect(cancelButton("a:cancel", "✕ Отмена")).toEqual({ text: "✕ Отмена", callback_data: "a:cancel" })
     expect(cancelButton("a:cancel", "Не сейчас")).toEqual({ text: "Не сейчас", callback_data: "a:cancel" })
   })
 })
