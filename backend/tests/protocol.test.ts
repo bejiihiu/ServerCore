@@ -20,9 +20,15 @@ describe("envelope meta schema", () => {
     expect(result.success).toBe(true)
   })
 
-  test("rejects unknown message types", () => {
+  test("accepts unknown message types at the envelope layer (version skew is not forgery)", () => {
     const result = envelopeMetaSchema.safeParse({ ...base, type: "SOMETHING_ELSE" })
-    expect(result.success).toBe(false)
+    expect(result.success).toBe(true)
+  })
+
+  test("rejects malformed message types", () => {
+    expect(envelopeMetaSchema.safeParse({ ...base, type: "" }).success).toBe(false)
+    expect(envelopeMetaSchema.safeParse({ ...base, type: "has space" }).success).toBe(false)
+    expect(envelopeMetaSchema.safeParse({ ...base, type: 42 }).success).toBe(false)
   })
 
   test("rejects short ids", () => {

@@ -1,11 +1,13 @@
 import { MongoError } from "mongodb"
 import { AuthRequestModel } from "../../database/models/auth-request.js"
+import { GuestSnapshotModel } from "../../database/models/guest-snapshot.js"
 import { PlayerSessionModel } from "../../database/models/session.js"
 import { UserModel } from "../../database/models/user.js"
 import {
   ACTIVE_USER_STATUS,
   type AuthRequestRecord,
   type AuthenticationStore,
+  type GuestSnapshotRecord,
   type SessionRecord,
   type SessionStatus,
   type TerminalAuthStatus,
@@ -64,6 +66,32 @@ export class MongoAuthenticationStore implements AuthenticationStore {
       { new: true },
     ).lean()
     return doc ? toSessionRecord(doc) : null
+  }
+
+  async saveGuestSnapshot(snapshot: GuestSnapshotRecord): Promise<void> {
+    // upsert with $setOnInsert only: a redelivered durable frame (same session
+    // id) confirms the existing row instead of overwriting the original spot
+    await GuestSnapshotModel.updateOne(
+      { sessionId: snapshot.sessionId },
+      {
+        $setOnInsert: {
+          sessionId: snapshot.sessionId,
+          minecraftUuid: snapshot.minecraftUuid,
+          world: snapshot.world,
+          location: snapshot.location,
+          gameMode: snapshot.gameMode,
+          flying: snapshot.flying,
+          flySpeed: snapshot.flySpeed,
+          walkSpeed: snapshot.walkSpeed,
+        },
+      },
+      { upsert: true },
+    )
+  }
+
+  async deleteGuestSnapshot(sessionId: string): Promise<number> {
+    const result = await GuestSnapshotModel.deleteMany({ sessionId })
+    return result.deletedCount ?? 0
   }
 
   async insertAuthRequest(request: AuthRequestRecord): Promise<void> {

@@ -38,7 +38,6 @@ class FakePurges {
       this.snapshotsDeleted += 1
       return this.snapshotsDeleted
     },
-    deleteBySessionId: async (): Promise<number> => 1,
   }
 }
 

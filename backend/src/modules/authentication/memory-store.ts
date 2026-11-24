@@ -1,5 +1,12 @@
 import { ACTIVE_USER_STATUS, type SessionStatus } from "./persistence.js"
-import type { AuthRequestRecord, AuthenticationStore, SessionRecord, TerminalAuthStatus, UserRecord } from "./persistence.js"
+import type {
+  AuthRequestRecord,
+  AuthenticationStore,
+  GuestSnapshotRecord,
+  SessionRecord,
+  TerminalAuthStatus,
+  UserRecord,
+} from "./persistence.js"
 
 /**
  * process-local twin of the mongo store, byte-compatible semantics. serves
@@ -10,6 +17,7 @@ export class InMemoryAuthenticationStore implements AuthenticationStore {
   private readonly requests = new Map<string, AuthRequestRecord>() // key: id
   private readonly tokenIndex = new Map<string, string>() // tokenHash -> id
   private readonly users = new Map<string, UserRecord>() // key: uuid
+  private readonly snapshots = new Map<string, GuestSnapshotRecord>() // key: session id
 
   putUser(user: UserRecord): void {
     this.users.set(user.minecraftUuid, user)
@@ -50,6 +58,25 @@ export class InMemoryAuthenticationStore implements AuthenticationStore {
     session.endedAt = Date.now()
     this.sessions.delete(minecraftUuid)
     return { ...session }
+  }
+
+  async saveGuestSnapshot(snapshot: GuestSnapshotRecord): Promise<void> {
+    // mirrors the insert-only upsert: the first capture per session wins
+    if (this.snapshots.has(snapshot.sessionId)) return
+    this.snapshots.set(snapshot.sessionId, { ...snapshot, location: { ...snapshot.location } })
+  }
+
+  async deleteGuestSnapshot(sessionId: string): Promise<number> {
+    return this.snapshots.delete(sessionId) ? 1 : 0
+  }
+
+  /** test helper: the stored snapshot of a session, null when purged */
+  guestSnapshot(sessionId: string): GuestSnapshotRecord | null {
+    return this.snapshots.get(sessionId) ?? null
+  }
+
+  get guestSnapshotCount(): number {
+    return this.snapshots.size
   }
 
   async insertAuthRequest(request: AuthRequestRecord): Promise<void> {

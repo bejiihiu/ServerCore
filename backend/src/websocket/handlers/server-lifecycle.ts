@@ -61,7 +61,16 @@ export type LifecycleHooks = {
     connection: ServerConnection,
   ) => void
   onPlayerLeft?: (event: { minecraftUuid: string; username?: string; reason: string }) => void
-  onGuestStarted?: (event: { minecraftUuid: string; username: string; sessionId: string }, serverId: string) => void
+  onGuestStarted?: (
+    event: {
+      minecraftUuid: string
+      username: string
+      sessionId: string
+      /** original player state the plugin captured before degrading to guest */
+      snapshot: PayloadOf<"GUEST_STARTED">["snapshot"]
+    },
+    serverId: string,
+  ) => void
   onGuestEnded?: (event: { minecraftUuid: string; sessionId: string; reason: string }) => void
 }
 

@@ -1,6 +1,6 @@
 import { signEnvelope, verifyWireMessage, type VerifyFailure } from "./protocol/signing.js"
 import { newMessageId, ReplayGuard } from "./security/replay-guard.js"
-import { NO_ACK_TYPES, type Envelope, type MessageType, type PayloadOf } from "./protocol/message-types.js"
+import { isNoAckType, type Envelope, type MessageType, type PayloadOf } from "./protocol/message-types.js"
 import type { JsonValue } from "../utils/crypto.js"
 import type { Logger } from "../logging/logger.js"
 
@@ -43,6 +43,8 @@ export class ServerConnection {
   private readonly options: ConnectionOptions
   private readonly replayGuard: ReplayGuard
   private readonly pendingAcks = new Map<string, PendingAck>()
+  /** unknown wire types already logged, so a chatty new peer logs once each */
+  private readonly unknownTypes = new Set<string>()
 
   private alive = true
   private awaitingPong = false
@@ -119,7 +121,7 @@ export class ServerConnection {
     }
 
     const correlationId = envelope.correlationId
-    if (envelope.type === "ACK" && correlationId) {
+    if (result.known && envelope.type === "ACK" && correlationId) {
       const ack = this.pendingAcks.get(correlationId)
       if (ack) {
         clearTimeout(ack.timer)
@@ -136,7 +138,7 @@ export class ServerConnection {
       // nothing. killing the connection here would turn one lost ack into a
       // reconnect loop.
       this.logger.debug({ serverId: this.serverId, id: envelope.id }, "duplicate frame, acked without reprocessing")
-      if (!NO_ACK_TYPES.includes(envelope.type)) {
+      if (!isNoAckType(envelope.type)) {
         this.sendRaw("ACK", { ackedId: envelope.id }, envelope.id)
       }
       return null
@@ -144,14 +146,22 @@ export class ServerConnection {
 
     this.lastSeenAt = now
 
-    if (!NO_ACK_TYPES.includes(envelope.type)) {
+    if (!isNoAckType(envelope.type)) {
       this.sendRaw("ACK", { ackedId: envelope.id }, envelope.id)
+    }
+
+    if (!result.known) {
+      // hmac checked out, the type is just newer than this build: ack it so
+      // the peer can retire its durable frame, change no state, keep the
+      // socket. a newer plugin must never be able to kill the gateway.
+      this.noteUnknownType(envelope.type)
+      return null
     }
 
     // handler errors must not kill the connection — log and keep going.
     // the route is tracked so a graceful shutdown can wait for it to finish
     this.activeRoutes += 1
-    void route(envelope, this)
+    void route(result.envelope, this)
       .catch((error: unknown) => {
         this.logger.error({ err: error, serverId: this.serverId, type: envelope.type }, "message handler failed")
       })
@@ -160,6 +170,13 @@ export class ServerConnection {
       })
 
     return null
+  }
+
+  /** one warn per unknown wire type per connection, not one per frame */
+  private noteUnknownType(type: string): void {
+    if (this.unknownTypes.has(type)) return
+    this.unknownTypes.add(type)
+    this.logger.warn({ serverId: this.serverId, type }, "unknown message type, acked and ignored")
   }
 
   /** signs and sends an envelope, optionally awaiting the peer's ack */

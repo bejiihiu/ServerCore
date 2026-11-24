@@ -97,6 +97,44 @@ describe("websocket handler wiring", () => {
     expect(authJoins).toEqual(["3b7a1f0e-1111-4222-8333-444455556666"])
   })
 
+  test("GUEST_STARTED forwards the captured snapshot to the hook", async () => {
+    const starts: { sessionId: string; world: string; x: number }[] = []
+    const { registry } = buildWiring({
+      onGuestStarted: (event) => {
+        starts.push({ sessionId: event.sessionId, world: event.snapshot.world, x: event.snapshot.x })
+      },
+    })
+
+    await registry.dispatch(
+      {
+        id: "msg_12345680",
+        type: "GUEST_STARTED",
+        timestamp: Date.now(),
+        payload: {
+          minecraftUuid: "3b7a1f0e-1111-4222-8333-444455556666",
+          username: "Steve",
+          sessionId: "guest-abc123",
+          snapshot: {
+            world: "world",
+            x: 1.5,
+            y: 64,
+            z: -3.25,
+            yaw: 90,
+            pitch: 0,
+            gameMode: "SURVIVAL",
+            flying: false,
+            flySpeed: 0.1,
+            walkSpeed: 0.2,
+          },
+        },
+      },
+      fakeConnection("game-1"),
+    )
+
+    // the handler used to drop the payload field; the hook is what persists it
+    expect(starts).toEqual([{ sessionId: "guest-abc123", world: "world", x: 1.5 }])
+  })
+
   test("SPEC events land in the audit trail through the wiring", async () => {
     const { registry, specRecords } = buildWiring()
     await registry.dispatch(
