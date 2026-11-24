@@ -47,3 +47,6 @@ auth:
     title: "<red>Authorization denied</red>"
   expired:
     actionbar: "<yellow>Login request expired, use <bold>/link</bold> to try again</yellow>"
+protection:
+  denied:
+    chat: "<red>Command <bold>{command}</bold> is not available on this server.</red>"

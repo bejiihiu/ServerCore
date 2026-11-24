@@ -47,3 +47,6 @@ auth:
     title: "<red>В авторизации отказано</red>"
   expired:
     actionbar: "<yellow>Запрос на вход истёк, используйте <bold>/link</bold>, чтобы повторить</yellow>"
+protection:
+  denied:
+    chat: "<red>Команда <bold>{command}</bold> недоступна на этом сервере.</red>"
