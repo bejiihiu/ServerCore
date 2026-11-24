@@ -61,7 +61,6 @@ async function main(): Promise<void> {
   const authUi = new TelegramAuthUi({
     api: null,
     logger,
-    defaultLocale: config.opsLocale,
     serverName: config.serverName,
     ...(config.authMessageEffectId !== undefined && config.authMessageEffectId !== ""
       ? { messageEffectId: config.authMessageEffectId }
@@ -149,7 +148,7 @@ async function main(): Promise<void> {
     config,
     logger,
     { stats: statsService },
-    { registerCallbacks: (b) => registerAuthCallbacks(b, { auth: authService, ui: authUi, logger, defaultLocale: config.opsLocale }) },
+    { registerCallbacks: (b) => registerAuthCallbacks(b, { auth: authService, ui: authUi, logger }) },
   )
   // grammy api is ready the moment the Bot exists, swap the real senders in
   const api = bot !== null ? bot.api : null

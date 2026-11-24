@@ -1,40 +1,54 @@
 import type { Api } from "grammy"
 import type { Logger } from "../../logging/logger.js"
-import type { Locale } from "../../services/i18n.js"
-import { t } from "../../services/i18n.js"
+import { i18n } from "../../i18n/instance.js"
+import type { Translator } from "../../bot/ui/text/index.js"
+import { bold, expandableQuote, joinLines } from "../../bot/ui/text/index.js"
+import { actionRow, callbackData, type InlineKeyboardMarkup } from "../../bot/ui/keyboards/index.js"
+import { createTranslator } from "../../bot/ui/text/index.js"
+import { editScreen, sendScreen } from "../../bot/ui/sending.js"
+import type { ScreenMessage } from "../../bot/ui/screens/types.js"
 import type { PromptRequest, PromptSender } from "./auth-service.js"
 
-/** callback_data prefixes, 18 bytes total, well inside the 64-byte limit */
-const APPROVE_PREFIX = "a:"
-const REJECT_PREFIX = "r:"
+/** callback scheme <ns>:<action>:<arg>, see the bot-ui design doc */
+const CALLBACK_PREFIX = "auth"
 
 export type ParsedAuthCallback =
   | { kind: "APPROVE"; token: string }
   | { kind: "REJECT"; token: string }
   | null
 
-/** parses "a:<token>" / "r:<token>" callback payloads */
+/** parses "auth:approve:<token>" / "auth:reject:<token>" callback payloads */
 export function parseAuthCallbackData(data: string | undefined): ParsedAuthCallback {
   if (data === undefined) return null
-  if (data.startsWith(APPROVE_PREFIX)) return { kind: "APPROVE", token: data.slice(APPROVE_PREFIX.length) }
-  if (data.startsWith(REJECT_PREFIX)) return { kind: "REJECT", token: data.slice(REJECT_PREFIX.length) }
+  const parts = data.split(":")
+  if (parts[0] !== CALLBACK_PREFIX || parts[2] === undefined) return null
+  if (parts[1] === "approve") return { kind: "APPROVE", token: parts[2] }
+  if (parts[1] === "reject") return { kind: "REJECT", token: parts[2] }
   return null
 }
 
-type SentPrompt = { chatId: string; messageId: number; locale: Locale }
+export function approveCallbackData(token: string): string {
+  return callbackData(CALLBACK_PREFIX, "approve", token)
+}
+
+export function rejectCallbackData(token: string): string {
+  return callbackData(CALLBACK_PREFIX, "reject", token)
+}
+
+type SentPrompt = { chatId: string; messageId: number }
 
 /**
- * telegram side of the auth flow: sends the rich confirmation prompt
- * (inline keyboard with button styles, message effect, expandable blockquote
- * for the server info) and rewrites the prompt after a decision so the
- * buttons cannot be pressed twice.
+ * telegram side of the auth flow: renders the confirmation prompt through the
+ * shared bot-ui layer (style-styled buttons, expandable blockquote, premium
+ * fallback handled by sending.ts) and rewrites the prompt after a decision so
+ * the buttons cannot be pressed twice.
  */
 export class TelegramAuthUi {
   private api: Api | null
   private readonly logger: Logger
-  private readonly defaultLocale: Locale
   private readonly messageEffectId?: string
   private readonly serverName: string
+  private readonly translator: Translator
 
   /** requestId -> where the prompt lives, for the decision edits */
   private readonly sent = new Map<string, SentPrompt>()
@@ -42,15 +56,14 @@ export class TelegramAuthUi {
   constructor(deps: {
     api: Api | null
     logger: Logger
-    defaultLocale: Locale
     serverName: string
     messageEffectId?: string
   }) {
     this.api = deps.api
     this.logger = deps.logger
-    this.defaultLocale = deps.defaultLocale
     this.serverName = deps.serverName
     this.messageEffectId = deps.messageEffectId
+    this.translator = createTranslator(i18n)
   }
 
   /** swaps the api after the bot is built (mirrors NotificationService) */
@@ -64,25 +77,15 @@ export class TelegramAuthUi {
     const api = this.api
     if (api === null) return false
 
-    const locale = this.defaultLocale
-    const text = promptText(request, this.serverName, locale)
-    const response = await api.sendMessage(request.telegramId, text, {
-      parse_mode: "HTML",
-      link_preview_options: { is_disabled: true },
-      ...(this.messageEffectId !== undefined ? { message_effect_id: this.messageEffectId } : {}),
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: t(locale, "auth.btn.approve"), callback_data: `${APPROVE_PREFIX}${request.token}`, style: "success" },
-            { text: t(locale, "auth.btn.reject"), callback_data: `${REJECT_PREFIX}${request.token}`, style: "danger" },
-          ],
-        ],
-      },
+    const screen = promptScreen(request, this.serverName, this.translator)
+    const message = await sendScreen(api, {
+      chatId: request.telegramId,
+      screen,
+      ...(this.messageEffectId !== undefined ? { effectId: this.messageEffectId } : {}),
     })
     this.sent.set(request.id, {
       chatId: String(request.telegramId),
-      messageId: response.message_id,
-      locale,
+      messageId: message.message_id,
     })
     return true
   }
@@ -97,11 +100,11 @@ export class TelegramAuthUi {
     this.sent.delete(requestId)
     const api = this.api
     if (where === undefined || api === null) return
+    const screen: ScreenMessage = {
+      text: outcomeText(outcomeKey, player, this.translator),
+    }
     try {
-      await api.editMessageText(where.chatId, where.messageId, outcomeText(outcomeKey, player, where.locale), {
-        parse_mode: "HTML",
-        link_preview_options: { is_disabled: true },
-      })
+      await editScreen(api, { chatId: where.chatId, messageId: where.messageId, screen })
     } catch (error) {
       this.logger.warn({ err: error, requestId }, "could not rewrite the auth prompt")
     }
@@ -114,35 +117,61 @@ export class TelegramAuthUi {
 }
 
 export type AuthOutcomeKey =
-  | "auth.cb.approved"
-  | "auth.cb.rejected"
-  | "auth.cb.already_processed"
-  | "auth.cb.expired"
-  | "auth.cb.not_yours"
-  | "auth.cb.unknown"
-  | "auth.cb.no_active_session"
-  | "auth.cb.stale_session"
-  | "auth.cb.rate_limited"
+  | "approved"
+  | "rejected"
+  | "alreadyProcessed"
+  | "expired"
+  | "notYours"
+  | "unknown"
+  | "noActiveSession"
+  | "staleSession"
+  | "rateLimited"
 
-export function outcomeText(key: AuthOutcomeKey, player: string, locale: Locale): string {
-  return t(locale, key, { player })
+const OUTCOME_KEYS: Record<AuthOutcomeKey, string> = {
+  approved: "auth.approved",
+  rejected: "auth.rejected",
+  alreadyProcessed: "auth.alreadyProcessed",
+  expired: "auth.expired",
+  notYours: "auth.notYours",
+  unknown: "auth.unknown",
+  noActiveSession: "auth.noActiveSession",
+  staleSession: "auth.staleSession",
+  rateLimited: "auth.rateLimited",
+}
+
+export function outcomeText(key: AuthOutcomeKey, player: string, t: Translator): string {
+  return t.t(OUTCOME_KEYS[key], { player })
 }
 
 /** the rich prompt: title, player/server facts, window, expandable info block */
-export function promptText(request: PromptRequest, serverName: string, locale: Locale): string {
-  return [
-    t(locale, "auth.prompt.title"),
-    "",
-    t(locale, "auth.prompt.player", { player: escapeHtml(request.username) }),
-    t(locale, "auth.prompt.server", { server: escapeHtml(serverName) }),
-    "",
-    t(locale, "auth.prompt.detected"),
-    t(locale, "auth.prompt.window", { seconds: request.expiresInSeconds }),
-    `<blockquote expandable>${t(locale, "auth.prompt.info")}</blockquote>`,
-  ].join("\n")
-}
-
-/** telegram html mode: only <, > and & need escaping */
-function escapeHtml(raw: string): string {
-  return raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+export function promptScreen(request: PromptRequest, serverName: string, t: Translator): ScreenMessage {
+  const markup: InlineKeyboardMarkup = {
+    inline_keyboard: [
+      actionRow([
+        {
+          label: t.t("auth.approve"),
+          callbackData: approveCallbackData(request.token),
+          style: "success",
+        },
+        {
+          label: t.t("auth.reject"),
+          callbackData: rejectCallbackData(request.token),
+          style: "danger",
+        },
+      ]),
+    ],
+  }
+  return {
+    text: joinLines(
+      bold(t.t("auth.title")),
+      "",
+      t.t("auth.player", { player: request.username }),
+      t.t("auth.server", { server: serverName }),
+      "",
+      t.t("auth.detected"),
+      t.t("auth.window", { seconds: request.expiresInSeconds }),
+      expandableQuote(t.t("auth.info")),
+    ),
+    markup,
+  }
 }

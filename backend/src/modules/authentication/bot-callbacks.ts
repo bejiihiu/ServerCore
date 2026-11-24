@@ -1,10 +1,43 @@
 import type { Context } from "grammy"
 import type { Bot } from "grammy"
 import type { Logger } from "../../logging/logger.js"
-import type { Locale } from "../../services/i18n.js"
-import { t } from "../../services/i18n.js"
+import { i18n } from "../../i18n/instance.js"
 import type { AuthenticationService, CallbackOutcome } from "./auth-service.js"
-import { parseAuthCallbackData, TelegramAuthUi, type AuthOutcomeKey } from "./telegram-prompt.js"
+import type { TelegramAuthUi, AuthOutcomeKey } from "./telegram-prompt.js"
+import { parseAuthCallbackData } from "./telegram-prompt.js"
+
+/** outcome key per service verdict, resolved against the bundled ru locale */
+function outcomeKey(outcome: CallbackOutcome): AuthOutcomeKey {
+  switch (outcome.kind) {
+    case "APPROVED":
+      return "approved"
+    case "REJECTED":
+      return "rejected"
+    case "ALREADY_PROCESSED":
+      return "alreadyProcessed"
+    case "EXPIRED":
+      return "expired"
+    case "NOT_YOURS":
+      return "notYours"
+    case "NO_ACTIVE_SESSION":
+      return "noActiveSession"
+    case "STALE_SESSION":
+      return "staleSession"
+    case "RATE_LIMITED":
+      return "rateLimited"
+    case "UNKNOWN":
+      return "unknown"
+  }
+}
+
+async function answer(ctx: Context, key: AuthOutcomeKey, player: string): Promise<void> {
+  try {
+    await ctx.answerCallbackQuery({ text: i18n.t(`auth.${key}`, { player }) })
+  } catch {
+    // stale or already answered queries are noise, the message edit carries
+    // the real outcome
+  }
+}
 
 /**
  * telegram callback wiring: approve/reject presses run through the service's
@@ -17,19 +50,19 @@ export function registerAuthCallbacks(
     auth: AuthenticationService
     ui: TelegramAuthUi
     logger: Logger
-    defaultLocale: Locale
   },
 ): void {
-  bot.callbackQuery(/^(a|r):/, async (ctx) => {
-    const parsed = parseAuthCallbackData(ctx.callbackQuery?.data)
+  bot.callbackQuery(/^auth:(approve|reject):/, async (ctx) => {
+    const query = ctx.callbackQuery
+    const parsed = parseAuthCallbackData(query?.data)
     if (parsed === null) {
-      await answer(ctx, "auth.cb.unknown", deps.defaultLocale)
+      await answer(ctx, "unknown", "")
       return
     }
 
-    const telegramId = String(ctx.callbackQuery?.from?.id ?? "")
+    const telegramId = String(query?.from?.id ?? "")
     if (telegramId === "") {
-      await answer(ctx, "auth.cb.unknown", deps.defaultLocale)
+      await answer(ctx, "unknown", "")
       return
     }
 
@@ -39,50 +72,12 @@ export function registerAuthCallbacks(
         ? await deps.auth.approve(parsed.token, telegramId, now)
         : await deps.auth.reject(parsed.token, telegramId, now)
 
-    await answer(ctx, outcomeKey(outcome), localeFor(ctx, deps.defaultLocale))
+    const player = (await deps.auth.usernameForToken(parsed.token)) ?? ""
+    await answer(ctx, outcomeKey(outcome), player)
 
     const located = await deps.auth.locate(parsed.token, telegramId)
     if (located !== null) {
-      const player = (await deps.auth.usernameForToken(parsed.token)) ?? "player"
-      await deps.ui.conclude(located.id, outcomeKey(outcome), player)
+      await deps.ui.conclude(located.id, outcomeKey(outcome), player || "player")
     }
   })
-}
-
-/** maps a service outcome to the user-facing message key */
-function outcomeKey(outcome: CallbackOutcome): AuthOutcomeKey {
-  switch (outcome.kind) {
-    case "APPROVED":
-      return "auth.cb.approved"
-    case "REJECTED":
-      return "auth.cb.rejected"
-    case "ALREADY_PROCESSED":
-      return "auth.cb.already_processed"
-    case "EXPIRED":
-      return "auth.cb.expired"
-    case "NOT_YOURS":
-      return "auth.cb.not_yours"
-    case "NO_ACTIVE_SESSION":
-      return "auth.cb.no_active_session"
-    case "STALE_SESSION":
-      return "auth.cb.stale_session"
-    case "RATE_LIMITED":
-      return "auth.cb.rate_limited"
-    case "UNKNOWN":
-      return "auth.cb.unknown"
-  }
-}
-
-function localeFor(ctx: Context, fallback: Locale): Locale {
-  const code = ctx.callbackQuery?.from?.language_code
-  return code !== undefined && code.toLowerCase().startsWith("ru") ? "ru" : fallback
-}
-
-async function answer(ctx: Context, key: AuthOutcomeKey, locale: Locale): Promise<void> {
-  try {
-    await ctx.answerCallbackQuery({ text: t(locale, key) })
-  } catch {
-    // stale or already answered queries are noise, the message edit carries
-    // the real outcome
-  }
 }
