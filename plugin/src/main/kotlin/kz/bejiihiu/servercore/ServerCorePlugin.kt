@@ -42,6 +42,16 @@ import kz.bejiihiu.servercore.sync.PacketStateSync
 import kz.bejiihiu.servercore.sync.SyncReconciler
 import kz.bejiihiu.servercore.sync.VanillaOnlyResyncExecutor
 import kz.bejiihiu.servercore.spectator.InventoryViewerService
+import kz.bejiihiu.servercore.protection.AllowedGamemodeOverrideRegistry
+import kz.bejiihiu.servercore.protection.CommandBlockAuditor
+import kz.bejiihiu.servercore.protection.CommandProtectionListener
+import kz.bejiihiu.servercore.protection.CommandProtectionService
+import kz.bejiihiu.servercore.protection.CommandTreeSources
+import kz.bejiihiu.servercore.protection.GamemodeGuardListener
+import kz.bejiihiu.servercore.protection.OpLockdown
+import kz.bejiihiu.servercore.protection.ProtectionConfig
+import kz.bejiihiu.servercore.protection.ProtectionLifecycle
+import kz.bejiihiu.servercore.protection.ServerCoreCommands
 import kz.bejiihiu.servercore.ui.UiKit
 import kz.bejiihiu.servercore.util.I18n
 import kz.bejiihiu.servercore.websocket.DelayScheduler
@@ -50,6 +60,9 @@ import kz.bejiihiu.servercore.websocket.GatewayListener
 import kz.bejiihiu.servercore.websocket.Payload
 import kz.bejiihiu.servercore.websocket.ServerStatsProvider
 import kz.bejiihiu.servercore.ws.BackendGateway
+import com.mojang.brigadier.CommandDispatcher
+import io.papermc.paper.command.brigadier.CommandSourceStack
+import java.util.concurrent.atomic.AtomicReference
 import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.event.EventHandler
@@ -88,6 +101,8 @@ class ServerCorePlugin : JavaPlugin() {
     private var packetService: PacketService? = null
     private lateinit var inventoryViewer: InventoryViewerService
     private var disguiseStack: DisguiseStack? = null
+    private var gamemodeGuard: GamemodeGuardListener? = null
+    private var commandBlockAuditor: CommandBlockAuditor? = null
 
     override fun onLoad() {
         // packetevents is a server-installed plugin we attach to, not one we
@@ -317,6 +332,16 @@ class ServerCorePlugin : JavaPlugin() {
         // visibility engine (the engine itself drives disguiseStack.applier)
         disguiseStack = DisguiseStack.create(this, config, logger)
 
+        // protection stack: command denial, gamemode guard, op lockdown.
+        // guest sessions keep their players in spectator, so that specific
+        // shape is sanctioned through the guard's seam
+        val protectionConfig = ProtectionConfig.load(config, logger)
+        if (protectionConfig.enabled) {
+            setupProtection(protectionConfig, i18n, sessions)
+        } else {
+            logger.warning("protection disabled in config: command and gamemode guards are off")
+        }
+
         // heartbeat keeps the backend's liveness picture fresh
         presenceService.startHeartbeat()
         client.start()
@@ -327,6 +352,56 @@ class ServerCorePlugin : JavaPlugin() {
         server.globalRegionScheduler.runDelayed(this, { _ -> opsBus.publish(ServerState.RUNNING) }, 100L)
 
         logger.info("servercore ${pluginMeta.version} enabled (guest mode: ${if (guestConfig.enabled) "on" else "off"})")
+    }
+
+    /**
+     * wires the whole protection stack: command denial + alias expansion,
+     * gamemode guard with sweep, command block audit, op lockdown and the
+     * /servercore admin command.
+     */
+    private fun setupProtection(protectionConfig: ProtectionConfig, i18n: I18n, sessions: GuestSessionService) {
+        val dispatcherRef = AtomicReference<CommandDispatcher<CommandSourceStack>?>(null)
+        val aliasTree = CommandTreeSources.combined(
+            commandMap = { runCatching { Bukkit.getCommandMap() }.getOrNull() },
+            dispatcherRef = dispatcherRef,
+        )
+
+        val service = CommandProtectionService(protectionConfig, { aliasTree }, logger)
+        service.refreshAliases()
+        server.pluginManager.registerEvents(
+            CommandProtectionListener(protectionConfig, service, i18n, logger),
+            this,
+        )
+
+        val registry = AllowedGamemodeOverrideRegistry()
+        val guard = GamemodeGuardListener(
+            plugin = this,
+            config = protectionConfig,
+            registry = registry,
+            logger = logger,
+            // guests live in spectator for their whole session; that state is
+            // sanctioned by the session service, not by op status
+            extraSanction = { uuid, mode ->
+                mode == org.bukkit.GameMode.SPECTATOR && sessions.isRestricted(uuid)
+            },
+        )
+        server.pluginManager.registerEvents(guard, this)
+        guard.start()
+        gamemodeGuard = guard
+
+        val auditor = CommandBlockAuditor(this, protectionConfig, service, logger)
+        server.pluginManager.registerEvents(auditor, this)
+        auditor.start()
+        commandBlockAuditor = auditor
+
+        val opLockdown = OpLockdown(this, logger)
+        opLockdown.verifyOps()
+        ProtectionLifecycle(
+            plugin = this,
+            dispatcherRef = dispatcherRef,
+            onAliasesChanged = { service.refreshAliases() },
+            serverCoreCommands = ServerCoreCommands(this, opLockdown),
+        ).attach()
     }
 
     /** backend revoked the account: end the local session, folia-correctly */
@@ -361,6 +436,8 @@ class ServerCorePlugin : JavaPlugin() {
         restartSchedule?.stop()
         if (::inventoryViewer.isInitialized) inventoryViewer.shutdown()
         disguiseStack?.shutdown()
+        gamemodeGuard?.stop()
+        commandBlockAuditor?.stop()
         // belt and braces: async snapshot writes may still be in flight
         snapshots.shutdown()
         counter.shutdown()

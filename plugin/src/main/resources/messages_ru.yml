@@ -49,3 +49,6 @@ auth:
     actionbar: "<yellow>Запрос на вход истёк, используйте <bold>/link</bold>, чтобы повторить</yellow>"
 spec:
   inventory-title: "<secondary>Инвентарь</secondary> <muted>·</muted> <gold>{target}</gold>"
+protection:
+  denied:
+    chat: "<red>Команда <bold>{command}</bold> недоступна на этом сервере.</red>"

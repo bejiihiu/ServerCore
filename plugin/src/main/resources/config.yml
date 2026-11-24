@@ -96,8 +96,57 @@ spec:
   log-to-audit: true
 
 protection:
-  blocked-commands: []
+  # master switch for the whole stack: command denial, gamemode guard,
+  # command block audit
+  enabled: true
+  # commands players may never run, op or not. aliases are resolved against
+  # the live command tree (tp/teleport, plugin aliases, commands.yml), so
+  # listing one name covers its whole alias group. namespace prefixes are
+  # ignored when matching: minecraft:tp and tp are the same command
+  blocked-commands:
+    - op
+    - deop
+    - fill
+    - clone
+    - setblock
+    - summon
+    - gamemode
+    - tp
+    - teleport
+    - give
+    - item
+    - execute
+    - effect
+    - attribute
+    - kill
+    - difficulty
+    - time
+    - weather
+    - gamerule
+    - worldborder
+    - stop
+    - reload
+  # commands that hand execution to datapack code — a function can carry any
+  # blocked command inside, so its invocation paths are denied for players too
+  blocked-datapack-commands:
+    - function
+    - schedule
+    - datapack
+  # non-survival gamemodes are only allowed through sanctioned servercore
+  # flows (guest sessions, /spec, override registry); everything else is
+  # cancelled and drifted modes are reverted by a periodic sweep
   enforce-gamemode: true
+  # how often the drift sweep runs, seconds; 0 = off
+  gamemode-sweep-interval-seconds: 30
+  # how often loaded chunks are scanned for command blocks carrying a denied
+  # command (no execution event exists for blocks); 0 = audit off. chunk load
+  # events are always audited
+  command-block-audit-interval-seconds: 600
+  # clear a denied command from the block itself, not only log it
+  command-block-neutralize: false
+  # strip denied commands from the client command list (tab completion) —
+  # display only, enforcement happens at execution time
+  hide-from-tab-complete: true
 
 placeholders:
   cache-ttl-milliseconds: 2000

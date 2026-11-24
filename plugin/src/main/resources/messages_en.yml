@@ -47,5 +47,11 @@ auth:
     title: "<red>Authorization denied</red>"
   expired:
     actionbar: "<yellow>Login request expired, use <bold>/link</bold> to try again</yellow>"
+<<<<<<< HEAD
 spec:
   inventory-title: "<secondary>Inventory</secondary> <muted>·</muted> <gold>{target}</gold>"
+=======
+protection:
+  denied:
+    chat: "<red>Command <bold>{command}</bold> is not available on this server.</red>"
+>>>>>>> feature/protection
