@@ -73,6 +73,17 @@ export function classifySummaryInput(update: RawUpdate): SummaryInput | null {
 }
 
 /**
+ * the summary wait only accepts a real decision. plain text must NOT satisfy
+ * it, otherwise the conversation swallows the message and walks away without
+ * telling the user anything: filtered here, it falls into the otherwise nudge
+ * and the wait keeps going.
+ */
+export function isSummaryAction(update: RawUpdate): boolean {
+  const input = classifySummaryInput(update)
+  return input !== null && input.kind !== "OTHER_TEXT"
+}
+
+/**
  * builds the questionnaire conversation builder, closing over the services
  * (conversation args must stay json-serializable, so services travel via
  * closure, not via enter() arguments).
@@ -146,12 +157,12 @@ export function createApplicationConversation(deps: QuestionnaireDeps) {
       reply_markup: toGrammYMarkup(submitKeyboard(lang)),
     })
 
-    // summary wait: buttons or /cancel; anything else gets a nudge instead
-    // of vanishing into a silent swallow
-    const choiceUpdate = await conversation.waitUntil(
-      (c) => classifySummaryInput(c) !== null,
-      { otherwise: (nonAnswer) => void nonAnswer.reply(t(lang, "app.buttonHint")) },
-    )
+    // summary wait: buttons or /cancel; anything else (free text, stickers,
+    // stale keyboards) gets a nudge and the wait continues instead of the
+    // conversation silently eating the update
+    const choiceUpdate = await conversation.waitUntil(isSummaryAction, {
+      otherwise: (nonAnswer) => void nonAnswer.reply(t(lang, "app.buttonHint")),
+    })
     const choice = classifySummaryInput(choiceUpdate)
     if (choice === null) return
     if (choice.kind === "SUBMIT_BUTTON" || choice.kind === "CANCEL_BUTTON") {
@@ -162,7 +173,9 @@ export function createApplicationConversation(deps: QuestionnaireDeps) {
       await ctx.reply(t(lang, "app.cancelled"))
       return
     }
-    if (choice.kind === "OTHER_TEXT") return
+    // the wait only lets a submit through; anything else means the classifier
+    // grew a new kind — never submit an application on an unknown input
+    if (choice.kind !== "SUBMIT_BUTTON") return
 
     // submit + voting publication in one side-effecting step: the group
     // message and the notifications must not re-run on replays
