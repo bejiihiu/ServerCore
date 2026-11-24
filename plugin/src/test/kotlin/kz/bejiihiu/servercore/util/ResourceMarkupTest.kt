@@ -21,7 +21,7 @@ import kotlin.test.fail
  */
 class ResourceMarkupTest {
 
-    private val resources = listOf("/messages_ru.yml", "/messages_en.yml", "/locales/ru.yml")
+    private val resources = listOf("/locales/ru.yml", "/locales/en.yml")
 
     // vanilla color names. <gold> is deliberately absent: it is our own token.
     private val vanillaColors = listOf(
@@ -141,7 +141,7 @@ class ResourceMarkupTest {
     fun `placeholderapi values stay plain text`() {
         // these are consumed as legacy strings by placeholderapi, not rendered
         // as miniMessage: a tag here would print itself into a scoreboard
-        val entries = entries("/messages_ru.yml") + entries("/messages_en.yml")
+        val entries = resources.flatMap { entries(it).toList() }.toMap()
         for ((key, template) in entries) {
             if (!key.startsWith("placeholders.")) continue
             assertFalse(template.contains("<"), "placeholders value $key must stay plain text: [$template]")

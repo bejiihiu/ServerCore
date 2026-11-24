@@ -371,7 +371,7 @@ class ServerCorePlugin : JavaPlugin() {
         // guest mode stack (its hub is attached to the real transport below;
         // until the link is up every send fails closed to local behavior)
         val guestConfig = GuestConfig.load(config, logger)
-        i18n = I18n(this, guestConfig.lang)
+        i18n = I18n(locale, guestConfig.lang)
 
         val lpConfig = LuckPermsConfig.load(config, logger)
         val permissions = PermissionSourceFactory.create(lpConfig, logger)

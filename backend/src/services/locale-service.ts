@@ -5,7 +5,7 @@ import type { PayloadOf } from "../websocket/protocol/message-types.js"
 import type { ServerConnection } from "../websocket/connection.js"
 import { newMessageId } from "../websocket/security/replay-guard.js"
 
-/** the only locale shipped right now; the plugin accepts nothing else */
+/** the locale this backend ships and pushes; the plugin also bundles `en` and accepts it */
 export const CANONICAL_LOCALE = "ru"
 
 /**

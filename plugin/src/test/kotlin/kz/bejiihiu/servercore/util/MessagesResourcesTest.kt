@@ -3,13 +3,14 @@ package kz.bejiihiu.servercore.util
 import kz.bejiihiu.servercore.locale.LocaleStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.fail
 
 /**
- * the bundled messages_ru.yml and messages_en.yml must stay key-parallel:
- * a key missing from the language file silently falls back to english, which
- * leaks untranslated text to russian players. this test fails the build the
- * moment one side grows a section the other does not have.
+ * the bundled locales/ru.yml and locales/en.yml must stay key-parallel:
+ * a key missing from the active language silently falls back to the base
+ * layer, which leaks untranslated text to russian players. this test fails the
+ * build the moment one side grows a section the other does not have.
  */
 class MessagesResourcesTest {
 
@@ -20,21 +21,25 @@ class MessagesResourcesTest {
     }
 
     @Test
-    fun `ru and en message files define the same key set`() {
-        val ru = bundledKeys("/messages_ru.yml")
-        val en = bundledKeys("/messages_en.yml")
-        assertEquals(en, ru, "message files drifted apart; missing keys must be translated, not dropped")
+    fun `ru and en locale files define the same key set`() {
+        val ru = bundledKeys("/locales/ru.yml")
+        val en = bundledKeys("/locales/en.yml")
+        assertEquals(en, ru, "locale files drifted apart; missing keys must be translated, not dropped")
     }
 
     @Test
     fun `every key set used by code exists in both files`() {
-        val ru = bundledKeys("/messages_ru.yml")
-        val en = bundledKeys("/messages_en.yml")
-        // the surfaces the plugin renders today: guest lifecycle, auth payoff,
-        // spec (service + inventory viewer), protection denial, permission debug
+        val ru = bundledKeys("/locales/ru.yml")
+        val en = bundledKeys("/locales/en.yml")
+        // the surfaces the plugin renders today: toolkit (tab list, welcome,
+        // auth), guest lifecycle, spec (service + inventory viewer), protection
+        // denial, permission debug and the placeholderapi values
         val required = listOf(
+            "tablist.header",
+            "tablist.footer",
             "guest.welcome.title",
             "guest.welcome.subtitle",
+            "guest.welcome.card",
             "guest.welcome-back.subtitle",
             "guest.link-prompt",
             "guest.restriction.actionbar",
@@ -47,6 +52,10 @@ class MessagesResourcesTest {
             "guest.kick.limit",
             "guest.kick.banned",
             "guest.kick.disabled",
+            "auth.prompt.card",
+            "auth.pulse",
+            "auth.window",
+            "auth.expired",
             "auth.approved.title",
             "auth.approved.subtitle",
             "account.revoked",
@@ -69,10 +78,11 @@ class MessagesResourcesTest {
             "placeholders.status.guest",
             "placeholders.application.voting",
             "placeholders.last-seen.minutes",
+            "countdown.tick",
         )
         for (key in required) {
-            if (key !in ru) fail("messages_ru.yml is missing key: $key")
-            if (key !in en) fail("messages_en.yml is missing key: $key")
+            if (key !in ru) fail("locales/ru.yml is missing key: $key")
+            if (key !in en) fail("locales/en.yml is missing key: $key")
         }
     }
 
@@ -80,8 +90,7 @@ class MessagesResourcesTest {
     fun `no key is shipped without a caller or a producer`() {
         // keys that only existed for a flow nobody renders are copy debt: they
         // drift, get translated twice and show up in audits as live surfaces.
-        // the auth lifecycle lives in the canonical locale seed now.
-        val ru = bundledKeys("/messages_ru.yml")
+        val ru = bundledKeys("/locales/ru.yml")
         val dead = listOf(
             "guest.welcome-back.title",
             "auth.waiting.actionbar",
@@ -89,7 +98,15 @@ class MessagesResourcesTest {
             "auth.expired.actionbar",
         )
         for (key in dead) {
-            if (key in ru) fail("messages_ru.yml still ships a key nothing renders: $key")
+            if (key in ru) fail("locales/ru.yml still ships a key nothing renders: $key")
         }
+    }
+
+    @Test
+    fun `the flat messages layer is gone`() {
+        // one store only: a stale messages_*.yml in the jar would be dead copy
+        // that drifts from the canonical locale files
+        assertNull(javaClass.getResourceAsStream("/messages_ru.yml"), "messages_ru.yml must not ship")
+        assertNull(javaClass.getResourceAsStream("/messages_en.yml"), "messages_en.yml must not ship")
     }
 }

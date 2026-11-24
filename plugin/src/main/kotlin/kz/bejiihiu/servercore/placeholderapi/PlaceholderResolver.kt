@@ -13,7 +13,7 @@ fun interface PlaceholderText {
     fun text(key: String, vararg values: Pair<String, String>): String
 
     companion object {
-        /** the real thing: human-readable strings from the messages_*.yml layer */
+        /** the real thing: human-readable strings from the canonical locale store */
         fun fromI18n(i18n: I18n): PlaceholderText = PlaceholderText { key, values -> i18n.text(key, *values) }
     }
 }

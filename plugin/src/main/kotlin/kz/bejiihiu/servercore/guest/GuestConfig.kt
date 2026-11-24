@@ -52,7 +52,7 @@ data class GuestConfig(
     val linkTtlMs: Long,
     /** where the durable snapshot file lives, relative to the plugin data folder */
     val snapshotStoragePath: String,
-    /** ui language, maps to messages_<lang>.yml in the plugin data folder */
+    /** ui language, picks locales/<lang>.yml (bundled: en, ru) */
     val lang: String,
     val restrictions: RestrictionToggles,
     /** uuid -> authorized|banned overrides that work even with the backend down.

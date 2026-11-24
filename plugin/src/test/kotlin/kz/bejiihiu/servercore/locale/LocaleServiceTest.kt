@@ -2,6 +2,7 @@ package kz.bejiihiu.servercore.locale
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -57,6 +58,25 @@ class LocaleServiceTest {
     }
 
     @Test
+    fun `both bundled locales carry the same key set`() {
+        val service = LocaleService(temp, logger)
+        assertEquals(service.snapshot("en").keys, service.snapshot("ru").keys)
+    }
+
+    @Test
+    fun `language switch serves the other locale`() {
+        val service = LocaleService(temp, logger)
+        val ru = service.text("tablist.header")
+        service.setLanguage("en")
+        val en = service.text("tablist.header")
+        assertNotEquals(ru, en)
+        assertTrue(en.contains("closed season"))
+        // an unknown tag stays canonical instead of blanking the server
+        service.setLanguage("de")
+        assertEquals(ru, service.text("tablist.header"))
+    }
+
+    @Test
     fun `push replaces the store and persists to disk`() {
         val service = LocaleService(temp, logger)
         val pushed = "greeting:\n  line: \"<info>новая волна</info>\"\n"
@@ -72,9 +92,28 @@ class LocaleServiceTest {
     }
 
     @Test
-    fun `push accepts only the canonical locale`() {
+    fun `a dropped key falls back to the english base layer`() {
         val service = LocaleService(temp, logger)
-        val result = service.applyPush("en", "rev-8", "a: b\n")
+        service.applyPush("ru", "rev-11", "greeting:\n  line: \"<info>новая волна</info>\"\n")
+        // ru no longer ships the tablist, so the base locale answers instead
+        assertNotEquals("tablist.header", service.text("tablist.header"))
+    }
+
+    @Test
+    fun `push accepts any bundled locale`() {
+        val service = LocaleService(temp, logger)
+        val result = service.applyPush("en", "rev-en", "greeting:\n  line: \"<info>new wave</info>\"\n")
+        assertTrue(result is LocalePushResult.Accepted)
+        service.setLanguage("en")
+        assertEquals("rev-en", service.revision)
+        assertEquals("<info>new wave</info>", service.text("greeting.line"))
+        assertTrue(Files.exists(temp.resolve("locales/en.yml")))
+    }
+
+    @Test
+    fun `push of an unsupported locale is rejected`() {
+        val service = LocaleService(temp, logger)
+        val result = service.applyPush("de", "rev-8", "a: b\n")
         assertTrue(result is LocalePushResult.Rejected)
         assertEquals("bundled", service.revision)
     }
@@ -92,5 +131,14 @@ class LocaleServiceTest {
         val service = LocaleService(temp, logger)
         val result = service.applyPush("ru", "rev-10", "# nothing here\n")
         assertTrue(result is LocalePushResult.Rejected)
+    }
+
+    @Test
+    fun `broken persisted files fall back to the bundled seeds`() {
+        Files.createDirectories(temp.resolve("locales"))
+        Files.writeString(temp.resolve("locales/ru.yml"), "tablist: [unclosed")
+        val service = LocaleService(temp, logger)
+        assertNotEquals("tablist.header", service.text("tablist.header"))
+        assertEquals("bundled", service.revision)
     }
 }

@@ -86,14 +86,14 @@ The `hmac` is computed over the **canonical json** of the envelope without the h
 
 | Type | Direction | Purpose |
 |---|---|---|
-| `LOCALE_PUSH` | backend → plugin | Full content of one locale file (canonical `ru`); replaces the plugin's copy wholesale |
+| `LOCALE_PUSH` | backend → plugin | Full content of one locale file (`ru` or `en`); replaces the plugin's copy for that language wholesale |
 | `LOCALE_ACK` | plugin → backend | Outcome of an applied push; correlates with the push via `correlationId` |
 
 `LOCALE_PUSH` payload:
 
 ```text
 {
-  locale: string     // language tag, currently only "ru" is accepted
+  locale: string     // language tag; the plugin bundles and accepts "ru" and "en"
   revision: string   // opaque backend-side revision id (commit sha or hash)
   content: string    // the FULL yaml file, never a diff
 }
@@ -114,13 +114,14 @@ Semantics:
 
 - The plugin never fetches locale files itself; there is no HTTP path. The backend ships the canonical bundle in its own image and pushes it to every connected server.
 - Pushes are **full-file**: the plugin replaces its whole locale store for that language. Partial merges are not attempted.
-- The plugin validates the payload (yaml parses, locale matches the canonical tag, store is non-empty) before swapping the live store atomically; a rejected push leaves the running locale untouched and is reported back with a `reason`.
+- The plugin validates the payload (yaml parses, locale is one it bundles, store is non-empty) before swapping the live store atomically; a rejected push leaves the running locale untouched and is reported back with a `reason`.
 - On success the plugin persists the file to its data folder; the persisted file wins over the bundled seed on boot, so locale state survives restarts. The revision is not durable across a plugin restart — the next connection receives the current bundle again.
 - Re-delivery of the same `revision` is safe: the plugin re-parses and re-applies it idempotently.
 
 Push semantics:
 
 - The backend loads its canonical bundle once at boot (a missing or empty bundle fails boot; an oversized one is refused before it can produce an undeliverable frame). `revision` is derived from the content: the first 16 hex chars of its sha256, so an unchanged file always pushes the same id.
+- The backend currently serves only `ru`. The plugin also bundles `en` as its base layer, and its push handler accepts `en` the same way, so serving the second locale later is a backend-side change with no protocol change.
 - Every fresh connection receives one `LOCALE_PUSH` immediately after its registration `SERVER_STATUS` is acknowledged. The push is not repeated for the status frames that follow on the same socket; a reconnect is a new socket and gets a fresh push.
 - `LOCALE_ACK` is tracked per server id. The backend distinguishes an applied bundle, a rejection (with the plugin's reason), and an ack for a revision this process no longer serves. A missing ack is not retried on the same connection — the next registration re-delivers the current revision.
 - Old plugins without a `LOCALE_PUSH` consumer simply never ack: the push stays unacknowledged on that connection and the next registration re-delivers it. An older backend never sends the frame at all, and a newer one is harmless to a build that does not know the type.
