@@ -47,3 +47,24 @@ auth:
     title: "<red>В авторизации отказано</red>"
   expired:
     actionbar: "<yellow>Запрос на вход истёк, используйте <bold>/link</bold>, чтобы повторить</yellow>"
+# вывод %servercore_*% плейсхолдеров, только человекочитаемые части
+placeholders:
+  "yes": "да"
+  "no": "нет"
+  status:
+    active: "активен"
+    banned: "заблокирован"
+    guest: "гость"
+  application:
+    voting: "на голосовании"
+    approved: "одобрена"
+    rejected: "отклонена"
+  last-seen:
+    now: "сейчас"
+    minutes: "{n} мин. назад"
+    hours: "{n} ч. назад"
+    days: "{n} дн. назад"
+  duration:
+    h: "{n}ч"
+    m: "{n}м"
+    s: "{n}с"

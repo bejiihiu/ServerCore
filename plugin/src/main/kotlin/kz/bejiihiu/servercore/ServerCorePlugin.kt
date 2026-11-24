@@ -26,6 +26,13 @@ import kz.bejiihiu.servercore.ops.RestartScheduleTask
 import kz.bejiihiu.servercore.ops.ServerState
 import kz.bejiihiu.servercore.ops.UpdateInstaller
 import kz.bejiihiu.servercore.ops.UpdaterService
+import kz.bejiihiu.servercore.placeholderapi.ServerCoreExpansion
+import kz.bejiihiu.servercore.placeholderapi.ServerStateCache
+import kz.bejiihiu.servercore.placeholderapi.PlaceholderConfig
+import kz.bejiihiu.servercore.placeholderapi.PlaceholderResolver
+import kz.bejiihiu.servercore.placeholderapi.PlaceholderText
+import kz.bejiihiu.servercore.placeholderapi.StatePlayerListener
+import kz.bejiihiu.servercore.placeholderapi.StateWsListener
 import kz.bejiihiu.servercore.player.PlayerPresenceService
 import kz.bejiihiu.servercore.sync.EntityIdentityTracker
 import kz.bejiihiu.servercore.sync.InMemoryViewStateRegistry
@@ -41,6 +48,9 @@ import kz.bejiihiu.servercore.websocket.GatewayListener
 import kz.bejiihiu.servercore.websocket.Payload
 import kz.bejiihiu.servercore.websocket.ServerStatsProvider
 import kz.bejiihiu.servercore.ws.BackendGateway
+import kz.bejiihiu.servercore.ws.WsEnvelope
+import kz.bejiihiu.servercore.ws.newMessageId
+import kotlinx.serialization.json.JsonObject
 import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.event.EventHandler
@@ -62,6 +72,9 @@ class ServerCorePlugin : JavaPlugin() {
     lateinit var locale: LocaleService
         private set
 
+    lateinit var i18n: I18n
+        private set
+
     private var wsGateway: GatewayClient? = null
     private var presence: PlayerPresenceService? = null
     private lateinit var backendGateway: BackendGateway
@@ -74,6 +87,7 @@ class ServerCorePlugin : JavaPlugin() {
     private var restartSchedule: RestartScheduleTask? = null
     private var packetSync: PacketStateSync? = null
     private var syncReconciler: SyncReconciler? = null
+    private var papiExpansion: ServerCoreExpansion? = null
     private lateinit var opsBus: OpsEventBus
 
     override fun onEnable() {
@@ -162,6 +176,28 @@ class ServerCorePlugin : JavaPlugin() {
             override fun onAccountDeleted(payload: Payload.AccountDeleted) {
                 revokeDeletedPlayer(payload.minecraftUuid)
             }
+
+            // raw fan-out bridge: the ws/* modules speak WsEnvelope, the typed
+            // transport speaks Payload. every validated inbound frame travels
+            // through here as json, whatever its type. only safe after
+            // backendGateway is assigned, which is guaranteed because the
+            // client only starts receiving frames once started below
+            override fun onWireMessage(
+                wireType: String,
+                payload: JsonObject,
+                correlationId: String?,
+                timestamp: Long,
+            ) {
+                backendGateway.receive(
+                    WsEnvelope(
+                        id = newMessageId(),
+                        type = wireType,
+                        timestamp = timestamp,
+                        correlationId = correlationId,
+                        payload = payload,
+                    ),
+                )
+            }
         }
 
         // folia async scheduler drives reconnect delays; the client itself is
@@ -186,7 +222,7 @@ class ServerCorePlugin : JavaPlugin() {
         // guest mode stack (uses its own local gateway handle for envelope-level
         // helpers; both handles share the same backend connection semantics)
         val guestConfig = GuestConfig.load(config, logger)
-        val i18n = I18n(this, guestConfig.lang)
+        i18n = I18n(this, guestConfig.lang)
 
         snapshots = SnapshotStore(dataFolder.toPath().resolve(guestConfig.snapshotStoragePath), io)
         snapshots.load()
@@ -258,12 +294,50 @@ class ServerCorePlugin : JavaPlugin() {
         presenceService.startHeartbeat()
         client.start()
 
+        registerPlaceholderExpansion()
+
         // boot sequence over the bus: starting now, running once the server
         // had a moment to settle
         opsBus.publish(ServerState.STARTING)
         server.globalRegionScheduler.runDelayed(this, { _ -> opsBus.publish(ServerState.RUNNING) }, 100L)
 
         logger.info("servercore ${pluginMeta.version} enabled (guest mode: ${if (guestConfig.enabled) "on" else "off"})")
+    }
+
+    /**
+     * placeholderapi integration. papi is a soft-depend: not installed means
+     * the whole state cache stays cold and the plugin runs exactly as before,
+     * so this is a plain presence check, not a hard requirement.
+     */
+    private fun registerPlaceholderExpansion() {
+        if (server.pluginManager.getPlugin("PlaceholderAPI") == null) {
+            logger.info("placeholderapi not installed, servercore placeholders disabled")
+            return
+        }
+        val stateCache = ServerStateCache()
+        // backend facts: auth verdicts, application verdicts, account deletion
+        backendGateway.addListener(StateWsListener(stateCache))
+        // local facts: join/quit timestamps, live session time, cache seeding
+        server.pluginManager.registerEvents(
+            StatePlayerListener(stateCache, accountsCache),
+            this,
+        )
+        val expansion = ServerCoreExpansion(
+            plugin = this,
+            resolver = PlaceholderResolver(
+                provider = stateCache,
+                config = PlaceholderConfig.load(config),
+                strings = PlaceholderText.fromI18n(i18n),            ),
+        )
+        val registered = runCatching { expansion.register() }
+            .onFailure { logger.warning("placeholderapi expansion registration threw: ${it.message}") }
+            .getOrDefault(false)
+        if (registered) {
+            papiExpansion = expansion
+            logger.info("placeholderapi expansion registered: %servercore_<status|authenticated|application_status|telegram_linked|last_seen|session_duration>%")
+        } else {
+            logger.warning("placeholderapi expansion registration failed, placeholders stay off")
+        }
     }
 
     /** backend revoked the account: end the local session, folia-correctly */
@@ -285,6 +359,11 @@ class ServerCorePlugin : JavaPlugin() {
     override fun onDisable() {
         // reload safety first: every modified client view goes back to vanilla
         // truth before anything else shuts down, so a reload leaves no ghosts
+        papiExpansion?.let { expansion ->
+            runCatching { expansion.unregister() }
+                .onFailure { logger.warning("placeholderapi expansion unregister failed: ${it.message}") }
+        }
+        papiExpansion = null
         syncReconciler?.stop()
         packetSync?.let { sync ->
             sync.restoreAllForReload()

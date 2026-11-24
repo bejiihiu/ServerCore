@@ -47,3 +47,24 @@ auth:
     title: "<red>Authorization denied</red>"
   expired:
     actionbar: "<yellow>Login request expired, use <bold>/link</bold> to try again</yellow>"
+# %servercore_*% placeholder output, human-readable parts only
+placeholders:
+  "yes": "yes"
+  "no": "no"
+  status:
+    active: "active"
+    banned: "banned"
+    guest: "guest"
+  application:
+    voting: "voting"
+    approved: "approved"
+    rejected: "rejected"
+  last-seen:
+    now: "now"
+    minutes: "{n} min ago"
+    hours: "{n} h ago"
+    days: "{n} d ago"
+  duration:
+    h: "{n}h"
+    m: "{n}m"
+    s: "{n}s"

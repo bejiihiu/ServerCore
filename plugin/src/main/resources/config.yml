@@ -95,7 +95,16 @@ protection:
   enforce-gamemode: true
 
 placeholders:
+  # how long a rendered placeholder value is memoized before recomputing
   cache-ttl-milliseconds: 2000
+  # string for a player this server has never seen
+  unknown-value: "unknown"
+  # while the backend link is down, backend-derived facts older than this
+  # get the stale suffix instead of being re-fetched (placeholders never
+  # block on the network)
+  stale-after-minutes: 10
+  # suffix appended to stale backend-derived values
+  stale-suffix: " (stale)"
 
 # ops configuration
 # every knob lives under ops:; secrets never go here - the panel api key and
