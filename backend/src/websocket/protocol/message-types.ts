@@ -56,6 +56,13 @@ export const MESSAGE_TYPES = [
 
 export type MessageType = (typeof MESSAGE_TYPES)[number]
 
+const KNOWN_MESSAGE_TYPES: ReadonlySet<string> = new Set(MESSAGE_TYPES)
+
+/** narrows an arbitrary wire string to a type this build understands */
+export function isMessageType(type: string): type is MessageType {
+  return KNOWN_MESSAGE_TYPES.has(type)
+}
+
 /** types the backend pushes to the plugin, everything else originates plugin-side */
 export const BACKEND_TO_PLUGIN_TYPES: readonly MessageType[] = [
   "AUTH_REQUEST",
@@ -84,6 +91,15 @@ export const NO_ACK_TYPES: readonly MessageType[] = [
   "ACK",
   "ERROR",
 ]
+
+/**
+ * fire-and-forget determination for any wire type. unknown types always get an
+ * ack: the sender needs to retire its durable frame even when the type is
+ * newer than this build understands.
+ */
+export function isNoAckType(type: string): boolean {
+  return isMessageType(type) && NO_ACK_TYPES.includes(type)
+}
 
 export const MINECRAFT_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -289,10 +305,17 @@ export const payloadSchemas = {
 export type PayloadOf<T extends MessageType> = z.output<(typeof payloadSchemas)[T]>
 export type EnvelopePayloads = { [T in MessageType]: PayloadOf<T> }
 
+/**
+ * wire type names are open-ended on purpose: a newer plugin may send a type
+ * this build has never heard of, and that is version skew, not forgery. the
+ * hmac still has to check out before anything acts on such a frame.
+ */
+const WIRE_TYPE_PATTERN = /^[A-Za-z0-9_.-]{1,128}$/
+
 /** envelope without the hmac — this is exactly what gets signed */
 export const envelopeMetaSchema = z.object({
   id: z.string().min(8).max(64).regex(/^[A-Za-z0-9_-]+$/),
-  type: z.enum(MESSAGE_TYPES),
+  type: z.string().regex(WIRE_TYPE_PATTERN, "not a valid message type"),
   timestamp: z.number().int().min(0),
   correlationId: z.string().min(8).max(64).regex(/^[A-Za-z0-9_-]+$/).optional(),
 })
@@ -304,9 +327,15 @@ export type EnvelopeMeta = z.infer<typeof envelopeMetaSchema>
  * the discriminated union is built by hand instead of z.discriminatedUnion so
  * the payload schema lookup stays a plain map access.
  */
-export type Envelope<T extends MessageType = MessageType> = EnvelopeMeta & {
+export type Envelope<T extends MessageType = MessageType> = Omit<EnvelopeMeta, "type"> & {
   type: T
   payload: PayloadOf<T>
+}
+
+/** a validly signed frame carrying a type this build does not know */
+export type UnknownEnvelope = Omit<EnvelopeMeta, "type"> & {
+  type: string
+  payload: unknown
 }
 
 export type WireMessage = EnvelopeMeta & {
