@@ -4,13 +4,18 @@
 
 backend:
   # full websocket url of the backend gateway, wss://host:port/path
+  # ws:// for local, wss:// in production (tls terminates at the proxy)
   url: ""
+  # unique id of this game server, mirrors SERVERCORE_SERVER_CREDENTIALS key
+  server-id: "game-1"
   # per-server hmac secret, must match SERVER_SECRET_<ID> on the backend.
   # never commit the real value, keep it in the server environment
   secret: ""
+  # reconnect backoff: starts at initial, doubles up to max, with jitter
   reconnect:
     initial-delay-seconds: 2
     max-delay-seconds: 120
+  # periodic liveness message cadence
   heartbeat-interval-seconds: 15
 
 guest:

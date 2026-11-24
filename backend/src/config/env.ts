@@ -21,9 +21,18 @@ const envSchema = z.object({
   // plugin websocket gateway runs on its own port, separate from fastify http
   WS_PORT: z.coerce.number().int().min(1).max(65535).default(8081),
 
+  // atlas in production: mongodb+srv://... (tls is implicit for srv); local
+  // dev keeps the plain mongodb:// form. retryWrites is always enabled below
   MONGODB_URI: z.string().min(1).default("mongodb://localhost:27017/servercore"),
   BOT_TOKEN: z.string().min(1).optional(),
   TELEGRAM_BOT_USERNAME: z.string().min(1).default("ServerCoreBot"),
+
+  // closed telegram group; empty until the group exists (kick needs it)
+  TELEGRAM_GROUP_CHAT_ID: z.string().default(""),
+
+  // logs and schedules render in this zone (project standard: Europe/Moscow)
+  LOG_TIMEZONE: z.string().min(1).default("Europe/Moscow"),
+
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info"),
 
   // closed telegram group the voting runs in and approved members join.
@@ -96,9 +105,19 @@ const envSchema = z.object({
     .transform((raw) => ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase())),
   // outbound broadcast rate ceiling (telegram allows ~30/s)
   NOTIFICATION_RATE_PER_SECOND: z.coerce.number().int().min(1).max(30).default(30),
+<<<<<<< HEAD
   // custom emoji entities need telegram premium on the bot owner (bot api 9.4);
   // off by default, everything degrades to unicode fallbacks
   BOT_CUSTOM_EMOJI: z.enum(["true", "false"]).default("false"),
+=======
+
+  // atlas m0 housekeeping: audit/server_events lifetime and closed-session
+  // lifetime in days; the daily cleanup task enforces both
+  RETENTION_AUDIT_DAYS: z.coerce.number().int().min(7).default(90),
+  RETENTION_SESSION_DAYS: z.coerce.number().int().min(7).default(60),
+  // first cleanup pass after boot, minutes (then daily)
+  RETENTION_INITIAL_DELAY_MINUTES: z.coerce.number().int().min(1).default(5),
+>>>>>>> feature/accounts
 })
 
 export type AppConfig = {
@@ -109,6 +128,9 @@ export type AppConfig = {
   mongoUri: string
   botToken?: string
   telegramBotUsername: string
+  telegramGroupChatId: string
+  defaultLanguage: "ru" | "en"
+  logTimezone: string
   logLevel: "trace" | "debug" | "info" | "warn" | "error" | "fatal"
   serverCredentials: Record<string, string>
   wsHeartbeatIntervalMs: number
@@ -133,7 +155,13 @@ export type AppConfig = {
   serverOfflineAlertMinutes: number
   notifyUsersOnOffline: boolean
   notificationRatePerSecond: number
+<<<<<<< HEAD
   botCustomEmoji: boolean
+=======
+  retentionAuditDays: number
+  retentionSessionDays: number
+  retentionInitialDelayMinutes: number
+>>>>>>> feature/accounts
 }
 
 export class ConfigError extends Error {
@@ -210,6 +238,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     mongoUri: result.data.MONGODB_URI,
     botToken: result.data.BOT_TOKEN,
     telegramBotUsername: result.data.TELEGRAM_BOT_USERNAME,
+    telegramGroupChatId: result.data.TELEGRAM_GROUP_CHAT_ID,
+    defaultLanguage: result.data.OPS_LOCALE,
+    logTimezone: result.data.LOG_TIMEZONE,
     logLevel: result.data.LOG_LEVEL,
     serverCredentials: parseServerCredentials(result.data.SERVERCORE_SERVER_CREDENTIALS),
     wsHeartbeatIntervalMs: result.data.WS_HEARTBEAT_INTERVAL_MS,
@@ -237,6 +268,12 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     serverOfflineAlertMinutes: result.data.SERVER_OFFLINE_ALERT_MINUTES,
     notifyUsersOnOffline: result.data.NOTIFY_USERS_ON_OFFLINE,
     notificationRatePerSecond: result.data.NOTIFICATION_RATE_PER_SECOND,
+<<<<<<< HEAD
     botCustomEmoji: result.data.BOT_CUSTOM_EMOJI === "true",
+=======
+    retentionAuditDays: result.data.RETENTION_AUDIT_DAYS,
+    retentionSessionDays: result.data.RETENTION_SESSION_DAYS,
+    retentionInitialDelayMinutes: result.data.RETENTION_INITIAL_DELAY_MINUTES,
+>>>>>>> feature/accounts
   }
 }

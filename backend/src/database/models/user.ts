@@ -1,7 +1,5 @@
 import { model, Schema } from "mongoose"
 
-export type UserLanguage = "ru" | "en"
-
 export const USER_STATUSES = [
   "UNREGISTERED",
   "APPLICATION_PENDING",
@@ -14,6 +12,8 @@ export const USER_STATUSES = [
 ] as const
 
 export type UserStatus = (typeof USER_STATUSES)[number]
+
+export type UserLanguage = "ru" | "en"
 
 export interface User {
   minecraft: {
@@ -28,7 +28,7 @@ export interface User {
     groupLinkedAt: Date | null
   }
   status: UserStatus
-  /** interface language for the bot's personal messages */
+  /** bot language preference, interface language for personal messages */
   language: UserLanguage
   lastApplicationAt: Date | null
   createdAt: Date

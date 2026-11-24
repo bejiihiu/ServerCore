@@ -69,6 +69,27 @@ export class NotificationService {
     this.sender = sender
   }
 
+  /** direct send to one chat through the same rate-limited pipeline */
+  async sendToOne(chatId: string, text: string): Promise<void> {
+    const result = await this.sendToAll([chatId], text)
+    if (result.failed.length > 0) {
+      const retry = await this.sendToAll(result.failed, text)
+      if (retry.failed.length > 0) {
+        // single recipient and still failing: surface it, caller decides
+        throw new Error(`delivery to ${chatId} failed after retry`)
+      }
+    }
+  }
+
+  /** direct send to an explicit chat list (admin copies), no recipient source */
+  async sendToChats(chatIds: readonly string[], text: string): Promise<void> {
+    if (chatIds.length === 0) return
+    const result = await this.sendToAll([...chatIds], text)
+    if (result.failed.length > 0) {
+      await this.sendToAll(result.failed, text)
+    }
+  }
+
   /**
    * sends the text to every linked user plus the admin chat ids. returns the
    * aggregate result; admin sends count towards the same rate window.

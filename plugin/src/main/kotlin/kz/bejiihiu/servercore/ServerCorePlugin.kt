@@ -1,7 +1,10 @@
 package kz.bejiihiu.servercore
 
+import java.util.UUID
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kz.bejiihiu.servercore.boot.JoinFlowListener
+import kz.bejiihiu.servercore.config.ConfigLoader
 import kz.bejiihiu.servercore.guest.AccountService
 import kz.bejiihiu.servercore.guest.GuestConfig
 import kz.bejiihiu.servercore.guest.GuestMessageService
@@ -23,9 +26,16 @@ import kz.bejiihiu.servercore.ops.RestartScheduleTask
 import kz.bejiihiu.servercore.ops.ServerState
 import kz.bejiihiu.servercore.ops.UpdateInstaller
 import kz.bejiihiu.servercore.ops.UpdaterService
+import kz.bejiihiu.servercore.player.PlayerPresenceService
 import kz.bejiihiu.servercore.ui.UiKit
 import kz.bejiihiu.servercore.util.I18n
+import kz.bejiihiu.servercore.websocket.DelayScheduler
+import kz.bejiihiu.servercore.websocket.GatewayClient
+import kz.bejiihiu.servercore.websocket.GatewayListener
+import kz.bejiihiu.servercore.websocket.Payload
+import kz.bejiihiu.servercore.websocket.ServerStatsProvider
 import kz.bejiihiu.servercore.ws.BackendGateway
+import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
@@ -34,7 +44,10 @@ import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.plugin.java.JavaPlugin
 
-// single entry point, folia-only. no main thread work here, ever
+/**
+ * single entry point, folia-only. all scheduling goes through folia's
+ * async/entity schedulers, never the bukkit one.
+ */
 class ServerCorePlugin : JavaPlugin() {
 
     lateinit var ui: UiKit
@@ -43,7 +56,9 @@ class ServerCorePlugin : JavaPlugin() {
     lateinit var locale: LocaleService
         private set
 
-    private lateinit var gateway: BackendGateway
+    private var wsGateway: GatewayClient? = null
+    private var presence: PlayerPresenceService? = null
+    private lateinit var backendGateway: BackendGateway
     private lateinit var sessions: GuestSessionService
     private lateinit var snapshots: SnapshotStore
     private lateinit var accountsCache: LocalAccountCache
@@ -105,7 +120,63 @@ class ServerCorePlugin : JavaPlugin() {
         schedule.start()
         restartSchedule = schedule
 
-        // guest mode stack
+        // presence + gateway client: liveness, PLAYER_JOINED/LEFT, account events.
+        // bad config is a boot blocker: better dead than half-connected
+        val gatewayConfig = try {
+            ConfigLoader.load(config)
+        } catch (e: IllegalArgumentException) {
+            logger.severe("config error: ${e.message}")
+            server.pluginManager.disablePlugin(this)
+            return
+        }
+
+        val stats = object : ServerStatsProvider {
+            override fun onlinePlayers(): Int = presence?.onlineCount() ?: 0
+            override fun maxPlayers(): Int = server.maxPlayers
+            override fun serverVersion(): String = server.getMinecraftVersion()
+        }
+
+        val gatewayListener = object : GatewayListener {
+            override fun onConnected() {
+                logger.info("backend gateway connected as ${gatewayConfig.gateway.serverId}")
+                // re-announce live guest sessions so both sides agree on reality
+                sessions.reconcile()
+            }
+
+            override fun onDisconnected() {
+                logger.warning("backend gateway disconnected, reconnect scheduled")
+            }
+
+            override fun onLinkToken(payload: Payload.LinkToken) {
+                logger.info("link token issued for ${payload.username}")
+            }
+
+            override fun onAccountDeleted(payload: Payload.AccountDeleted) {
+                revokeDeletedPlayer(payload.minecraftUuid)
+            }
+        }
+
+        // folia async scheduler drives reconnect delays; the client itself is
+        // bukkit-free, so its callbacks may run on any async thread
+        val delayScheduler = DelayScheduler { task: Runnable, delayMs: Long ->
+            server.asyncScheduler.runDelayed(this, { _ -> task.run() }, delayMs, TimeUnit.MILLISECONDS)
+        }
+
+        val client = GatewayClient(
+            config = gatewayConfig.gateway,
+            listener = gatewayListener,
+            scheduler = delayScheduler,
+            stats = stats,
+            presenceLookup = { uuid -> presence?.isOnline(uuid) ?: false },
+        )
+        wsGateway = client
+
+        val presenceService = PlayerPresenceService(this, client)
+        presence = presenceService
+        server.pluginManager.registerEvents(presenceService, this)
+
+        // guest mode stack (uses its own local gateway handle for envelope-level
+        // helpers; both handles share the same backend connection semantics)
         val guestConfig = GuestConfig.load(config, logger)
         val i18n = I18n(this, guestConfig.lang)
 
@@ -118,28 +189,23 @@ class ServerCorePlugin : JavaPlugin() {
         accountsCache = LocalAccountCache(dataFolder.toPath().resolve("account-cache.json"), io)
         accountsCache.load()
 
-        gateway = BackendGateway()
+        backendGateway = BackendGateway()
 
-        val wsResolver = WsAccountResolver(gateway, accountsCache, guestConfig)
+        val wsResolver = WsAccountResolver(backendGateway, accountsCache, guestConfig)
         val accounts = AccountService(
-            gateway,
+            backendGateway,
             wsResolver,
             LocalAccountResolver(guestConfig, accountsCache),
         )
         val messages = GuestMessageService(guestConfig, wsResolver, i18n)
         sessions = GuestSessionService(
-            this, guestConfig, accounts, wsResolver, snapshots, counter, gateway, messages,
+            this, guestConfig, accounts, wsResolver, snapshots, counter, backendGateway, messages,
         )
 
         // backend confirmed a login -> ungate the player
         wsResolver.onAuthApproved { uuid -> sessions.onAuthApproved(uuid) }
         // personal deep link arrived after the generic prompt went out
         wsResolver.onLinkAvailable { uuid -> sessions.onLinkAvailable(uuid) }
-        // reconnect: re-announce live guest sessions so both sides agree on reality
-        gateway.addListener(object : kz.bejiihiu.servercore.ws.GatewayListener {
-            override fun onMessage(envelope: kz.bejiihiu.servercore.ws.WsEnvelope) = Unit
-            override fun onConnected() = sessions.reconcile()
-        })
 
         // restart recovery: durable snapshots become pending restores
         sessions.markPendingRestores(snapshots.pendingAll())
@@ -159,6 +225,10 @@ class ServerCorePlugin : JavaPlugin() {
         // demo surface for the ui toolkit until real flows consume it everywhere
         server.pluginManager.registerEvents(JoinFlowListener(ui), this)
 
+        // heartbeat keeps the backend's liveness picture fresh
+        presenceService.startHeartbeat()
+        client.start()
+
         // boot sequence over the bus: starting now, running once the server
         // had a moment to settle
         opsBus.publish(ServerState.STARTING)
@@ -167,7 +237,24 @@ class ServerCorePlugin : JavaPlugin() {
         logger.info("servercore ${pluginMeta.version} enabled (guest mode: ${if (guestConfig.enabled) "on" else "off"})")
     }
 
+    /** backend revoked the account: end the local session, folia-correctly */
+    private fun revokeDeletedPlayer(minecraftUuid: String) {
+        val uuid = runCatching { UUID.fromString(minecraftUuid) }.getOrNull() ?: return
+        val player = server.getPlayer(uuid) ?: return
+        // entity work belongs on the entity scheduler, never on ws callbacks
+        player.scheduler.run(
+            this,
+            { task ->
+                player.kick(Component.text("Ваш аккаунт был удалён. Доступ к серверу отозван."))
+                task.cancel()
+            },
+            null,
+        )
+        logger.info("account deleted, player kicked: $minecraftUuid")
+    }
+
     override fun onDisable() {
+        wsGateway?.stop()
         updater?.stop()
         restartSchedule?.stop()
         // belt and braces: async snapshot writes may still be in flight

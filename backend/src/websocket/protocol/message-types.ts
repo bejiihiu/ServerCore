@@ -29,6 +29,15 @@ export const MESSAGE_TYPES = [
   // account
   "ACCOUNT_DELETED",
 
+  // account linking: fresh one-time deep-link token pushed to the plugin so
+  // the game chat can show the personal bot link
+  "LINK_TOKEN",
+
+  // account linking: backend asks the plugin whether a uuid is online right
+  // now (ownership proof for telegram linking), plugin answers
+  "SESSION_CHECK",
+  "SESSION_CHECK_RESULT",
+
   // spectator administration
   "SPEC_STARTED",
   "SPEC_ENDED",
@@ -54,6 +63,8 @@ export const BACKEND_TO_PLUGIN_TYPES: readonly MessageType[] = [
   "APPLICATION_APPROVED",
   "APPLICATION_REJECTED",
   "ACCOUNT_DELETED",
+  "LINK_TOKEN",
+  "SESSION_CHECK",
   "SPEC_STARTED",
   "SPEC_ENDED",
   "SERVER_READY",
@@ -173,6 +184,28 @@ export const payloadSchemas = {
   ACCOUNT_DELETED: z.object({
     minecraftUuid,
     reason: z.enum(["SELF_REQUESTED", "ADMIN_ACTION", "INACTIVITY"]),
+  }),
+
+  LINK_TOKEN: z.object({
+    minecraftUuid,
+    username,
+    // one-time linking token, 16 alphanumerics
+    token: z.string().length(16).regex(/^[A-Za-z0-9]+$/),
+    // epoch millis after which the token is dead
+    expiresAt: z.number().int().min(0),
+  }),
+
+  SESSION_CHECK: z.object({
+    minecraftUuid,
+  }),
+
+  SESSION_CHECK_RESULT: z.object({
+    minecraftUuid,
+    online: z.boolean(),
+    // present when online: id of the live session the plugin holds
+    sessionId: serverId.optional(),
+    // present when online: what the session currently is
+    sessionKind: z.enum(["GUEST", "WAITING_AUTH", "AUTHENTICATED"]).optional(),
   }),
 
   SPEC_STARTED: z.object({
