@@ -25,7 +25,6 @@ const envSchema = z.object({
   // dev keeps the plain mongodb:// form. retryWrites is always enabled below
   MONGODB_URI: z.string().min(1).default("mongodb://localhost:27017/servercore"),
   BOT_TOKEN: z.string().min(1).optional(),
-  TELEGRAM_BOT_USERNAME: z.string().min(1).default("ServerCoreBot"),
 
   // closed telegram group; empty until the group exists (kick needs it)
   TELEGRAM_GROUP_CHAT_ID: z.string().default(""),
@@ -142,7 +141,6 @@ export type AppConfig = {
   wsPort: number
   mongoUri: string
   botToken?: string
-  telegramBotUsername: string
   telegramGroupChatId: string
   logTimezone: string
   logLevel: "trace" | "debug" | "info" | "warn" | "error" | "fatal"
@@ -256,7 +254,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     wsPort: result.data.WS_PORT,
     mongoUri: result.data.MONGODB_URI,
     botToken: result.data.BOT_TOKEN,
-    telegramBotUsername: result.data.TELEGRAM_BOT_USERNAME,
     telegramGroupChatId: result.data.TELEGRAM_GROUP_CHAT_ID,
     defaultLanguage: result.data.OPS_LOCALE,
     logTimezone: result.data.LOG_TIMEZONE,

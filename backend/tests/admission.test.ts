@@ -27,6 +27,29 @@ const THREE_MONTHS = 90 * 24 * HOUR
 const VOTING_MS = 3 * HOUR
 const ADMIN_IDS = ["777", "778"]
 
+/** recording stand-in for the gateway push to the plugin state cache */
+function recordingPluginPush() {
+  return {
+    pushed: [] as { type: string; payload: Record<string, unknown> }[],
+    applicationSubmitted(application: { id: string; minecraftUuid: string; telegramId: string }) {
+      this.pushed.push({
+        type: "APPLICATION_SUBMITTED",
+        payload: {
+          applicationId: application.id,
+          minecraftUuid: application.minecraftUuid,
+          telegramId: application.telegramId,
+        },
+      })
+    },
+    applicationDecided(application: { id: string; minecraftUuid: string }, outcome: "APPROVED" | "REJECTED") {
+      this.pushed.push({
+        type: outcome === "APPROVED" ? "APPLICATION_APPROVED" : "APPLICATION_REJECTED",
+        payload: { applicationId: application.id, minecraftUuid: application.minecraftUuid },
+      })
+    },
+  }
+}
+
 /** wires the whole admission stack over in-memory seams */
 function build(opts: { groupChatId?: number | null; linkedRecipients?: string[] } = {}) {
   const clock = new FixedClock()
@@ -37,6 +60,7 @@ function build(opts: { groupChatId?: number | null; linkedRecipients?: string[] 
   const invites = new InMemoryGroupInviteRepository()
   const drafts = new InMemoryDraftRepository()
   const audit = new RecordingAuditSink()
+  const plugin = recordingPluginPush()
   const telegram = new FakeTelegramApi({
     groupChatId: opts.groupChatId === undefined ? -100_500 : opts.groupChatId,
   })
@@ -68,6 +92,7 @@ function build(opts: { groupChatId?: number | null; linkedRecipients?: string[] 
     votingDurationMs: VOTING_MS,
     questions: QUESTIONNAIRE_DEFAULTS_MUTABLE,
     defaultLanguage: "ru",
+    plugin,
   })
 
   const voting = new VotingService({
@@ -83,6 +108,7 @@ function build(opts: { groupChatId?: number | null; linkedRecipients?: string[] 
     defaultLanguage: "ru",
     voteButtonIcons: { acceptId: null, rejectId: null },
     approvalEffectId: "effect-1",
+    plugin,
   })
 
   const group = new GroupService({
@@ -104,7 +130,7 @@ function build(opts: { groupChatId?: number | null; linkedRecipients?: string[] 
     intervalMs: 60_000,
   })
 
-  return { clock, users, applications, votes, messages, invites, drafts, audit, telegram, sender, notifications, notifier, applications_, voting, group, scheduler }
+  return { clock, users, applications, votes, messages, invites, drafts, audit, telegram, sender, notifications, notifier, applications_, voting, group, scheduler, plugin }
 }
 
 /** completes the questionnaire draft for a telegram account */
@@ -461,6 +487,50 @@ describe("voting expiry processing", () => {
     const again = await deps.voting.decideExpired()
     expect(again.decisions).toHaveLength(0)
     expect(again.extended).toBe(0)
+  })
+})
+
+describe("plugin state-cache push", () => {
+  test("submitting an application pushes APPLICATION_SUBMITTED to the plugin", async () => {
+    const deps = build()
+    deps.users.add(user({ uuid: "u1", status: "UNREGISTERED" }))
+    await fillDraft(deps, "tg-u1")
+    const submitted = await deps.applications_.submit("tg-u1")
+    expect(submitted.ok).toBe(true)
+    if (!submitted.ok) return
+    expect(deps.plugin.pushed).toEqual([
+      {
+        type: "APPLICATION_SUBMITTED",
+        payload: { applicationId: submitted.application.id, minecraftUuid: "u1", telegramId: "tg-u1" },
+      },
+    ])
+  })
+
+  test("a decided voting pushes APPLICATION_APPROVED / APPLICATION_REJECTED to the plugin", async () => {
+    const deps = build()
+    const approved = await seedVotingApplication(deps.applications, { eligibleVoters: 3, quorumState: { votesFor: 2, votesAgainst: 0 }, votes: deps.votes })
+    deps.clock.advance(VOTING_MS + 1)
+    await deps.voting.decideExpired()
+
+    const rejected = await seedVotingApplication(deps.applications, { eligibleVoters: 3, quorumState: { votesFor: 0, votesAgainst: 2 }, votes: deps.votes })
+    await deps.voting.decide(rejected)
+
+    const types = deps.plugin.pushed.map((p) => p.type)
+    expect(types).toContain("APPLICATION_APPROVED")
+    expect(types).toContain("APPLICATION_REJECTED")
+    const approvedPush = deps.plugin.pushed.find((p) => p.type === "APPLICATION_APPROVED")
+    expect(approvedPush?.payload).toEqual({ applicationId: approved.id, minecraftUuid: approved.minecraftUuid })
+  })
+
+  test("an EXPIRED voting pushes nothing: the application stays known as submitted", async () => {
+    const deps = build()
+    await seedVotingApplication(deps.applications, { eligibleVoters: 4, quorumState: { votesFor: 1, votesAgainst: 0 }, votes: deps.votes })
+    deps.clock.advance(VOTING_MS + 1)
+    await deps.voting.decideExpired() // extends
+    deps.clock.advance(VOTING_MS + 1)
+    await deps.voting.decideExpired() // EXPIRED
+    expect(deps.plugin.pushed.map((p) => p.type)).not.toContain("APPLICATION_APPROVED")
+    expect(deps.plugin.pushed.map((p) => p.type)).not.toContain("APPLICATION_REJECTED")
   })
 })
 

@@ -10,6 +10,7 @@ import { ApplicationService } from "../services/application-service.js"
 import { VotingService } from "../services/voting-service.js"
 import { GroupService } from "../services/group-service.js"
 import type { NotificationService } from "../services/notification-service.js"
+import type { PluginPushPort } from "../services/ports.js"
 import { AdmissionNotifier } from "../services/admission-notifier.js"
 import { GrammYTelegramApi } from "./telegram-api.js"
 import { createApplicationConversation } from "./conversations/application-questionnaire.js"
@@ -41,6 +42,8 @@ export function registerAdmissionFlows(
   repos: AdmissionRepositories,
   deps: {
     notifications: NotificationService
+    /** gateway push to the plugin state cache (application lifecycle) */
+    plugin: PluginPushPort
   },
 ): AdmissionServices {
   const telegram = new GrammYTelegramApi(bot, {
@@ -72,6 +75,7 @@ export function registerAdmissionFlows(
     votingDurationMs: config.votingDurationMs,
     questions: config.questions,
     defaultLanguage: config.defaultLanguage,
+    plugin: deps.plugin,
   })
 
   const voting = new VotingService({
@@ -90,6 +94,7 @@ export function registerAdmissionFlows(
       rejectId: config.voteButtonIcons.enabled ? config.voteButtonIcons.rejectId : null,
     },
     approvalEffectId: config.approvalEffectId,
+    plugin: deps.plugin,
   })
 
   const group = new GroupService({

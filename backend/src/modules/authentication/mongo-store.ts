@@ -6,7 +6,6 @@ import {
   ACTIVE_USER_STATUS,
   type AuthRequestRecord,
   type AuthenticationStore,
-  type RetentionStore,
   type SessionRecord,
   type SessionStatus,
   type TerminalAuthStatus,
@@ -23,7 +22,7 @@ function isDuplicateKey(error: unknown): boolean {
  * mongoose-backed authentication store. all timestamps cross the seam as
  * epoch millis so the service layer never deals with Date objects.
  */
-export class MongoAuthenticationStore implements AuthenticationStore, RetentionStore {
+export class MongoAuthenticationStore implements AuthenticationStore {
   async findOpenSession(minecraftUuid: string): Promise<SessionRecord | null> {
     const doc = await PlayerSessionModel.findOne({ minecraftUuid, endedAt: null }).lean()
     return doc ? toSessionRecord(doc) : null
@@ -140,13 +139,6 @@ export class MongoAuthenticationStore implements AuthenticationStore, RetentionS
     }
     // only accounts that cleared the whole admission path may authenticate
     return user.status === ACTIVE_USER_STATUS && user.telegramId !== "" ? user : null
-  }
-
-  async purgeSessionsOlderThan(cutoff: number): Promise<number> {
-    const result = await PlayerSessionModel.deleteMany({
-      $or: [{ startedAt: { $lte: new Date(cutoff) } }, { endedAt: { $ne: null, $lte: new Date(cutoff) } }],
-    })
-    return result.deletedCount
   }
 }
 

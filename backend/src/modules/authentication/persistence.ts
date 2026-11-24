@@ -5,11 +5,6 @@ export type { AuthRequestStatus, SessionStatus }
 
 export const ACTIVE_USER_STATUS = "ACTIVE"
 
-/** rolling-retention surface, see maintenance.ts */
-export interface RetentionStore {
-  purgeSessionsOlderThan(cutoff: number): Promise<number>
-}
-
 export type AuthRequestRecord = {
   id: string
   minecraftUuid: string

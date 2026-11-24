@@ -111,15 +111,4 @@ export class InMemoryAuthenticationStore implements AuthenticationStore {
     // only accounts that cleared the whole admission path may authenticate
     return user.status === ACTIVE_USER_STATUS && user.telegramId !== "" ? user : null
   }
-
-  async purgeSessionsOlderThan(cutoff: number): Promise<number> {
-    let purged = 0
-    for (const [uuid, session] of this.sessions) {
-      if (session.startedAt <= cutoff) {
-        this.sessions.delete(uuid)
-        purged += 1
-      }
-    }
-    return purged
-  }
 }

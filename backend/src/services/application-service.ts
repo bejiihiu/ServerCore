@@ -15,7 +15,7 @@ import { t } from "./i18n.js"
 import { formatMoscowTime } from "./moscow-time.js"
 import { isDraftComplete, validateAnswer } from "./questionnaire.js"
 import type { RateLimiter } from "./rate-limiter.js"
-import type { Clock } from "./ports.js"
+import type { Clock, PluginPushPort } from "./ports.js"
 
 export type StartBlockReason =
   | "NO_USER"
@@ -65,6 +65,8 @@ export class ApplicationService {
       questions: { ru: string[]; en: string[] }
       /** language for group/admin-facing texts */
       defaultLanguage: Lang
+      /** optional gateway push to the plugin state cache (wired in production) */
+      plugin?: PluginPushPort
     },
   ) {}
 
@@ -242,6 +244,13 @@ export class ApplicationService {
       targetType: "application",
       targetId: inserted.id,
       details: { eligibleVoters: voters.length },
+    })
+
+    // the plugin state cache learns about the new application straight away
+    this.deps.plugin?.applicationSubmitted({
+      id: inserted.id,
+      minecraftUuid: check.user.uuid,
+      telegramId,
     })
 
     const application = await this.deps.applications.findById(inserted.id)

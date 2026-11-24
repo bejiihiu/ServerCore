@@ -26,6 +26,24 @@ export type Gateway = {
 }
 
 /**
+ * fire-and-forget push of one message to every connected game server. used
+ * for state-cache updates (admission results) where a missed frame self-heals
+ * on reconnect, so failures are logged, never propagated.
+ */
+export function broadcastToAll<T extends Exclude<MessageType, "SERVER_HELLO" | "SERVER_READY">>(
+  gateway: Gateway,
+  logger: Logger,
+  type: T,
+  payload: PayloadOf<T>,
+): void {
+  for (const serverId of gateway.connectedServers) {
+    gateway.sendTo(serverId, type, payload, { awaitAck: false }).catch((error) => {
+      logger.warn({ err: error, serverId, type }, "broadcast to server failed")
+    })
+  }
+}
+
+/**
  * plugin-facing websocket gateway on native Bun.serve.
  *
  * connection auth happens in the fetch handler BEFORE upgrade (hmac over

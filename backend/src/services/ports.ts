@@ -123,6 +123,20 @@ export interface AuditSink {
   record(event: AuditEvent): Promise<void>
 }
 
+/**
+ * gateway push to the plugin side for admission state changes. the plugin's
+ * state cache consumes APPLICATION_* messages to keep placeholders honest;
+ * delivery is fire-and-forget — a disconnected server re-seeds its cache on
+ * reconnect, so a missed frame self-heals.
+ */
+export interface PluginPushPort {
+  applicationSubmitted(application: { id: string; minecraftUuid: string; telegramId: string }): void
+  applicationDecided(
+    application: { id: string; minecraftUuid: string },
+    outcome: "APPROVED" | "REJECTED",
+  ): void
+}
+
 export interface Clock {
   nowMs(): number
 }

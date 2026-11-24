@@ -36,9 +36,6 @@ export type StatsSnapshot = {
   }
 }
 
-/** real db collection sizes, filled by whoever owns the collections */
-export type CollectionSizesProvider = () => Promise<Record<string, number>>
-
 /** minimal gateway surface for stats */
 export type StatsGateway = {
   readonly stats: GatewayStats
@@ -51,27 +48,17 @@ export class StatsService {
   private readonly gateway: StatsGateway
   private readonly directory: ServerDirectory
   private readonly counters: SessionCounters
-  private readonly collectionSizes: CollectionSizesProvider | null
 
   constructor(deps: {
     startedAt: number
     gateway: StatsGateway
     directory: ServerDirectory
     counters: SessionCounters
-    /** optional: real mongo collection sizes for the /stats line */
-    collectionSizes?: CollectionSizesProvider
   }) {
     this.startedAt = deps.startedAt
     this.gateway = deps.gateway
     this.directory = deps.directory
     this.counters = deps.counters
-    this.collectionSizes = deps.collectionSizes ?? null
-  }
-
-  /** live db sizes, empty map when no provider is wired */
-  async sizes(): Promise<Record<string, number>> {
-    if (this.collectionSizes === null) return {}
-    return this.collectionSizes()
   }
 
   snapshot(now = Date.now()): StatsSnapshot {

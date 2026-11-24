@@ -1,5 +1,6 @@
 import type { Envelope, PayloadOf, ServerState } from "../protocol/message-types.js"
 import type { HandlerRegistry } from "./registry.js"
+import type { ServerConnection } from "../connection.js"
 import type { Logger } from "../../logging/logger.js"
 
 export type ServerRuntimeStatus = {
@@ -52,8 +53,13 @@ export type LifecycleHooks = {
     previous: ServerState | undefined,
     options?: { telegramSuppressed?: boolean },
   ) => void
-  /** player lifecycle events, consumed by the authentication module */
-  onPlayerJoined?: (event: { minecraftUuid: string; username: string; serverId: string }) => void
+  /** player lifecycle events, consumed by the authentication module.
+   * onPlayerJoined also gets the connection: the account module pushes the
+   * one-time link token straight back down the same socket */
+  onPlayerJoined?: (
+    event: { minecraftUuid: string; username: string; serverId: string },
+    connection: ServerConnection,
+  ) => void
   onPlayerLeft?: (event: { minecraftUuid: string; username?: string; reason: string }) => void
   onGuestStarted?: (event: { minecraftUuid: string; username: string; sessionId: string }, serverId: string) => void
   onGuestEnded?: (event: { minecraftUuid: string; sessionId: string; reason: string }) => void
@@ -108,15 +114,25 @@ export function registerLifecycleHandlers(
 
   registry.register("PLAYER_JOINED", (envelope: Envelope<"PLAYER_JOINED">, connection) => {
     logger.info({ uuid: envelope.payload.minecraftUuid, username: envelope.payload.username }, "player joined")
-    hooks.onPlayerJoined?.({
-      minecraftUuid: envelope.payload.minecraftUuid,
-      username: envelope.payload.username,
-      serverId: connection.serverId,
-    })
+    hooks.onPlayerJoined?.(
+      {
+        minecraftUuid: envelope.payload.minecraftUuid,
+        username: envelope.payload.username,
+        serverId: connection.serverId,
+      },
+      connection,
+    )
   })
 
-  registry.register("PLAYER_LEFT", (envelope: Envelope<"PLAYER_LEFT">) => {
-    logger.info({ uuid: envelope.payload.minecraftUuid, reason: envelope.payload.reason }, "player left")
+  registry.register("PLAYER_LEFT", (envelope: Envelope<"PLAYER_LEFT">, connection) => {
+    logger.info(
+      {
+        uuid: envelope.payload.minecraftUuid,
+        reason: envelope.payload.reason,
+        serverId: connection.serverId,
+      },
+      "player left",
+    )
     hooks.onPlayerLeft?.({
       minecraftUuid: envelope.payload.minecraftUuid,
       username: envelope.payload.username,

@@ -1,15 +1,14 @@
-import { Bot as GrammyBot } from "grammy"
+import type { Api } from "grammy"
 import { loadConfig, ConfigError as EnvConfigError } from "./config/env.js"
 import type { AppConfig } from "./config/env.js"
 import { createLogger } from "./logging/logger.js"
 import type { Logger } from "./logging/logger.js"
 import { connectDatabase, databaseReady, disconnectDatabase } from "./database/connection.js"
 import { buildHttpServer } from "./http/server.js"
-import { createGateway, type Gateway } from "./websocket/gateway.js"
+import { broadcastToAll, createGateway, type Gateway } from "./websocket/gateway.js"
 import { HandlerRegistry } from "./websocket/handlers/registry.js"
-import { registerLifecycleHandlers, ServerDirectory } from "./websocket/handlers/server-lifecycle.js"
-import { registerAccountHandlers } from "./websocket/handlers/account-handlers.js"
-import { registerSpecHandlers } from "./websocket/handlers/spec-handlers.js"
+import { registerAllHandlers } from "./websocket/handlers/wiring.js"
+import { ServerDirectory } from "./websocket/handlers/server-lifecycle.js"
 import { SpecAuditService } from "./modules/audit/spec-audit-service.js"
 import { InMemoryTokenStore, TokenService } from "./services/token-service.js"
 import {
@@ -29,6 +28,7 @@ import { LinkedTelegramRecipients } from "./services/recipients.js"
 import { NotificationService } from "./services/notification-service.js"
 import { GrammySender } from "./services/telegram-sender.js"
 import { OpsNotifier, eventForState } from "./services/ops-notifier.js"
+import type { PluginPushPort } from "./services/ports.js"
 import { OfflineWatcher } from "./services/offline-watcher.js"
 import { SessionCounters, StatsService } from "./services/runtime-stats.js"
 import { VotingScheduler } from "./services/voting-scheduler.js"
@@ -45,9 +45,6 @@ import { AuthenticationService } from "./modules/authentication/auth-service.js"
 import { MongoAuthenticationStore } from "./modules/authentication/mongo-store.js"
 import { TelegramAuthUi } from "./modules/authentication/telegram-prompt.js"
 import { registerAuthCallbacks } from "./modules/authentication/bot-callbacks.js"
-import { mongoCollectionSizes } from "./modules/authentication/maintenance.js"
-import { AuthRequestModel } from "./database/models/auth-request.js"
-import { PlayerSessionModel } from "./database/models/session.js"
 
 // chat_member events must be requested explicitly, telegram does not send
 // them by default
@@ -92,20 +89,21 @@ async function main(): Promise<void> {
   })
   process.on("uncaughtException", (err) => {
     logger.fatal({ err }, "uncaught exception")
-    void shutdown("uncaughtException")
+    void shutdown("uncaughtException", 1)
   })
 
   await connectDatabase(config, logger)
 
   const handlers = new HandlerRegistry(logger)
   const directory = new ServerDirectory()
-  // assigned below, before any message can possibly arrive; the hook only
-  // dereferences it at runtime
+  // assigned before the first status frame can possibly arrive; hooks only
+  // dereference it at runtime
   let opsNotifier: OpsNotifier
 
   // authentication module: session lifecycle + telegram login flow.
   // the gateway push fails closed: a dead game-server link parks the message
-  // in the service outbox and the sweeper retries it.
+  // in the service outbox and the sweeper retries it. the gateway binding
+  // below is referenced lazily from this closure
   const authStore = new MongoAuthenticationStore()
   const authUi = new TelegramAuthUi({
     api: null,
@@ -138,49 +136,6 @@ async function main(): Promise<void> {
     sendPrompt: (request) => authUi.send(request),
   })
 
-  registerLifecycleHandlers(handlers, directory, logger, {
-    onStateChange: (serverId, state, previous, options) => {
-      // crash/status events flow to telegram: all events, dm + admin copy.
-      // when the plugin reports flectonepulse's telegram module as active it
-      // suppresses its own announcements - the bot stays quiet so nothing
-      // lands in the chat twice
-      const telegram = options?.telegramSuppressed === true ? false : true
-      void opsNotifier.announce(serverId, eventForState(state), { telegram }).catch((error) => {
-        logger.error({ err: error, serverId, state, previous }, "state-change notification failed")
-      })
-    },
-    onPlayerJoined: (event) => {
-      void authService.handlePlayerJoined(event, Date.now()).catch((error) => {
-        logger.error({ err: error, uuid: event.minecraftUuid }, "player join handling failed")
-      })
-    },
-    onPlayerLeft: (event) => {
-      void authService.handlePlayerLeft(event.minecraftUuid, Date.now()).catch((error) => {
-        logger.error({ err: error, uuid: event.minecraftUuid }, "player left handling failed")
-      })
-    },
-    onGuestStarted: (event, serverId) => {
-      void authService.handleGuestStarted(event, serverId, Date.now()).catch((error) => {
-        logger.error({ err: error, uuid: event.minecraftUuid }, "guest start handling failed")
-      })
-    },
-    onGuestEnded: (event) => {
-      void authService.handleGuestEnded(event).catch((error) => {
-        logger.error({ err: error, uuid: event.minecraftUuid }, "guest end handling failed")
-      })
-    },
-  })
-  const gateway: Gateway = createGateway(config, logger, handlers)
-
-  const counters = new SessionCounters()
-  const statsService = new StatsService({
-    startedAt,
-    gateway,
-    directory,
-    counters,
-    collectionSizes: mongoCollectionSizes([PlayerSessionModel, AuthRequestModel]),
-  })
-
   // ops plumbing: rate-limited broadcast -> dm users with linked telegram
   // accounts + admin chat copies. without a bot token everything degrades to
   // log lines instead of crashing. the admission flow and account modules
@@ -198,6 +153,12 @@ async function main(): Promise<void> {
     logger,
   })
 
+  // guest snapshot janitor, shared between the guest-end hook and the daily
+  // retention sweep
+  const snapshotPurge = new MongoGuestSnapshotPurge()
+
+  const gateway: Gateway = createGateway(config, logger, handlers)
+
   // account module wiring: token service on a process-local store for now
   // (single instance), repositories on mongo
   const tokenStore = new InMemoryTokenStore()
@@ -214,11 +175,10 @@ async function main(): Promise<void> {
     defaultLanguage: config.opsLocale,
   })
 
-  // the deletion pipeline needs raw bot api access for the group kick
-  const kickApi = () => {
-    if (config.botToken === undefined) throw new Error("telegram bot disabled, cannot kick")
-    return new GrammyBot(config.botToken).api
-  }
+  // the deletion pipeline kicks through the shared bot api. the bot instance
+  // is built later; the port dereferences it at call time, so wiring order
+  // never matters
+  const sharedApi: { current: Api | null } = { current: null }
   const deletion = new AccountDeletionService({
     users: new MongoUserRepository(),
     links: new MongoTelegramLinkRepository(),
@@ -227,8 +187,8 @@ async function main(): Promise<void> {
     audit: new MongoAuditRepository(),
     group: new BotApiTelegramGroupPort(
       {
-        banChatMember: (chatId, userId) => kickApi().banChatMember(chatId, userId),
-        unbanChatMember: (chatId, userId, options) => kickApi().unbanChatMember(chatId, userId, options),
+        banChatMember: (chatId, userId) => kickApi(sharedApi).banChatMember(chatId, userId),
+        unbanChatMember: (chatId, userId, options) => kickApi(sharedApi).unbanChatMember(chatId, userId, options),
       },
       config.telegramGroupChatId,
     ),
@@ -237,14 +197,88 @@ async function main(): Promise<void> {
     logger,
   })
 
-  registerAccountHandlers(handlers, { accounts, verifier, logger })
-
   // spec audit trail: every observation start/end the plugin reports lands in
   // audit_logs (kind "spec"). the collection has no ttl index — the retention
   // job below purges it together with the rest of the audit rows at 90d
-  registerSpecHandlers(handlers, {
-    audit: new SpecAuditService({ sink: new MongoAuditRepository(), logger }),
+  const specAudit = new SpecAuditService({ sink: new MongoAuditRepository(), logger })
+
+  // every websocket handler registers exactly once, here. this runs in the
+  // same synchronous block as createGateway above, so the gateway cannot
+  // dispatch a single frame before all registrations are done
+  registerAllHandlers(handlers, {
+    directory,
     logger,
+    accounts,
+    verifier,
+    specAudit,
+    hooks: {
+      onStateChange: (serverId, state, previous, options) => {
+        // crash/status events flow to telegram: all events, dm + admin copy.
+        // when the plugin reports flectonepulse's telegram module as active it
+        // suppresses its own announcements - the bot stays quiet so nothing
+        // lands in the chat twice
+        const telegram = options?.telegramSuppressed === true ? false : true
+        void opsNotifier.announce(serverId, eventForState(state), { telegram }).catch((error) => {
+          logger.error({ err: error, serverId, state, previous }, "state-change notification failed")
+        })
+      },
+      onPlayerJoined: (event) => {
+        void authService.handlePlayerJoined(event, Date.now()).catch((error) => {
+          logger.error({ err: error, uuid: event.minecraftUuid }, "player join handling failed")
+        })
+      },
+      onPlayerLeft: (event) => {
+        void authService.handlePlayerLeft(event.minecraftUuid, Date.now()).catch((error) => {
+          logger.error({ err: error, uuid: event.minecraftUuid }, "player left handling failed")
+        })
+      },
+      onGuestStarted: (event, serverId) => {
+        void authService.handleGuestStarted(event, serverId, Date.now()).catch((error) => {
+          logger.error({ err: error, uuid: event.minecraftUuid }, "guest start handling failed")
+        })
+      },
+      onGuestEnded: (event) => {
+        void authService.handleGuestEnded(event).catch((error) => {
+          logger.error({ err: error, uuid: event.minecraftUuid }, "guest end handling failed")
+        })
+        // the guest session is over for good: drop the stored snapshot now
+        // instead of waiting for the daily orphan sweep. AUTHENTICATED keeps
+        // it - the session stays open, only the mode flipped
+        if (event.reason !== "AUTHENTICATED") {
+          void snapshotPurge.deleteBySessionId(event.sessionId).catch((error) => {
+            logger.error({ err: error, sessionId: event.sessionId }, "guest snapshot purge failed")
+          })
+        }
+      },
+    },
+  })
+
+  // admission state changes reach the plugin's placeholder cache over the
+  // gateway; fire-and-forget, a disconnected server re-seeds on reconnect
+  const pluginPush: PluginPushPort = {
+    applicationSubmitted(application) {
+      broadcastToAll(gateway, logger, "APPLICATION_SUBMITTED", {
+        applicationId: application.id,
+        minecraftUuid: application.minecraftUuid,
+        telegramId: application.telegramId,
+      })
+    },
+    applicationDecided(application, outcome) {
+      broadcastToAll(
+        gateway,
+        logger,
+        outcome === "APPROVED" ? "APPLICATION_APPROVED" : "APPLICATION_REJECTED",
+        { applicationId: application.id, minecraftUuid: application.minecraftUuid },
+      )
+    },
+  }
+
+  const counters = new SessionCounters()
+  const statsService = new StatsService({
+    startedAt,
+    gateway,
+    directory,
+    counters,
   })
 
   // retention: the backend owns the database, so it does the housekeeping.
@@ -254,7 +288,7 @@ async function main(): Promise<void> {
     audit: new MongoAuditLogPurge(),
     serverEvents: new MongoServerEventPurge(),
     sessions: new MongoSessionPurge(),
-    snapshots: new MongoGuestSnapshotPurge(),
+    snapshots: snapshotPurge,
     options: {
       auditDays: config.retentionAuditDays,
       sessionDays: config.retentionSessionDays,
@@ -275,6 +309,7 @@ async function main(): Promise<void> {
     stats: statsService,
     collectionStats: databaseReady() ? new MongoCollectionStats() : null,
   })
+  sharedApi.current = bot?.api ?? null
 
   let admission: AdmissionServices | null = null
   if (bot !== null) {
@@ -282,6 +317,7 @@ async function main(): Promise<void> {
     // engine; /start /status /help /stats are owned by the account routes
     admission = registerAdmissionFlows(bot, config, logger, createAdmissionRepositories(), {
       notifications,
+      plugin: pluginPush,
     })
     // auth approve/reject buttons ride the same instance
     registerAuthCallbacks(bot, { auth: authService, ui: authUi, logger })
@@ -368,13 +404,13 @@ async function main(): Promise<void> {
   logger.info({ env: config.env }, "servercore backend started")
 
   let shuttingDown = false
-  async function shutdown(signal: string): Promise<void> {
+  async function shutdown(signal: string, exitCode = 0): Promise<void> {
     if (shuttingDown) return
     shuttingDown = true
     logger.info({ signal }, "shutting down")
     try {
       scheduler?.stop()
-      sweeper.unref()
+      clearInterval(sweeper)
       authService.stop()
       offlineWatcher.stop()
       stopRetention()
@@ -385,11 +421,17 @@ async function main(): Promise<void> {
     } catch (err) {
       logger.error({ err }, "error during shutdown")
     }
-    process.exit(0)
+    process.exit(exitCode)
   }
 
   process.once("SIGINT", () => void shutdown("SIGINT"))
   process.once("SIGTERM", () => void shutdown("SIGTERM"))
+}
+
+/** the group kick rides the shared bot api; null means the bot is disabled */
+function kickApi(sharedApi: { current: Api | null }): Api {
+  if (sharedApi.current === null) throw new Error("telegram bot disabled, cannot kick")
+  return sharedApi.current
 }
 
 main().catch((err) => {

@@ -5,6 +5,7 @@ import type {
   Clock,
   InlineKeyboard,
   Lang,
+  PluginPushPort,
   TelegramApi,
   UserRepository,
   VotingMessageRepository,
@@ -82,6 +83,8 @@ export class VotingService {
       voteButtonIcons: { acceptId: string | null; rejectId: string | null }
       /** message effect id played on the approval celebration message */
       approvalEffectId: string | null
+      /** optional gateway push to the plugin state cache (wired in production) */
+      plugin?: PluginPushPort
     },
   ) {}
 
@@ -336,6 +339,14 @@ export class VotingService {
       votesCast,
       eligibleVoters: application.voting.eligibleVoters,
     })
+
+    // the plugin state cache tracks the verdict for its placeholders
+    if (outcome === "APPROVED" || outcome === "REJECTED") {
+      this.deps.plugin?.applicationDecided(
+        { id: application.id, minecraftUuid: application.minecraftUuid },
+        outcome,
+      )
+    }
 
     if (outcome === "EXPIRED") {
       await this.deps.telegram.sendUserMessage(
