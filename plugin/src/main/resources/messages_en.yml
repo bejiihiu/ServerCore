@@ -24,6 +24,8 @@ guest:
       - "<red>You have used all {limit} guest sessions.</red>"
       - "<gray>Register through the bot to play:</gray>"
       - "<gold>{link}</gold>"
+  mute-notice:
+    - "<gray>Note: you are currently muted on this server — chat stays silent until it expires.</gray>"
   kick:
     limit:
       - "<red>Guest session limit reached ({limit}).</red>"
@@ -47,3 +49,51 @@ auth:
     title: "<red>Authorization denied</red>"
   expired:
     actionbar: "<yellow>Login request expired, use <bold>/link</bold> to try again</yellow>"
+spec:
+  inventory-title: "<secondary>Inventory</secondary> <muted>·</muted> <gold>{target}</gold>"
+  started: "<green>Observation started: <white>{target}</white>. Run /spec to exit</green>"
+  exited: "<green>Observation ended, your state has been restored</green>"
+  aborted: "<red>Observation of {target} could not start</red>"
+  disabled: "<red>Spectator observation is disabled on this server</red>"
+  no-target: "<red>Player {target} is not online</red>"
+  self: "<red>You cannot observe yourself</red>"
+  busy-admin: "<red>You are already observing {target}. Finish the current session first</red>"
+  busy-target: "<red>{target} is already under observation by another staff member</red>"
+  not-observing: "<red>You are not observing anyone</red>"
+  denied-permission: "<red>You do not have access to spectator observation</red>"
+  denied-level: "<red>You cannot observe {target}: their access level is higher than yours</red>"
+protection:
+  denied:
+    chat: "<red>Command <bold>{command}</bold> is not available on this server.</red>"
+# admin debug command: /servercore groups <player>
+luckperms:
+  groups:
+    usage: "<gray>Usage:</gray> <gold>/servercore groups {arg}</gold>"
+    no-permission: "<red>You do not have permission to use this command.</red>"
+    player-not-found: "<red>Player <white>{player}</white> is not online.</red>"
+    header: "<gold>Groups of <white>{player}</white>:</gold>"
+    entry: "<gray> • </gray><yellow>{group}</yellow><gray>{primary}</gray>"
+    primary-mark: " (primary)"
+    none: "<gray>The player is not a member of any group.</gray>"
+    lookup-failed: "<red>Could not read the player's groups, details are in the server log.</red>"
+# %servercore_*% placeholder output, human-readable parts only
+placeholders:
+  "yes": "yes"
+  "no": "no"
+  status:
+    active: "active"
+    banned: "banned"
+    guest: "guest"
+  application:
+    voting: "voting"
+    approved: "approved"
+    rejected: "rejected"
+  last-seen:
+    now: "now"
+    minutes: "{n} min ago"
+    hours: "{n} h ago"
+    days: "{n} d ago"
+  duration:
+    h: "{n}h"
+    m: "{n}m"
+    s: "{n}s"

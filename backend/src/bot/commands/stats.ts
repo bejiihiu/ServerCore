@@ -36,6 +36,10 @@ async function replyWithStats(ctx: Context, deps: { stats: StatsService; locale:
     guests: snap.counters.guestSessions,
     pending: snap.counters.pendingAuths,
   }))
+  // live spec counter comes from the plugin's own registry via heartbeats
+  lines.push(t(locale, "ops.stats.spec", {
+    count: snap.servers.reduce((sum, server) => sum + (server.activeSpecSessions ?? 0), 0),
+  }))
 
   const sizes = await stats.sizes()
   const sizeEntries = Object.entries(sizes)

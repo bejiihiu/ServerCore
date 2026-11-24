@@ -24,6 +24,8 @@ guest:
       - "<red>Вы использовали все {limit} гостевых сессий.</red>"
       - "<gray>Зарегистрируйтесь через бота, чтобы играть:</gray>"
       - "<gold>{link}</gold>"
+  mute-notice:
+    - "<gray>Учтите: сейчас у вас активен мут на этом сервере — чат молчит, пока он не истечёт.</gray>"
   kick:
     limit:
       - "<red>Достигнут лимит гостевых сессий ({limit}).</red>"
@@ -47,3 +49,39 @@ auth:
     title: "<red>В авторизации отказано</red>"
   expired:
     actionbar: "<yellow>Запрос на вход истёк, используйте <bold>/link</bold>, чтобы повторить</yellow>"
+  denied-level: "<red>Нельзя наблюдать за {target}: его уровень доступа выше вашего</red>"
+protection:
+  denied:
+    chat: "<red>Команда <bold>{command}</bold> недоступна на этом сервере.</red>"
+# админская отладочная команда: /servercore groups <игрок>
+luckperms:
+  groups:
+    usage: "<gray>Использование:</gray> <gold>/servercore groups {arg}</gold>"
+    no-permission: "<red>У вас нет прав на эту команду.</red>"
+    player-not-found: "<red>Игрок <white>{player}</white> не найден на сервере.</red>"
+    header: "<gold>Группы игрока <white>{player}</white>:</gold>"
+    entry: "<gray> • </gray><yellow>{group}</yellow><gray>{primary}</gray>"
+    primary-mark: " (основная)"
+    none: "<gray>Игрок не состоит ни в одной группе.</gray>"
+    lookup-failed: "<red>Не удалось получить группы игрока, подробности в логе сервера.</red>"
+# вывод %servercore_*% плейсхолдеров, только человекочитаемые части
+placeholders:
+  "yes": "да"
+  "no": "нет"
+  status:
+    active: "активен"
+    banned: "заблокирован"
+    guest: "гость"
+  application:
+    voting: "на голосовании"
+    approved: "одобрена"
+    rejected: "отклонена"
+  last-seen:
+    now: "сейчас"
+    minutes: "{n} мин. назад"
+    hours: "{n} ч. назад"
+    days: "{n} дн. назад"
+  duration:
+    h: "{n}ч"
+    m: "{n}м"
+    s: "{n}с"

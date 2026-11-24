@@ -12,24 +12,38 @@ import java.util.Base64
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
-/** message types on the wire; everything the plugin speaks */
+/** message types on the wire; the ones we type plus the ones we carry raw */
 enum class MessageType(val wire: String) {
     PLAYER_JOINED("PLAYER_JOINED"),
     PLAYER_LEFT("PLAYER_LEFT"),
     SERVER_STATUS("SERVER_STATUS"),
     SERVER_HEARTBEAT("SERVER_HEARTBEAT"),
+    LINK_TOKEN("LINK_TOKEN"),
+    SESSION_CHECK("SESSION_CHECK"),
+    SESSION_CHECK_RESULT("SESSION_CHECK_RESULT"),
+    ACCOUNT_DELETED("ACCOUNT_DELETED"),
+    SPEC_STARTED("SPEC_STARTED"),
+    SPEC_ENDED("SPEC_ENDED"),
+    ACK("ACK"),
+    ERROR("ERROR"),
+
+    // backend -> plugin pushes we have no typed payload for yet. they decode
+    // to Payload.Raw and fan out through GatewayListener.onWireMessage, so a
+    // newer backend never kills the connection just because we don't speak
+    // one of its types natively. GUEST_* travels this way too: the ws layer
+    // owns that payload shape, the transport just relays it
     AUTH_REQUEST("AUTH_REQUEST"),
     AUTH_APPROVED("AUTH_APPROVED"),
     AUTH_REJECTED("AUTH_REJECTED"),
     AUTH_EXPIRED("AUTH_EXPIRED"),
     GUEST_STARTED("GUEST_STARTED"),
     GUEST_ENDED("GUEST_ENDED"),
-    LINK_TOKEN("LINK_TOKEN"),
-    SESSION_CHECK("SESSION_CHECK"),
-    SESSION_CHECK_RESULT("SESSION_CHECK_RESULT"),
-    ACCOUNT_DELETED("ACCOUNT_DELETED"),
-    ACK("ACK"),
-    ERROR("ERROR");
+    APPLICATION_SUBMITTED("APPLICATION_SUBMITTED"),
+    APPLICATION_APPROVED("APPLICATION_APPROVED"),
+    APPLICATION_REJECTED("APPLICATION_REJECTED"),
+    LOCALE_PUSH("LOCALE_PUSH"),
+    /** catch-all for wire types this build has never heard of */
+    UNKNOWN("UNKNOWN");
 
     companion object {
         private val byWire = entries.associateBy { it.wire }
@@ -39,10 +53,10 @@ enum class MessageType(val wire: String) {
 
 /** how much a frame hurts when it dies together with the connection */
 enum class Durability {
-    /** stale by definition, a fresh one is on the way: heartbeats, status */
+    /** stale by definition, a fresh one is on the way: heartbeats, acks */
     DROP,
 
-    /** worth keeping across a blip, a crash may still lose it: presence events */
+    /** worth keeping across a blip, a crash may still lose it: presence, status, spec events */
     QUEUE,
 
     /** must survive a plugin restart: guest lifecycle + snapshots */
@@ -52,7 +66,9 @@ enum class Durability {
 /** durability class per wire type; anything unlisted dies with the link */
 fun durabilityOf(type: MessageType): Durability = when (type) {
     MessageType.GUEST_STARTED, MessageType.GUEST_ENDED -> Durability.DURABLE
-    MessageType.PLAYER_JOINED, MessageType.PLAYER_LEFT -> Durability.QUEUE
+    MessageType.PLAYER_JOINED, MessageType.PLAYER_LEFT, MessageType.SERVER_STATUS,
+    MessageType.SPEC_STARTED, MessageType.SPEC_ENDED,
+    -> Durability.QUEUE
     else -> Durability.DROP
 }
 
@@ -60,21 +76,50 @@ fun durabilityOf(type: MessageType): Durability = when (type) {
 sealed interface Payload {
     data class PlayerJoined(val minecraftUuid: String, val username: String) : Payload
     data class PlayerLeft(val minecraftUuid: String, val reason: String = "DISCONNECT") : Payload
-    data class ServerStatus(val onlinePlayers: Int, val maxPlayers: Int, val version: String) : Payload
-    data class ServerHeartbeat(val onlinePlayers: Int, val maxPlayers: Int) : Payload
+    data class ServerStatus(
+        val onlinePlayers: Int,
+        val maxPlayers: Int,
+        val version: String,
+        val activeSpecSessions: Int? = null,
+    ) : Payload
+
+    data class ServerHeartbeat(
+        val onlinePlayers: Int,
+        val maxPlayers: Int,
+        val activeSpecSessions: Int? = null,
+    ) : Payload
     data class LinkToken(val minecraftUuid: String, val username: String, val token: String, val expiresAt: Long) : Payload
     data class SessionCheck(val minecraftUuid: String) : Payload
     data class SessionCheckResult(val minecraftUuid: String, val online: Boolean, val sessionId: String? = null) : Payload
     data class AccountDeleted(val minecraftUuid: String, val reason: String) : Payload
+
+    data class SpecStarted(
+        val adminUuid: String,
+        val targetUuid: String,
+        val sessionId: String? = null,
+        val adminUsername: String? = null,
+        val targetUsername: String? = null,
+    ) : Payload
+
+    data class SpecEnded(
+        val adminUuid: String,
+        val targetUuid: String,
+        val sessionId: String? = null,
+        val adminUsername: String? = null,
+        val targetUsername: String? = null,
+        val durationSec: Long? = null,
+        val reason: String = "NORMAL",
+    ) : Payload
     data class Ack(val ackedId: String) : Payload
     data class Error(val code: String, val message: String) : Payload
 
     /**
-     * pass-through payload for types the gateway relays without interpreting
-     * (guest lifecycle, auth verdicts): the json object travels verbatim, the
-     * ws layer owns its shape
+     * a wire type we don't map to a typed payload: auth verdicts, guest
+     * lifecycle, application events, locale pushes and anything a newer
+     * backend invents. carried as parsed json; [wireType] keeps the real name
+     * for UNKNOWN frames.
      */
-    data class Raw(val json: JsonObject) : Payload
+    data class Raw(val wireType: String, val fields: JsonObject) : Payload
 }
 
 /** one wire message: envelope meta + typed payload, hmac set after signing */
@@ -150,7 +195,7 @@ class EnvelopeCodec(private val secret: String) {
         val correlationId = root.string("correlationId")
         val payloadElement = root["payload"] ?: throw ProtocolException("missing payload")
 
-        val type = MessageType.fromWire(typeWire) ?: throw ProtocolException("unknown message type $typeWire")
+        val type = MessageType.fromWire(typeWire)
         if (kotlin.math.abs(now - timestamp) > maxSkewMs) {
             throw ProtocolException("stale timestamp")
         }
@@ -164,8 +209,17 @@ class EnvelopeCodec(private val secret: String) {
             throw ProtocolException("bad hmac")
         }
 
-        val payload = payloadFromJson(type, payloadElement)
-        return DecodedMessage(Envelope(id, type, timestamp, payload, correlationId))
+        val payloadObject = payloadElement as? JsonObject
+            ?: throw ProtocolException("payload is not an object")
+        // an unknown type is a version skew, not a forgery: the hmac verified,
+        // so accept the frame as raw json and keep the socket alive
+        val payload: Payload = if (type == null) {
+            Payload.Raw(typeWire, payloadObject)
+        } else {
+            payloadFromJson(type, payloadObject)
+        }
+        val resolvedType = type ?: MessageType.UNKNOWN
+        return DecodedMessage(Envelope(id, resolvedType, timestamp, payload, correlationId), payloadObject)
     }
 
     private fun JsonObject.string(key: String): String? =
@@ -188,10 +242,12 @@ class EnvelopeCodec(private val secret: String) {
             put("onlinePlayers", payload.onlinePlayers)
             put("maxPlayers", payload.maxPlayers)
             put("version", payload.version)
+            payload.activeSpecSessions?.let { put("activeSpecSessions", it) }
         }
         is Payload.ServerHeartbeat -> buildJsonObject {
             put("onlinePlayers", payload.onlinePlayers)
             put("maxPlayers", payload.maxPlayers)
+            payload.activeSpecSessions?.let { put("activeSpecSessions", it) }
         }
         is Payload.LinkToken -> buildJsonObject {
             put("minecraftUuid", payload.minecraftUuid)
@@ -211,6 +267,22 @@ class EnvelopeCodec(private val secret: String) {
             put("minecraftUuid", payload.minecraftUuid)
             put("reason", payload.reason)
         }
+        is Payload.SpecStarted -> buildJsonObject {
+            put("adminUuid", payload.adminUuid)
+            put("targetUuid", payload.targetUuid)
+            payload.sessionId?.let { put("sessionId", it) }
+            payload.adminUsername?.let { put("adminUsername", it) }
+            payload.targetUsername?.let { put("targetUsername", it) }
+        }
+        is Payload.SpecEnded -> buildJsonObject {
+            put("adminUuid", payload.adminUuid)
+            put("targetUuid", payload.targetUuid)
+            payload.sessionId?.let { put("sessionId", it) }
+            payload.adminUsername?.let { put("adminUsername", it) }
+            payload.targetUsername?.let { put("targetUsername", it) }
+            payload.durationSec?.let { put("durationSec", it) }
+            put("reason", payload.reason)
+        }
         is Payload.Ack -> buildJsonObject {
             put("ackedId", payload.ackedId)
         }
@@ -218,7 +290,7 @@ class EnvelopeCodec(private val secret: String) {
             put("code", payload.code)
             put("message", payload.message)
         }
-        is Payload.Raw -> payload.json
+        is Payload.Raw -> payload.fields
     }
 
     private fun payloadFromJson(type: MessageType, element: JsonElement): Payload {
@@ -257,16 +329,41 @@ class EnvelopeCodec(private val secret: String) {
                 obj.stringOrThrow("minecraftUuid"),
                 obj.stringOrThrow("reason"),
             )
-            // relayed types: the payload stays a raw object, the ws layer owns it
+            MessageType.SPEC_STARTED -> Payload.SpecStarted(
+                obj.stringOrThrow("adminUuid"),
+                obj.stringOrThrow("targetUuid"),
+                obj.string("sessionId"),
+                obj.string("adminUsername"),
+                obj.string("targetUsername"),
+            )
+            MessageType.SPEC_ENDED -> Payload.SpecEnded(
+                obj.stringOrThrow("adminUuid"),
+                obj.stringOrThrow("targetUuid"),
+                obj.string("sessionId"),
+                obj.string("adminUsername"),
+                obj.string("targetUsername"),
+                obj.long("durationSec"),
+                obj.string("reason") ?: "NORMAL",
+            )
+            MessageType.ACK -> Payload.Ack(obj.stringOrThrow("ackedId"))
+            MessageType.ERROR -> Payload.Error(obj.stringOrThrow("code"), obj.stringOrThrow("message"))
+
+            // backend pushes without typed payloads yet: auth verdicts, guest
+            // lifecycle (the ws layer owns that shape), application events,
+            // locale pushes, audit notifications. the raw json travels as-is
+            // and typed consumers appear later
             MessageType.AUTH_REQUEST,
             MessageType.AUTH_APPROVED,
             MessageType.AUTH_REJECTED,
             MessageType.AUTH_EXPIRED,
             MessageType.GUEST_STARTED,
             MessageType.GUEST_ENDED,
-            -> Payload.Raw(obj)
-            MessageType.ACK -> Payload.Ack(obj.stringOrThrow("ackedId"))
-            MessageType.ERROR -> Payload.Error(obj.stringOrThrow("code"), obj.stringOrThrow("message"))
+            MessageType.APPLICATION_SUBMITTED,
+            MessageType.APPLICATION_APPROVED,
+            MessageType.APPLICATION_REJECTED,
+            MessageType.LOCALE_PUSH,
+            MessageType.UNKNOWN,
+            -> Payload.Raw(type.wire, obj)
         }
     }
 
@@ -340,5 +437,9 @@ class EnvelopeCodec(private val secret: String) {
     }
 }
 
-/** a decoded, hmac-verified inbound message */
-data class DecodedMessage(val envelope: Envelope)
+/** a decoded, hmac-verified inbound message, plus the raw payload json */
+data class DecodedMessage(
+    val envelope: Envelope,
+    /** the payload exactly as it arrived, for raw fan-out to other consumers */
+    val rawPayload: JsonObject,
+)

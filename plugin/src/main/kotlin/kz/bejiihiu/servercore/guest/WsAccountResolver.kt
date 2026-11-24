@@ -52,8 +52,13 @@ class WsAccountResolver(
         pendingLinks[uuid]?.takeIf { it.fresh(config.linkTtlMs) }
 
     override fun resolve(uuid: UUID, username: String): CompletableFuture<AccountStatus> {
+        // one auth request per uuid: a duplicate login rides the in-flight
+        // check instead of making the backend hand out a second deep link
+        val existing = waiting[uuid]
+        if (existing != null) return existing
         val future = CompletableFuture<AccountStatus>()
-        waiting[uuid] = future
+        val raced = waiting.putIfAbsent(uuid, future)
+        if (raced != null) return raced
         // the presence layer already announces the join over the same link; a
         // second PLAYER_JOINED from here would churn the backend session
         // bookkeeping (fresh session + fresh prompt per duplicate). we just

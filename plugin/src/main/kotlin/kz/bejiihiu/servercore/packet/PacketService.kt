@@ -36,6 +36,10 @@ class PacketService(
     private val compatibility = PacketCompatibilityService()
     val registry = PacketStateRegistry(store)
 
+    /** true while our listener is attached to the shared packetevents instance */
+    var online: Boolean = false
+        private set
+
     /** swap point for behaviour modules: visibility engine, disguise, sync */
     @Volatile
     var applier: ViewStateApplier = DefaultViewStateApplier(registry)
@@ -69,6 +73,7 @@ class PacketService(
         // we keep our own priority, already passed in the constructor
         PacketEvents.getAPI().getEventManager().registerListener(listener as PacketListenerCommon)
         this.listener = listener
+        online = true
         logger.info("packet layer online: ${compatibility.describe()}, store pairs=${registry.size()}")
     }
 
@@ -77,12 +82,31 @@ class PacketService(
         val listener = listener ?: return
         if (!compatibility.isAvailable()) {
             this.listener = null
+            online = false
             return
         }
         runCatching { PacketEvents.getAPI().getEventManager().unregisterListener(listener) }
             .onFailure { logger.warning("packet listener detach failed: ${it.message}") }
         this.listener = null
+        online = false
         registry.clear()
+    }
+
+    /**
+     * attach an extra scoped listener to the shared instance. false means the
+     * packet layer is idle and the caller must not expect the listener to
+     * ever fire.
+     */
+    fun register(listener: PacketListenerCommon): Boolean {
+        if (!online) return false
+        PacketEvents.getAPI().getEventManager().registerListener(listener)
+        return true
+    }
+
+    fun unregister(listener: PacketListenerCommon) {
+        if (!online) return
+        runCatching { PacketEvents.getAPI().getEventManager().unregisterListener(listener) }
+            .onFailure { logger.warning("scoped listener detach failed: ${it.message}") }
     }
 
     /**

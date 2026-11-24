@@ -47,6 +47,9 @@ interface ServerStatsProvider {
     fun onlinePlayers(): Int
     fun maxPlayers(): Int
     fun serverVersion(): String
+
+    /** live count of active spec sessions from the plugin's own registry */
+    fun activeSpecSessions(): Int = 0
 }
 
 /**
@@ -59,14 +62,17 @@ interface GatewayListener {
     fun onDisconnected() {}
     fun onLinkToken(payload: Payload.LinkToken) {}
     fun onAccountDeleted(payload: Payload.AccountDeleted) {}
-}
 
-/**
- * every validated inbound domain frame, fanned out to the ws layer (guest
- * module hub) as a raw json object. ack/error frames never reach it.
- */
-fun interface RawFrameListener {
-    fun onFrame(id: String, type: String, payload: JsonObject, correlationId: String?)
+    /**
+     * every decoded inbound frame as raw json, fired before the typed
+     * callbacks. covers the types this build has no typed payload for (auth
+     * verdicts, guest lifecycle, application events, locale pushes, unknown
+     * future types) so consumers speaking the documented wire names get them
+     * without the transport layer knowing each one. ack/error frames and
+     * deduped redeliveries never reach it. default empty, existing listeners
+     * keep compiling.
+     */
+    fun onWireMessage(wireType: String, payload: JsonObject, correlationId: String?, timestamp: Long) {}
 }
 
 /**
@@ -105,9 +111,9 @@ private class InFlight(
  * reliability: exponential backoff with jitter on every abnormal close,
  * acks for every backend push, ack tracking for our own pushes with bounded
  * retries, a read-idle watchdog that kills half-open connections, receiver
- * dedupe for redelivered backend pushes, an in-memory queue for presence
- * events emitted while the connection was down and a disk-backed durable
- * outbox for guest lifecycle events that must survive plugin restarts.
+ * dedupe for redelivered backend pushes, a bounded in-memory queue for
+ * replayable events emitted while the connection was down and a disk-backed
+ * durable outbox for guest lifecycle events that must survive plugin restarts.
  */
 class GatewayClient(
     private val config: GatewayConfig,
@@ -116,8 +122,6 @@ class GatewayClient(
     private val stats: ServerStatsProvider,
     /** the ownership probe answer: is this uuid in the game right now? */
     private val presenceLookup: (uuid: String) -> Boolean,
-    /** inbound fan-out to the ws layer, optional so presence-only setups stay light */
-    private val rawListener: RawFrameListener? = null,
     /** durable park for DURABLE frames, file-backed in production */
     private val durablePark: DurableOutbox,
     /** injectable clock so the state machine is testable */
@@ -139,7 +143,7 @@ class GatewayClient(
     /** serializes every socket write so frame order is deterministic */
     private val sendLock = Any()
 
-    /** presence events produced while offline, replayed in order on reconnect */
+    /** replayable events produced while offline, replayed in order on reconnect */
     private val pendingQueue = ArrayDeque<OutgoingFrame>()
     private val pendingLock = Any()
 
@@ -192,7 +196,7 @@ class GatewayClient(
      */
     fun sendRaw(id: String, type: String, payload: JsonObject, correlationId: String?): Boolean {
         val messageType = MessageType.fromWire(type) ?: return false
-        val envelope = Envelope(id, messageType, now(), Payload.Raw(payload), correlationId)
+        val envelope = Envelope(id, messageType, now(), Payload.Raw(type, payload), correlationId)
         dispatch(
             OutgoingFrame(
                 id, messageType, codec.encode(envelope),
@@ -259,10 +263,11 @@ class GatewayClient(
             pendingQueue.clear()
             copy
         }
-        val durable = durablePark.snapshot().map { parked ->
+        val durable = durablePark.snapshot().mapNotNull { parked ->
+            val type = MessageType.fromWire(parked.type) ?: return@mapNotNull null
             OutgoingFrame(
                 id = parked.id,
-                type = MessageType.fromWire(parked.type) ?: return,
+                type = type,
                 wire = parked.wire,
                 key = parked.key,
                 durability = Durability.DURABLE,
@@ -380,7 +385,7 @@ class GatewayClient(
             codec.newMessageId(),
             MessageType.SERVER_STATUS,
             now(),
-            Payload.ServerStatus(stats.onlinePlayers(), stats.maxPlayers(), stats.serverVersion()),
+            Payload.ServerStatus(stats.onlinePlayers(), stats.maxPlayers(), stats.serverVersion(), stats.activeSpecSessions()),
         )
         synchronized(sendLock) {
             try {
@@ -408,8 +413,8 @@ class GatewayClient(
     }
 
     private fun handleFrame(webSocket: WebSocket, raw: String) {
-        val envelope = try {
-            codec.decode(raw, now(), config.maxSkewMs, config.maxPacketBytes).envelope
+        val decoded = try {
+            codec.decode(raw, now(), config.maxSkewMs, config.maxPacketBytes)
         } catch (e: ProtocolException) {
             // protocol violations are fatal on both ends — drop and retry later
             handleDisconnect(webSocket, "protocol violation: ${e.message}")
@@ -418,6 +423,7 @@ class GatewayClient(
             handleDisconnect(webSocket, "malformed frame: ${e.message}")
             return
         }
+        val envelope = decoded.envelope
         lastInboundAt.set(now())
 
         when (envelope.type) {
@@ -429,7 +435,7 @@ class GatewayClient(
             }
             MessageType.ERROR -> Unit // transport-level, nothing to do
             MessageType.SESSION_CHECK -> answerSessionCheck(webSocket, envelope)
-            else -> deliver(envelope)
+            else -> deliver(decoded)
         }
 
         // every backend push expects an ack unless it's transport-level; a
@@ -440,9 +446,10 @@ class GatewayClient(
     }
 
     /** typed callbacks plus the raw fan-out, deduped so a redelivery never re-runs */
-    private fun deliver(envelope: Envelope) {
+    private fun deliver(decoded: DecodedMessage) {
+        val envelope = decoded.envelope
         if (envelope.type in DEDUPEABLE_TYPES) {
-            val key = envelope.type.wire + "|" + codec.payloadAsJson(envelope.payload).toString()
+            val key = envelope.type.wire + "|" + decoded.rawPayload.toString()
             if (dedupe.isDuplicate(key, now())) {
                 return
             }
@@ -452,12 +459,11 @@ class GatewayClient(
             MessageType.ACCOUNT_DELETED -> listener.onAccountDeleted(envelope.payload as Payload.AccountDeleted)
             else -> Unit
         }
-        rawListener?.onFrame(
-            envelope.id,
-            envelope.type.wire,
-            codec.payloadAsJson(envelope.payload) as? JsonObject ?: JsonObject(emptyMap()),
-            envelope.correlationId,
-        )
+        // raw fan-out: consumers speaking the documented wire names (the ws
+        // layer's guest/auth handling, locale pushes, unknown future types)
+        // get the plain json whatever the typed layer knows
+        val wireName = (envelope.payload as? Payload.Raw)?.wireType ?: envelope.type.wire
+        listener.onWireMessage(wireName, decoded.rawPayload, envelope.correlationId, envelope.timestamp)
     }
 
     private fun sendAck(webSocket: WebSocket, id: String, correlationId: String?) {

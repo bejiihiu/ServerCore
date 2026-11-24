@@ -216,11 +216,23 @@ export const payloadSchemas = {
     adminUuid: minecraftUuid,
     targetUuid: minecraftUuid,
     sessionId: serverId.optional(),
+    // usernames are display-only for audit lines, optional so old builds pass
+    adminUsername: username.optional(),
+    targetUsername: username.optional(),
   }),
 
   SPEC_ENDED: z.object({
     adminUuid: minecraftUuid,
     targetUuid: minecraftUuid,
+    sessionId: serverId.optional(),
+    // usernames are display-only for audit lines, optional so old builds pass
+    adminUsername: username.optional(),
+    targetUsername: username.optional(),
+    // wall duration of the observation in seconds, present on clean ends
+    durationSec: z.number().int().min(0).max(86_400 * 7).optional(),
+    reason: z
+      .enum(["NORMAL", "FORCED", "TARGET_DISCONNECTED", "ADMIN_DISCONNECTED", "ERROR"])
+      .default("NORMAL"),
   }),
 
   SERVER_STATUS: z.object({
@@ -230,12 +242,19 @@ export const payloadSchemas = {
     version: z.string().max(64).optional(),
     state: z.enum(SERVER_STATES).optional(),
     detail: z.string().max(512).optional(),
+    // live counter from the plugin's own spec registry, absent on old builds
+    activeSpecSessions: z.number().int().min(0).max(4096).optional(),
+    // true = the game server's flectonepulse integration reports that its own
+    // telegram module owns announcements right now, so the bot stays quiet
+    // for this event. old plugin builds never set the field and stay valid.
+    telegramSuppressed: z.boolean().optional(),
   }),
 
   SERVER_HEARTBEAT: z.object({
     onlinePlayers: z.number().int().min(0),
     maxPlayers: z.number().int().min(0),
     tps: z.number().min(0).max(1000).optional(),
+    activeSpecSessions: z.number().int().min(0).max(4096).optional(),
   }),
 
   SERVER_HELLO: z.object({

@@ -65,6 +65,11 @@ class GuestMessageService(
             .forEach { player.sendMessage(mini.deserialize(it)) }
     }
 
+    /** flectonepulse reports an active mute: one line so the chat silence is explained */
+    fun sendMuteNotice(player: Player) {
+        i18n.lines("guest.mute-notice").forEach { player.sendMessage(mini.deserialize(it)) }
+    }
+
     fun kickMessage(code: String): List<Component> =
         i18n.lines("guest.kick.banned").map { mini.deserialize(it) }
 

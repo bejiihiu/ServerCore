@@ -12,7 +12,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-private class RecordedFrame(val id: String, val type: String, val payload: JsonObject, val correlationId: String?)
+private class RecordedFrame(val wireType: String, val payload: JsonObject, val correlationId: String?)
 
 /** everything the state machine tests need, no bukkit, no network */
 private class Harness(dir: java.nio.file.Path) {
@@ -38,6 +38,10 @@ private class Harness(dir: java.nio.file.Path) {
         override fun onLinkToken(payload: Payload.LinkToken) {
             linkTokens.add(payload)
         }
+
+        override fun onWireMessage(wireType: String, payload: JsonObject, correlationId: String?, timestamp: Long) {
+            rawFrames.add(RecordedFrame(wireType, payload, correlationId))
+        }
     }
 
     val client = GatewayClient(
@@ -57,7 +61,6 @@ private class Harness(dir: java.nio.file.Path) {
             override fun serverVersion() = "1.21"
         },
         presenceLookup = { true },
-        rawListener = { id, type, payload, correlationId -> rawFrames.add(RecordedFrame(id, type, payload, correlationId)) },
         durablePark = outbox,
         now = { clock.get() },
     )
@@ -235,12 +238,12 @@ class GatewayClientResilienceTest {
             put("minecraftUuid", "11111111-1111-4111-8111-111111111111")
             put("sessionId", "auth-abc123")
         }
-        val wire = h.backendFrame(MessageType.AUTH_APPROVED, Payload.Raw(approved), "bpush00001")
+        val wire = h.backendFrame(MessageType.AUTH_APPROVED, Payload.Raw("AUTH_APPROVED", approved), "bpush00001")
         h.client.onText(socket, wire, true)
         h.client.onText(socket, wire, true)
 
         assertEquals(1, h.rawFrames.size)
-        assertEquals("AUTH_APPROVED", h.rawFrames.single().type)
+        assertEquals("AUTH_APPROVED", h.rawFrames.single().wireType)
         // both deliveries acked, the backend's outbox can retire the push
         assertEquals(2, socket.sent.count { it.contains(""""ackedId":"bpush00001"""") })
     }
@@ -260,7 +263,7 @@ class GatewayClientResilienceTest {
         h.client.onText(socket, token, true)
         assertEquals(1, h.linkTokens.size)
         assertEquals(1, h.rawFrames.size)
-        assertEquals("LINK_TOKEN", h.rawFrames.single().type)
+        assertEquals("LINK_TOKEN", h.rawFrames.single().wireType)
     }
 
     @Test

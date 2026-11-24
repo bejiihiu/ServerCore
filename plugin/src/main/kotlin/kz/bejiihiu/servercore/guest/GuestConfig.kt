@@ -42,6 +42,8 @@ data class GuestConfig(
     val kickAfterLimit: Boolean,
     /** subtle actionbar reminder cadence while a guest waits for auth, seconds */
     val reminderIntervalSeconds: Long,
+    /** how often the gamemode drift sweep re-checks a guest, seconds */
+    val gamemodeSweepSeconds: Long,
     /** command names (no slash) a guest may still run */
     val commandWhitelist: Set<String>,
     /** telegram bot username, used to build the fallback deep link */
@@ -91,6 +93,7 @@ data class GuestConfig(
                 sessionLimit = guest?.getInt("session-limit", 3)?.coerceIn(1, 100) ?: 3,
                 kickAfterLimit = bool("kick-after-limit", true),
                 reminderIntervalSeconds = guest?.getLong("reminder-interval-seconds", 60L)?.coerceIn(10L, 3600L) ?: 60L,
+                gamemodeSweepSeconds = guest?.getLong("gamemode-sweep-seconds", 2L)?.coerceIn(1L, 60L) ?: 2L,
                 commandWhitelist = whitelist,
                 botUsername = guest?.getString("bot-username", "ServerCoreBot")?.trim()?.trimStart('@')
                     ?.ifEmpty { "ServerCoreBot" } ?: "ServerCoreBot",

@@ -6,6 +6,8 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.function.Consumer
 import kz.bejiihiu.servercore.ServerCorePlugin
+import kz.bejiihiu.servercore.integration.flectonepulse.PunishmentKind
+import kz.bejiihiu.servercore.integration.flectonepulse.PunishmentQuery
 import kz.bejiihiu.servercore.ws.BackendGateway
 import kz.bejiihiu.servercore.ws.GuestEndedPayload
 import kz.bejiihiu.servercore.ws.GuestStartedPayload
@@ -28,24 +30,26 @@ fun PlayerSnapshot.toPayload(): SnapshotPayload = SnapshotPayload(
     flySpeed = flySpeed, walkSpeed = walkSpeed,
 )
 
-data class GuestSession(val sessionId: String, val username: String, val snapshot: PlayerSnapshot)
-
 /**
  * owns the guest session lifecycle:
  *
  * join -> restrictions on immediately (provisional) -> account check
- *   - guest  -> capture snapshot once, spectator, guest_started, welcome
+ *   - guest  -> capture or restore snapshot once, spectator, guest_started, welcome
  *   - active -> restrictions off, snapshot untouched
  *   - denied -> kick
  *
- * rejoin without auth -> stored snapshot restored before anything else, the
- * original position is never replaced by a spectator wandering point.
+ * rejoin without auth -> the stored snapshot is restored before anything else,
+ * the original position is never replaced by a spectator wandering point.
  * authenticated -> snapshot completed, speeds and mode restored, no position
  * restore, the player keeps exploring from wherever they authenticated.
  *
- * session budget: every join without auth burns one session from the limit;
- * past the limit the player is kicked with a register-now message (or warned,
- * when kick-after-limit is off). auth success resets the budget.
+ * races this service is built around:
+ *   - duplicate login (same uuid, two clients): last join wins, the session
+ *     continues for the new client, the stale instance's quit is recognised
+ *     and ignored, the budget burns exactly once
+ *   - telegram approval landing while a guest session is still starting:
+ *     the approval latch makes the ungate win and no budget is burned
+ *   - a late stale resolution arriving after approval: ungated, never re-guested
  *
  * every player mutation goes through the entity scheduler, no main thread
  * assumptions anywhere. file io lives on virtual threads.
@@ -59,18 +63,27 @@ class GuestSessionService(
     private val counter: GuestSessionCounter,
     private val gateway: BackendGateway,
     private val messages: GuestMessageService,
+    /**
+     * read-only flectonepulse punishment lookup, resolved lazily so the guest
+     * flow works with and without the fp bridge connected
+     */
+    private val punishmentQuery: () -> PunishmentQuery = { PunishmentQuery.None },
 ) {
 
-    private val sessions = ConcurrentHashMap<UUID, GuestSession>()
+    private val registry = GuestSessionRegistry()
     private val provisional = ConcurrentHashMap.newKeySet<UUID>()
     private val pendingRestores = ConcurrentHashMap<UUID, StoredSnapshot>()
     private val pendingResolves = ConcurrentHashMap<UUID, CompletableFuture<AccountStatus>>()
     private val modeTransitions = ConcurrentHashMap.newKeySet<UUID>()
     private val reminderTasks = ConcurrentHashMap<UUID, ScheduledTask>()
+    private val sweepTasks = ConcurrentHashMap<UUID, ScheduledTask>()
+    private val lastSweepFix = ConcurrentHashMap<UUID, Long>()
+
+    /** which deep-link url this client instance was already shown, per session */
     private val shownLinks = ConcurrentHashMap<UUID, String>()
 
     /** a guest is anyone restricted right now: confirmed session or pending check */
-    fun isRestricted(uuid: UUID): Boolean = config.enabled && (uuid in provisional || sessions.containsKey(uuid))
+    fun isRestricted(uuid: UUID): Boolean = config.enabled && (uuid in provisional || registry.contains(uuid))
 
     /** true while the plugin itself is switching the mode, lets the guard listener pass it */
     fun isInModeTransition(uuid: UUID): Boolean = uuid in modeTransitions
@@ -86,21 +99,31 @@ class GuestSessionService(
         val uuid = player.uniqueId
         if (config.enabled) provisional.add(uuid)
 
-        val stored = if (config.restoreOnRestart) pendingRestores.remove(uuid) else null
+        // duplicate login: a session already runs for this uuid, the new client
+        // takes it over (last join wins), the stale instance is on its way out
+        val continuing = registry.contains(uuid)
         onPlayerThread(player, retire = { provisional.remove(uuid) }) {
-            if (stored != null) beginRestoredSession(player, stored)
+            if (player.isOnline && continuing && registry.contains(uuid)) rebindSession(player)
         }
         requestResolution(player)
     }
 
     fun onQuit(player: Player) {
         val uuid = player.uniqueId
+        // duplicate login teardown: when the uuid already maps to a different
+        // live player, this quit belongs to the replaced stale instance and
+        // must not tear down the session the new client just took over
+        val live = runCatching { Bukkit.getPlayer(uuid) }.getOrNull()
+        if (live != null && live !== player) return
+
         pendingResolves.remove(uuid)?.cancel(true)
         provisional.remove(uuid)
         modeTransitions.remove(uuid)
-        cancelReminder(uuid)
-        val session = sessions.remove(uuid)
-        if (session != null) {
+        registry.clearAuthorization(uuid)
+        cancelLoops(uuid)
+        lastSweepFix.remove(uuid)
+        shownLinks.remove(uuid)
+        registry.remove(uuid)?.let { session ->
             // session ended by leaving, the snapshot stays durable for the next join
             sendEnvelope(
                 messageEnvelope(
@@ -116,8 +139,9 @@ class GuestSessionService(
 
     /** called from the ws resolver when the backend confirms a login, any thread */
     fun onAuthApproved(uuid: UUID) {
-        // budget starts over once the telegram binding vouches for the player
-        counter.reset(uuid)
+        // latch + budget reset under the start mutex: approval beats an
+        // in-flight session start and no increment can land after the reset
+        registry.approve(uuid) { counter.reset(uuid) }
         val player = Bukkit.getPlayer(uuid) ?: return
         onPlayerThread(player) { ungateAuthenticated(player) }
     }
@@ -127,27 +151,29 @@ class GuestSessionService(
         // the prompt may already carry this exact link, only resend on an actual upgrade
         val link = linkSource.pendingLink(uuid)?.url ?: return
         if (shownLinks[uuid] == link) return
-        if (!sessions.containsKey(uuid)) return
+        if (!registry.contains(uuid)) return
         val player = Bukkit.getPlayer(uuid) ?: return
         onPlayerThread(player) {
-            if (sessions.containsKey(uuid) && player.isOnline) showPrompt(player, link)
+            if (registry.contains(uuid) && player.isOnline) showPrompt(player, link)
         }
     }
 
     /** re-announce live sessions after the ws link comes back so both sides agree on reality */
     fun reconcile() {
-        sessions.forEach { (uuid, session) ->
+        registry.all().forEach { (uuid, session) ->
             sendGuestStarted(uuid, session.username, session.sessionId, session.snapshot)
         }
     }
 
     fun resendPrompt(player: Player) {
-        showPrompt(player, linkSource.pendingLink(player.uniqueId)?.url)
+        // user asked for it explicitly, the once-per-session rule does not apply
+        showPrompt(player, null, force = true)
     }
 
-    /** remembers what was shown so a late personal link can replace the generic one exactly once */
-    private fun showPrompt(player: Player, personalUrl: String?) {
+    /** remembers what was shown so the deep-link prompt goes out once per session */
+    private fun showPrompt(player: Player, personalUrl: String?, force: Boolean = false) {
         val url = personalUrl ?: linkSource.pendingLink(player.uniqueId)?.url ?: config.fallbackBotUrl
+        if (!force && shownLinks[player.uniqueId] == url) return
         shownLinks[player.uniqueId] = url
         messages.sendPrompt(player, url)
     }
@@ -167,7 +193,7 @@ class GuestSessionService(
         val future = accounts.resolve(uuid, player.name)
         pendingResolves[uuid] = future
         future.whenComplete { status, _ ->
-            pendingResolves.remove(uuid)
+            pendingResolves.remove(uuid, future)
             // any failure (timeout, bad frame, dead link) fails closed to guest
             val resolved = status ?: AccountStatus.GuestPendingLogin(null)
             onPlayerThread(player, retire = { provisional.remove(uuid) }) {
@@ -179,114 +205,180 @@ class GuestSessionService(
     private fun applyResolution(player: Player, status: AccountStatus) {
         val uuid = player.uniqueId
         if (!player.isOnline) return
-        when (status) {
-            is AccountStatus.Authorized -> ungateAuthenticated(player)
-            is AccountStatus.GuestPendingLogin -> {
-                if (!sessions.containsKey(uuid)) {
-                    if (!config.enabled) {
-                        // guest mode off: unauthenticated players simply do not get in
-                        val lines = messages.guestDisabledMessage()
-                        lines.forEach(player::sendMessage)
-                        player.kick(lines.lastOrNull() ?: Component.empty())
-                        return
-                    }
-                    if (counter.count(uuid) >= config.sessionLimit) {
-                        if (config.kickAfterLimit) {
-                            kickOverLimit(player)
-                            return
-                        }
-                        // budget spent but the admin chose to let them look around
-                        startGuestSession(player, captureSnapshot(player), persist = true, overLimit = true)
-                        messages.sendLimitWarning(player)
-                    } else {
-                        startGuestSession(player, captureSnapshot(player), persist = true)
-                    }
-                }
-                showPrompt(player, status.link)
-            }
-            is AccountStatus.Denied -> {
-                sessions.remove(uuid)?.let { session ->
-                    sendEnvelope(
-                        messageEnvelope(
-                            MessageTypes.GUEST_ENDED,
-                            GuestEndedPayload(uuid.toString(), session.sessionId, "KICK"),
-                        ),
-                    )
-                    snapshots.complete(uuid)
-                }
+        val link = (status as? AccountStatus.GuestPendingLogin)?.link
+        // the stored snapshot (restart recovery or a prior unauthenticated
+        // leave) always beats a fresh capture, the original position survives
+        val stored = pendingRestores.remove(uuid) ?: snapshots.pending(uuid)
+        when (val action = JoinPolicy.decide(
+            status = status,
+            sessionExists = registry.contains(uuid),
+            alreadyAuthorized = registry.isAuthorized(uuid),
+            sessionsUsed = counter.count(uuid),
+            sessionLimit = config.sessionLimit,
+            kickAfterLimit = config.kickAfterLimit,
+            storedSnapshot = stored != null,
+            guestEnabled = config.enabled,
+        )) {
+            is JoinAction.Ungate -> ungateAuthenticated(player)
+            is JoinAction.KeepExisting -> showPrompt(player, link)
+            is JoinAction.KickOverLimit -> kickOverLimit(player)
+            is JoinAction.KickDisabled -> {
+                // guest mode off: unauthenticated players simply do not get in
                 provisional.remove(uuid)
-                cancelReminder(uuid)
-                val lines = messages.kickMessage(status.code)
+                val lines = messages.guestDisabledMessage()
                 lines.forEach(player::sendMessage)
                 player.kick(lines.lastOrNull() ?: Component.empty())
             }
+            is JoinAction.KickDenied -> {
+                val session = registry.remove(uuid)
+                session?.let {
+                    sendEnvelope(
+                        messageEnvelope(
+                            MessageTypes.GUEST_ENDED,
+                            GuestEndedPayload(uuid.toString(), it.sessionId, "KICK"),
+                        ),
+                    )
+                }
+                if (session != null || snapshots.pending(uuid) != null) snapshots.complete(uuid)
+                provisional.remove(uuid)
+                cancelLoops(uuid)
+                val lines = messages.kickMessage(action.code)
+                lines.forEach(player::sendMessage)
+                player.kick(lines.lastOrNull() ?: Component.empty())
+            }
+            is JoinAction.StartGuest -> {
+                val session = registry.start(uuid, create = {
+                    val created = startSessionState(player, uuid, if (action.restoreStored) stored else null)
+                    // one burn per started session, inside the start mutex so a
+                    // concurrent approval reset can never interleave with it
+                    counter.increment(uuid)
+                    created
+                })
+                if (session == null) {
+                    // a duplicate join or a late approval got there first
+                    if (registry.isAuthorized(uuid)) ungateAuthenticated(player) else showPrompt(player, link)
+                    return
+                }
+                sendGuestStarted(uuid, player.name, session.sessionId, session.snapshot)
+                beginRichFlow(player, uuid, restored = action.restoreStored, overLimit = action.overLimit, link = link)
+            }
         }
     }
 
-    private fun beginRestoredSession(player: Player, stored: StoredSnapshot) {
-        val uuid = player.uniqueId
-        if (!player.isOnline) return
-        val location = stored.snapshot.toLocation(Bukkit.getWorld(stored.snapshot.world))
-        if (location == null) {
-            // world not loaded (yet?), keep the pending restore for a later join
-            pendingRestores[uuid] = stored
-            plugin.logger.warning("snapshot world '${stored.snapshot.world}' not found for $uuid, restore postponed")
+    /**
+     * the bukkit half of starting a session, runs under the registry start
+     * mutex on the player's entity thread. [stored] null means fresh capture,
+     * otherwise the original snapshot is reused and rebound to a new session
+     * id — a rejoin never overwrites the captured location with a spectator
+     * wandering point.
+     */
+    private fun startSessionState(player: Player, uuid: UUID, stored: StoredSnapshot?): GuestSession {
+        val snapshot = if (stored != null) {
+            stored.snapshot.toLocation(Bukkit.getWorld(stored.snapshot.world))?.let { player.teleportAsync(it) }
+            stored.snapshot
         } else {
-            player.teleportAsync(location)
+            captureSnapshot(player)
         }
-        // same original snapshot values, brand new session id: a rejoin never overwrites
-        // the captured location with a spectator wandering point
-        val sessionId = newSessionId()
-        sessions[uuid] = GuestSession(sessionId, player.name, stored.snapshot)
-        provisional.remove(uuid)
         enterSpectator(player)
-        snapshots.updateSessionId(uuid, sessionId)
-        sendGuestStarted(uuid, player.name, sessionId, stored.snapshot)
-        beginRichFlow(player, uuid, restored = true, overLimit = counter.count(uuid) >= config.sessionLimit)
-        counter.increment(uuid)
-    }
-
-    private fun startGuestSession(player: Player, snapshot: PlayerSnapshot, persist: Boolean, overLimit: Boolean = false) {
-        val uuid = player.uniqueId
         val sessionId = newSessionId()
-        sessions[uuid] = GuestSession(sessionId, player.name, snapshot)
-        provisional.remove(uuid)
-        enterSpectator(player)
-        if (persist) {
+        if (stored != null) {
+            snapshots.updateSessionId(uuid, sessionId)
+        } else {
             snapshots.save(uuid, StoredSnapshot(sessionId, System.currentTimeMillis(), snapshot))
         }
-        sendGuestStarted(uuid, player.name, sessionId, snapshot)
-        beginRichFlow(player, uuid, restored = false, overLimit = overLimit)
-        counter.increment(uuid)
+        return GuestSession(sessionId, player.name, snapshot)
     }
 
-    /** welcome title + chat prompt + the periodic subtle reminder loop */
-    private fun beginRichFlow(player: Player, uuid: UUID, restored: Boolean, overLimit: Boolean) {
+    /** duplicate login: same session continues for the new client, no new burn */
+    private fun rebindSession(player: Player) {
+        val uuid = player.uniqueId
+        if (!registry.contains(uuid)) return
+        enterSpectator(player)
+        // the new client has not seen any prompt yet, it gets exactly one
+        shownLinks.remove(uuid)
+        beginRichFlow(player, uuid, restored = true, overLimit = counter.count(uuid) >= config.sessionLimit, link = null)
+    }
+
+    /** welcome title + chat prompt + the periodic reminder and gamemode sweep loops */
+    private fun beginRichFlow(player: Player, uuid: UUID, restored: Boolean, overLimit: Boolean, link: String?) {
         messages.sendWelcome(player, restored)
-        showPrompt(player, null)
+        showPrompt(player, link)
         if (overLimit) messages.sendLimitWarning(player)
         scheduleReminder(uuid, player)
+        scheduleModeSweep(uuid, player)
+        notifyIfMuted(uuid, player)
+    }
+
+    /**
+     * flectonepulse integration: if the player carries an active mute, one
+     * line explains why chat stays silent. the lookup may hit fp's storage,
+     * so it runs on the async scheduler and the notice lands via the entity
+     * scheduler like every other player mutation.
+     */
+    private fun notifyIfMuted(uuid: UUID, player: Player) {
+        plugin.server.asyncScheduler.runNow(plugin, Consumer<ScheduledTask> { _ ->
+            val muted = punishmentQuery().hasActive(PunishmentKind.MUTE, uuid)
+            if (muted) {
+                onPlayerThread(player) {
+                    if (player.isOnline && registry.contains(uuid)) messages.sendMuteNotice(player)
+                }
+            }
+        })
     }
 
     private fun scheduleReminder(uuid: UUID, player: Player) {
         val periodTicks = config.reminderIntervalSeconds * 20
+        // identity holder: the retire hook must only ever drop its own task,
+        // a duplicate-login rebind replaces the map entry right after
+        val holder = java.util.concurrent.atomic.AtomicReference<ScheduledTask>()
         // folia's entity scheduler hands back null once the entity is retiring
         val task = player.scheduler.runAtFixedRate(
             plugin,
             Consumer<ScheduledTask> {
-                // player may have left without a quit event racing us; the retire hook
-                // below covers the rest
-                if (player.isOnline && sessions.containsKey(uuid)) messages.sendReminder(player)
+                // player may have left without a quit event racing us; the retire
+                // hook below covers the rest
+                if (player.isOnline && registry.contains(uuid)) messages.sendReminder(player)
             },
-            Runnable { reminderTasks.remove(uuid) },
+            Runnable { holder.get()?.let { current -> reminderTasks.remove(uuid, current) } },
             periodTicks,
             periodTicks,
         ) ?: return
+        holder.set(task)
         reminderTasks.put(uuid, task)?.cancel()
     }
 
-    private fun cancelReminder(uuid: UUID) {
+    /**
+     * gamemode drift sweep: another plugin (or anything that ignores the
+     * cancel event) can move a guest out of spectator. the check is cheap and
+     * runs on the player's own entity scheduler — a region thread by
+     * definition — and actual corrections are throttled so a stubborn plugin
+     * does not turn this into a per-tick fight.
+     */
+    private fun scheduleModeSweep(uuid: UUID, player: Player) {
+        val periodTicks = config.gamemodeSweepSeconds * 20
+        val holder = java.util.concurrent.atomic.AtomicReference<ScheduledTask>()
+        val task = player.scheduler.runAtFixedRate(
+            plugin,
+            Consumer<ScheduledTask> {
+                if (!player.isOnline || !registry.contains(uuid)) return@Consumer
+                if (uuid in modeTransitions) return@Consumer
+                if (player.gameMode == GameMode.SPECTATOR) return@Consumer
+                val now = System.currentTimeMillis()
+                if (now - (lastSweepFix[uuid] ?: 0) < SWEEP_THROTTLE_MS) return@Consumer
+                lastSweepFix[uuid] = now
+                enterSpectator(player)
+            },
+            Runnable { holder.get()?.let { current -> sweepTasks.remove(uuid, current) } },
+            periodTicks,
+            periodTicks,
+        ) ?: return
+        holder.set(task)
+        sweepTasks.put(uuid, task)?.cancel()
+    }
+
+    private fun cancelLoops(uuid: UUID) {
         reminderTasks.remove(uuid)?.cancel()
+        sweepTasks.remove(uuid)?.cancel()
     }
 
     private fun enterSpectator(player: Player) {
@@ -302,15 +394,23 @@ class GuestSessionService(
     private fun ungateAuthenticated(player: Player) {
         val uuid = player.uniqueId
         provisional.remove(uuid)
-        cancelReminder(uuid)
-        val session = sessions.remove(uuid) ?: return
+        cancelLoops(uuid)
+        lastSweepFix.remove(uuid)
+        shownLinks.remove(uuid)
+        pendingRestores.remove(uuid)
+        val session = registry.remove(uuid)
+        // the approval latch stays set until quit so any stale resolution that
+        // still arrives ungates instead of re-guesting the player
+        // drop the durable snapshot only when there actually is one, an
+        // authorized straight join must not touch the snapshot file at all
+        if (session != null || snapshots.pending(uuid) != null) snapshots.complete(uuid)
+        if (session == null) return
         modeTransitions.add(uuid)
         try {
             session.snapshot.applyTo(player)
         } finally {
             modeTransitions.remove(uuid)
         }
-        snapshots.complete(uuid)
         sendEnvelope(
             messageEnvelope(
                 MessageTypes.GUEST_ENDED,
@@ -337,5 +437,10 @@ class GuestSessionService(
 
     private fun onPlayerThread(player: Player, retire: Runnable? = null, block: () -> Unit) {
         player.scheduler.run(plugin, Consumer<ScheduledTask> { block() }, retire)
+    }
+
+    private companion object {
+        /** minimum spacing between drift corrections per guest */
+        const val SWEEP_THROTTLE_MS = 15_000L
     }
 }

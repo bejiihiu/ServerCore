@@ -125,7 +125,21 @@ Player-facing text lives in `messages_en.yml` / `messages_ru.yml` (bundled, then
 
 | Key | Default | Description |
 |---|---|---|
-| `placeholders.cache-ttl-milliseconds` | `2000` | Freshness window of the local cache behind PlaceholderAPI expansions. Values are served from cache only — no synchronous database access |
+| `placeholders.cache-ttl-milliseconds` | `2000` | How long a rendered placeholder value is memoized before it is recomputed. Values are always served from the in-memory state cache — no synchronous database access |
+| `placeholders.unknown-value` | `unknown` | String served for a player this server has never seen |
+| `placeholders.stale-after-minutes` | `10` | While the backend link is down, backend-derived facts older than this are flagged as stale |
+| `placeholders.stale-suffix` | ` (stale)` | Suffix appended to stale backend-derived values |
+
+Provided placeholders (read-only, fed by websocket events and player lifecycle):
+
+| Placeholder | Meaning |
+|---|---|
+| `%servercore_status%` | Account state: active, banned or guest |
+| `%servercore_authenticated%` | Whether the backend confirmed the Telegram login |
+| `%servercore_application_status%` | Last known admission verdict (voting, approved, rejected) |
+| `%servercore_telegram_linked%` | Whether the account is bound to a Telegram identity |
+| `%servercore_last_seen%` | Relative time of the last join/quit |
+| `%servercore_session_duration%` | Live session time of an online player |
 
 ## Configuration principles
 

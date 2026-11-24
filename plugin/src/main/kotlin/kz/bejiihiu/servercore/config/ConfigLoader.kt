@@ -1,5 +1,7 @@
 package kz.bejiihiu.servercore.config
 
+import kz.bejiihiu.servercore.spec.SpecAuditConfig
+import kz.bejiihiu.servercore.spectator.SpecConfig
 import org.bukkit.configuration.file.FileConfiguration
 import kz.bejiihiu.servercore.websocket.GatewayConfig
 
@@ -9,10 +11,12 @@ import kz.bejiihiu.servercore.websocket.GatewayConfig
  */
 data class PluginConfig(
     val gateway: GatewayConfig,
+    val spec: SpecConfig,
+    val specAudit: SpecAuditConfig,
 )
 
 object ConfigLoader {
-    fun load(config: FileConfiguration): PluginConfig {
+    fun load(config: FileConfiguration, logger: java.util.logging.Logger): PluginConfig {
         val url = config.getString("backend.url", "ws://127.0.0.1:8081/ws")!!.trim()
         val serverId = config.getString("backend.server-id", "game-1")!!.trim()
         val secret = config.getString("backend.secret", "")!!.trim()
@@ -48,6 +52,8 @@ object ConfigLoader {
                 dedupeTtlMs = dedupeTtl,
                 outboxMaxEntries = outboxMax,
             ),
+            spec = SpecConfig.load(config),
+            specAudit = SpecAuditConfig.load(config, logger),
         )
     }
 }

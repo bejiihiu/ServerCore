@@ -62,14 +62,20 @@ export class OpsNotifier {
   }
 
   /** broadcasts an ops event unless the same event was already announced */
-  async announce(serverId: string, event: OpsEvent, options: { force?: boolean } = {}): Promise<void> {
+  async announce(
+    serverId: string,
+    event: OpsEvent,
+    options: { force?: boolean; telegram?: boolean } = {},
+  ): Promise<void> {
     if (!options.force && this.lastEventByServer.get(serverId) === event) return
     this.lastEventByServer.set(serverId, event)
 
     const text = t(this.locale, EVENT_KEYS[event])
     this.logger.info({ serverId, event }, "ops event")
 
-    if (this.notifications === null) return
+    // telegram: false = the game server asked us to stay quiet (its
+    // flectonepulse integration owns announcements right now)
+    if (this.notifications === null || options.telegram === false) return
     try {
       await this.notifications.broadcast(text, this.adminChatIds)
     } catch (error) {

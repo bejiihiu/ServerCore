@@ -7,6 +7,7 @@ import kz.bejiihiu.servercore.boot.JoinFlowListener
 import kz.bejiihiu.servercore.config.ConfigLoader
 import kz.bejiihiu.servercore.esp.EspConfig
 import kz.bejiihiu.servercore.esp.EspModule
+import kz.bejiihiu.servercore.esp.SpecObserverSource
 import kz.bejiihiu.servercore.guest.AccountService
 import kz.bejiihiu.servercore.guest.GuestConfig
 import kz.bejiihiu.servercore.guest.GuestMessageService
@@ -17,6 +18,14 @@ import kz.bejiihiu.servercore.guest.LocalAccountCache
 import kz.bejiihiu.servercore.guest.LocalAccountResolver
 import kz.bejiihiu.servercore.guest.SnapshotStore
 import kz.bejiihiu.servercore.guest.WsAccountResolver
+import kz.bejiihiu.servercore.disguise.DisguiseStack
+import kz.bejiihiu.servercore.integration.flectonepulse.FlectonePulseBridge
+import kz.bejiihiu.servercore.integration.flectonepulse.FlectonePulseConfig
+import kz.bejiihiu.servercore.integration.luckperms.GroupsDebugHandler
+import kz.bejiihiu.servercore.integration.luckperms.LuckPermsConfig
+import kz.bejiihiu.servercore.integration.luckperms.PermissionSource
+import kz.bejiihiu.servercore.integration.luckperms.PermissionSourceFactory
+import kz.bejiihiu.servercore.boot.GroupsDebugCommand
 import kz.bejiihiu.servercore.locale.LocaleService
 import kz.bejiihiu.servercore.packet.CachedViewStateStore
 import kz.bejiihiu.servercore.packet.PacketConfig
@@ -33,26 +42,74 @@ import kz.bejiihiu.servercore.ops.RestartScheduleTask
 import kz.bejiihiu.servercore.ops.ServerState
 import kz.bejiihiu.servercore.ops.UpdateInstaller
 import kz.bejiihiu.servercore.ops.UpdaterService
+import kz.bejiihiu.servercore.placeholderapi.ServerCoreExpansion
+import kz.bejiihiu.servercore.placeholderapi.ServerStateCache
+import kz.bejiihiu.servercore.placeholderapi.PlaceholderConfig
+import kz.bejiihiu.servercore.placeholderapi.PlaceholderResolver
+import kz.bejiihiu.servercore.placeholderapi.PlaceholderText
+import kz.bejiihiu.servercore.placeholderapi.StatePlayerListener
+import kz.bejiihiu.servercore.placeholderapi.StateWsListener
 import kz.bejiihiu.servercore.player.PlayerPresenceService
+import kz.bejiihiu.servercore.spec.SpecAuditConfig
+import kz.bejiihiu.servercore.spec.SpecAuditTrail
+import kz.bejiihiu.servercore.spec.SpecEventSender
+import kz.bejiihiu.servercore.spec.SpecSessionRegistry
 import kz.bejiihiu.servercore.sync.EntityIdentityTracker
 import kz.bejiihiu.servercore.sync.InMemoryViewStateRegistry
 import kz.bejiihiu.servercore.sync.PacketStateListener
 import kz.bejiihiu.servercore.sync.PacketStateSync
 import kz.bejiihiu.servercore.sync.SyncReconciler
 import kz.bejiihiu.servercore.sync.VanillaOnlyResyncExecutor
+import kz.bejiihiu.servercore.spectator.InventoryViewerService
+import kz.bejiihiu.servercore.spectator.ObserverHider
+import kz.bejiihiu.servercore.spectator.SpecObserverConfig
+import kz.bejiihiu.servercore.spectator.SpecResyncListener
+import kz.bejiihiu.servercore.spectator.SpecSessionRegistry as SpectatorSpecSessionRegistry
+import kz.bejiihiu.servercore.spectator.SpecTraceListener
+import kz.bejiihiu.servercore.spectator.SpecViewStateApplier
+import kz.bejiihiu.servercore.spectator.TraceFilter
+import kz.bejiihiu.servercore.protection.AllowedGamemodeOverrideRegistry
+import kz.bejiihiu.servercore.protection.CommandBlockAuditor
+import kz.bejiihiu.servercore.protection.CommandProtectionListener
+import kz.bejiihiu.servercore.protection.CommandProtectionService
+import kz.bejiihiu.servercore.protection.CommandTreeSources
+import kz.bejiihiu.servercore.protection.GamemodeGuardListener
+import kz.bejiihiu.servercore.protection.OpLockdown
+import kz.bejiihiu.servercore.protection.ProtectionConfig
+import kz.bejiihiu.servercore.protection.ProtectionLifecycle
+import kz.bejiihiu.servercore.protection.ServerCoreCommands
+import kz.bejiihiu.servercore.spec.BukkitHiddenObserver
+import kz.bejiihiu.servercore.spec.FoliaSpecEffects
+import kz.bejiihiu.servercore.spec.LuckPermsAdapter
+import kz.bejiihiu.servercore.spec.SpecAuditWriter
+import kz.bejiihiu.servercore.spec.SpecCommand
+import kz.bejiihiu.servercore.spec.SpecConfig
+import kz.bejiihiu.servercore.spec.SpecPermissionPolicy
+import kz.bejiihiu.servercore.spec.SpecRestoreJournal
+import kz.bejiihiu.servercore.spec.SpecService
+import kz.bejiihiu.servercore.spec.SessionCoordinator
+import kz.bejiihiu.servercore.spec.VanillaAdapter
 import kz.bejiihiu.servercore.ui.UiKit
 import kz.bejiihiu.servercore.util.I18n
 import kz.bejiihiu.servercore.websocket.DelayScheduler
 import kz.bejiihiu.servercore.websocket.DurableOutbox
 import kz.bejiihiu.servercore.websocket.GatewayClient
 import kz.bejiihiu.servercore.websocket.GatewayListener
+import kz.bejiihiu.servercore.websocket.MessageType
 import kz.bejiihiu.servercore.websocket.Payload
-import kz.bejiihiu.servercore.websocket.RawFrameListener
 import kz.bejiihiu.servercore.websocket.ServerStatsProvider
 import kz.bejiihiu.servercore.ws.BackendGateway
 import kz.bejiihiu.servercore.ws.GatewayLink
 import kz.bejiihiu.servercore.ws.WsEnvelope
+import kz.bejiihiu.servercore.ws.newMessageId
+import kotlinx.serialization.json.JsonObject
+import com.mojang.brigadier.CommandDispatcher
+import io.papermc.paper.command.brigadier.CommandSourceStack
+import java.util.concurrent.atomic.AtomicReference
 import net.kyori.adventure.text.Component
+import net.luckperms.api.LuckPerms
+import net.luckperms.api.LuckPermsProvider
+import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents
 import org.bukkit.Bukkit
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
@@ -73,6 +130,9 @@ class ServerCorePlugin : JavaPlugin() {
     lateinit var locale: LocaleService
         private set
 
+    lateinit var i18n: I18n
+        private set
+
     private var wsGateway: GatewayClient? = null
     private var presence: PlayerPresenceService? = null
     private lateinit var backendGateway: BackendGateway
@@ -86,8 +146,20 @@ class ServerCorePlugin : JavaPlugin() {
     private var packetSync: PacketStateSync? = null
     private var syncReconciler: SyncReconciler? = null
     private var esp: EspModule? = null
+    private var papiExpansion: ServerCoreExpansion? = null
     private lateinit var opsBus: OpsEventBus
     private var packetService: PacketService? = null
+    private lateinit var inventoryViewer: InventoryViewerService
+    private var disguiseStack: DisguiseStack? = null
+    private var gamemodeGuard: GamemodeGuardListener? = null
+    private var commandBlockAuditor: CommandBlockAuditor? = null
+    private var spec: SpecService? = null
+    private var permissionSource: PermissionSource? = null
+    private var specTrail: SpecAuditTrail? = null
+    private var specRegistry: SpecSessionRegistry? = null
+    private var specHider: ObserverHider? = null
+    private var specTraceListener: com.github.retrooper.packetevents.event.PacketListenerCommon? = null
+    private lateinit var flectonePulse: FlectonePulseBridge
 
     override fun onLoad() {
         // packetevents is a server-installed plugin we attach to, not one we
@@ -108,6 +180,13 @@ class ServerCorePlugin : JavaPlugin() {
         locale = LocaleService(dataFolder.toPath(), logger)
         ui = UiKit(this, locale)
 
+        // flectonepulse bridge goes up before the ops bus: status frames carry
+        // its telegram suppression flag, and the guest flow reads punishments
+        // through it once connected
+        val fpConfig = FlectonePulseConfig.load(config, logger)
+        val fpBridge = FlectonePulseBridge(this, fpConfig, logger)
+        flectonePulse = fpBridge
+
         // ops first: the bus is the seam the ws client hooks into (SERVER_STATUS
         // frames), and the updater needs the plugin meta version before anything else
         val ops = OpsConfig.load(config, logger)
@@ -116,7 +195,9 @@ class ServerCorePlugin : JavaPlugin() {
             onlinePlayers = { Bukkit.getOnlinePlayers().size },
             maxPlayers = { Bukkit.getMaxPlayers() },
             version = { pluginMeta.version },
+            telegramSuppressed = { fpBridge.telegramSuppressed() },
         )
+        fpBridge.start()
 
         // graceful restart stack (shared by cron + updater triggers)
         val executor = RestartExecutor(this, ops.restart.pterodactyl, logger)
@@ -154,8 +235,8 @@ class ServerCorePlugin : JavaPlugin() {
 
         // presence + gateway client: liveness, PLAYER_JOINED/LEFT, account events.
         // bad config is a boot blocker: better dead than half-connected
-        val gatewayConfig = try {
-            ConfigLoader.load(config)
+        val pluginConfig = try {
+            ConfigLoader.load(config, logger)
         } catch (e: IllegalArgumentException) {
             logger.severe("config error: ${e.message}")
             server.pluginManager.disablePlugin(this)
@@ -166,6 +247,7 @@ class ServerCorePlugin : JavaPlugin() {
             override fun onlinePlayers(): Int = presence?.onlineCount() ?: 0
             override fun maxPlayers(): Int = server.maxPlayers
             override fun serverVersion(): String = server.getMinecraftVersion()
+            override fun activeSpecSessions(): Int = specRegistry?.activeCount() ?: 0
         }
 
         // durable outbox: guest lifecycle frames survive reconnects AND plugin
@@ -173,7 +255,7 @@ class ServerCorePlugin : JavaPlugin() {
         val durableOutbox = DurableOutbox(
             file = dataFolder.toPath().resolve("ws-outbox.json"),
             io = io,
-            maxEntries = gatewayConfig.gateway.outboxMaxEntries,
+            maxEntries = pluginConfig.gateway.outboxMaxEntries,
         )
         durableOutbox.load()
 
@@ -182,7 +264,7 @@ class ServerCorePlugin : JavaPlugin() {
         var gatewayLink: GatewayLink? = null
         val gatewayListener = object : GatewayListener {
             override fun onConnected() {
-                logger.info("backend gateway connected as ${gatewayConfig.gateway.serverId}")
+                logger.info("backend gateway connected as ${pluginConfig.gateway.serverId}")
                 // the guest hub goes live with the transport, then both sides
                 // re-sync what happened while the link was down
                 gatewayLink?.let { backendGateway.attach(it) }
@@ -201,6 +283,28 @@ class ServerCorePlugin : JavaPlugin() {
             override fun onAccountDeleted(payload: Payload.AccountDeleted) {
                 revokeDeletedPlayer(payload.minecraftUuid)
             }
+
+            // raw fan-out bridge: the ws/* modules speak WsEnvelope, the typed
+            // transport speaks Payload. every validated inbound frame travels
+            // through here as json, whatever its type. only safe after
+            // backendGateway is assigned, which is guaranteed because the
+            // client only starts receiving frames once started below
+            override fun onWireMessage(
+                wireType: String,
+                payload: JsonObject,
+                correlationId: String?,
+                timestamp: Long,
+            ) {
+                backendGateway.receive(
+                    WsEnvelope(
+                        id = newMessageId(),
+                        type = wireType,
+                        timestamp = timestamp,
+                        correlationId = correlationId,
+                        payload = payload,
+                    ),
+                )
+            }
         }
 
         // folia async scheduler drives reconnect delays and the watchdog; the
@@ -210,27 +314,54 @@ class ServerCorePlugin : JavaPlugin() {
         }
 
         val client = GatewayClient(
-            config = gatewayConfig.gateway,
+            config = pluginConfig.gateway,
             listener = gatewayListener,
             scheduler = delayScheduler,
             stats = stats,
             presenceLookup = { uuid -> presence?.isOnline(uuid) ?: false },
-            rawListener = RawFrameListener { id, type, payload, correlationId ->
-                backendGateway.receive(WsEnvelope(id, type, System.currentTimeMillis(), correlationId, payload))
-            },
             durablePark = durableOutbox,
         )
         wsGateway = client
         gatewayLink = GatewayLink(client)
 
-        val presenceService = PlayerPresenceService(this, client)
+        val presenceService = PlayerPresenceService(this, client, { specRegistry?.activeCount() ?: 0 })
         presence = presenceService
         server.pluginManager.registerEvents(presenceService, this)
+
+        // spec audit: local append-only jsonl trail + the session registry that
+        // reports starts/ends to the backend and feeds the heartbeat counter.
+        // the /spec command itself hooks into the registry when it lands
+        val specAuditConfig = pluginConfig.specAudit
+        if (specAuditConfig.enabled) {
+            val trail = SpecAuditTrail(
+                directory = dataFolder.toPath().resolve(specAuditConfig.directory),
+                io = io,
+                retentionDays = specAuditConfig.retentionDays.toLong(),
+                maxEntriesPerSession = specAuditConfig.maxEntriesPerSession,
+                queueCapacity = specAuditConfig.queueCapacity,
+            )
+            val specSender = object : SpecEventSender {
+                override fun sendSpecStarted(payload: Payload.SpecStarted) {
+                    client.send(MessageType.SPEC_STARTED, payload)
+                }
+
+                override fun sendSpecEnded(payload: Payload.SpecEnded) {
+                    client.send(MessageType.SPEC_ENDED, payload)
+                }
+            }
+            specTrail = trail
+            specRegistry = SpecSessionRegistry(trail, specSender)
+        }
 
         // guest mode stack (its hub is attached to the real transport below;
         // until the link is up every send fails closed to local behavior)
         val guestConfig = GuestConfig.load(config, logger)
-        val i18n = I18n(this, guestConfig.lang)
+        i18n = I18n(this, guestConfig.lang)
+
+        val lpConfig = LuckPermsConfig.load(config, logger)
+        val permissions = PermissionSourceFactory.create(lpConfig, logger)
+        permissionSource = permissions
+        GroupsDebugCommand.handler = GroupsDebugHandler(permissions, i18n, logger)
 
         snapshots = SnapshotStore(dataFolder.toPath().resolve(guestConfig.snapshotStoragePath), io)
         snapshots.load()
@@ -252,38 +383,13 @@ class ServerCorePlugin : JavaPlugin() {
         val messages = GuestMessageService(guestConfig, wsResolver, i18n)
         sessions = GuestSessionService(
             this, guestConfig, accounts, wsResolver, snapshots, counter, backendGateway, messages,
+            punishmentQuery = { fpBridge.punishmentQuery() },
         )
 
         // backend confirmed a login -> ungate the player
         wsResolver.onAuthApproved { uuid -> sessions.onAuthApproved(uuid) }
         // personal deep link arrived after the generic prompt went out
         wsResolver.onLinkAvailable { uuid -> sessions.onLinkAvailable(uuid) }
-
-        // anti-esp visibility engine; guests flag flows in so guest-viewing-guest
-        // stays vanilla. the packet writer from the packetevents module registers
-        // itself as the applier later, until then the no-op keeps this standalone
-        val espConfig = EspConfig.load(config, logger)
-        if (espConfig.enabled) {
-            esp = EspModule.create(this, espConfig, guests = sessions::isRestricted).also { it.start() }
-        }
-
-        // restart recovery: durable snapshots become pending restores
-        sessions.markPendingRestores(snapshots.pendingAll())
-
-        val lifecycle = object : Listener {
-            @EventHandler(priority = EventPriority.LOWEST)
-            fun onJoin(event: PlayerJoinEvent) = sessions.onJoin(event.player)
-
-            @EventHandler(priority = EventPriority.MONITOR)
-            fun onQuit(event: PlayerQuitEvent) = sessions.onQuit(event.player)
-        }
-        server.pluginManager.registerEvents(lifecycle, this)
-        server.pluginManager.registerEvents(
-            GuestProtectionListener(sessions, guestConfig, messages),
-            this,
-        )
-        // demo surface for the ui toolkit until real flows consume it everywhere
-        server.pluginManager.registerEvents(JoinFlowListener(ui), this)
 
         // packet state sync: every client-view state transition goes through
         // the double-load-guarded coordinator. the registry and the packet
@@ -326,16 +432,249 @@ class ServerCorePlugin : JavaPlugin() {
         packets.start()
         packetService = packets
 
+        // live read-only inventory view for spec sessions. the session machinery
+        // lands on its own branch and calls open()/close() through this service;
+        // everything else (packet rewrite, read-only guard, flush loop, cleanup)
+        // is self-contained and inert while no viewer is open
+        inventoryViewer = InventoryViewerService(this, pluginConfig.spec, i18n)
+        inventoryViewer.start()
+
+        // packet disguise layer: client-only entities for the anti-esp
+        // visibility engine (the engine itself drives disguiseStack.applier)
+        disguiseStack = DisguiseStack.create(this, config, logger)
+
+        // protection stack: command denial, gamemode guard, op lockdown.
+        // guest sessions keep their players in spectator, so that specific
+        // shape is sanctioned through the guard's seam
+        val protectionConfig = ProtectionConfig.load(config, logger)
+        if (protectionConfig.enabled) {
+            setupProtection(protectionConfig, i18n, sessions)
+        } else {
+            logger.warning("protection disabled in config: command and gamemode guards are off")
+        }
+
+        // spectator observation stack: brigadier command + session machine +
+        // local audit. soft-dependency on luckperms, vanilla fallback otherwise
+        val specConfig = SpecConfig.load(config, logger)
+        if (specConfig.enabled) {
+            val luckPerms: LuckPerms? = if (specConfig.permission.useLuckPerms) {
+                // luckperms not on the server (or not initialized yet) is not fatal,
+                // the vanilla-permission fallback covers access decisions
+                runCatching { LuckPermsProvider.get() }.getOrNull()
+            } else null
+            if (specConfig.permission.useLuckPerms && luckPerms == null) {
+                logger.warning("spec: luckperms requested but not available, falling back to vanilla permission checks")
+            }
+
+            val adapters = buildList {
+                if (luckPerms != null) add(LuckPermsAdapter(luckPerms))
+                add(VanillaAdapter { uuid -> server.getPlayer(uuid) })
+            }
+            val specPolicy = SpecPermissionPolicy(
+                adapters = adapters,
+                levels = specConfig.permission.levels,
+                specPermission = specConfig.permission.specPermission,
+                fallbackLevelIndex = specConfig.permission.fallbackLevelIndex,
+            )
+            val specAudit = if (specConfig.logToAudit) {
+                SpecAuditWriter(
+                    baseFile = dataFolder.toPath().resolve(specConfig.audit.path),
+                    maxFileBytes = specConfig.audit.maxFileBytes,
+                    maxKept = specConfig.audit.maxKept,
+                    io = io,
+                )
+            } else null
+
+            val specJournal = SpecRestoreJournal(dataFolder.toPath().resolve("spec-restore-journal.json"), io)
+            specJournal.load()
+            val specEffects = FoliaSpecEffects(this, BukkitHiddenObserver(this), specJournal, logger)
+            val specCoordinator = SessionCoordinator(specEffects, specAudit)
+            val specService = SpecService(
+                plugin = this,
+                config = specConfig,
+                policy = specPolicy,
+                luckPerms = luckPerms,
+                coordinator = specCoordinator,
+                effects = specEffects,
+                journal = specJournal,
+                audit = specAudit,
+                i18n = i18n,
+            )
+            spec = specService
+
+            server.pluginManager.registerEvents(
+                object : Listener {
+                    @EventHandler(priority = EventPriority.LOWEST)
+                    fun onJoin(event: PlayerJoinEvent) = specService.onJoin(event.player)
+
+                    @EventHandler(priority = EventPriority.MONITOR)
+                    fun onQuit(event: PlayerQuitEvent) = specService.onQuit(event.player.uniqueId)
+                },
+                this,
+            )
+
+            lifecycleManager.registerEventHandler(LifecycleEvents.COMMANDS) { event ->
+                SpecCommand(specService).register(event.registrar())
+            }
+        }
+
+        // hidden observer layer for /spec: while an admin watches a player,
+        // the admin's entity vanishes from that client (destroy + suppressed
+        // spawns/data + tab removal), and comes back intact on session end.
+        // the session side (command, audit, permission ordering) lives in the
+        // spec-core module; both meet at the SpecSessionSource seam over this registry
+        val observerConfig = SpecObserverConfig.load(config, logger)
+        val observerSessions = SpectatorSpecSessionRegistry()
+        val traceFilter = TraceFilter(observerConfig.traceRadius, observerConfig.suppressActionBar)
+        val hider = ObserverHider(this, packets, observerSessions, traceFilter, syncStates = viewStates)
+        val traceListener = SpecTraceListener(observerSessions, packets.registry, hider::poseOf, traceFilter)
+        if (packets.register(traceListener)) {
+            specTraceListener = traceListener
+        } else {
+            logger.warning("packet layer idle, hidden observer suppression inactive")
+        }
+        server.pluginManager.registerEvents(SpecResyncListener(hider, observerSessions), this)
+        specHider = hider
+
+        // anti-esp visibility engine; guests flag flows in so guest-viewing-guest
+        // stays vanilla, the spec registry flags in so a watching admin renders
+        // as nothing to the player they watch
+        val espConfig = EspConfig.load(config, logger)
+        if (espConfig.enabled) {
+            esp = EspModule.create(
+                this,
+                espConfig,
+                guests = sessions::isRestricted,
+                spec = SpecObserverSource { observerSessions.isObserver(it) },
+            ).also { it.start() }
+            // the spec applier wraps whatever the engine had (the no-op until
+            // the packet writer registers itself): observer pairs are forced
+            // hidden, everything else passes straight through
+            esp?.let { module ->
+                module.engine.applier = SpecViewStateApplier(observerSessions, hider, module.engine.applier)
+            }
+        }
+
+        // restart recovery: durable snapshots become pending restores
+        sessions.markPendingRestores(snapshots.pendingAll())
+
+        val lifecycle = object : Listener {
+            @EventHandler(priority = EventPriority.LOWEST)
+            fun onJoin(event: PlayerJoinEvent) = sessions.onJoin(event.player)
+
+            @EventHandler(priority = EventPriority.MONITOR)
+            fun onQuit(event: PlayerQuitEvent) = sessions.onQuit(event.player)
+        }
+        server.pluginManager.registerEvents(lifecycle, this)
+        server.pluginManager.registerEvents(
+            GuestProtectionListener(sessions, guestConfig, messages),
+            this,
+        )
+        // demo surface for the ui toolkit until real flows consume it everywhere
+        server.pluginManager.registerEvents(JoinFlowListener(ui), this)
+
         // heartbeat keeps the backend's liveness picture fresh
         presenceService.startHeartbeat()
         client.start()
+
+        registerPlaceholderExpansion()
 
         // boot sequence over the bus: starting now, running once the server
         // had a moment to settle
         opsBus.publish(ServerState.STARTING)
         server.globalRegionScheduler.runDelayed(this, { _ -> opsBus.publish(ServerState.RUNNING) }, 100L)
 
-        logger.info("servercore ${pluginMeta.version} enabled (guest mode: ${if (guestConfig.enabled) "on" else "off"})")
+        logger.info(
+            "servercore ${pluginMeta.version} enabled " +
+                "(guest mode: ${if (guestConfig.enabled) "on" else "off"}, " +
+                "flectonepulse: ${fpBridge.currentState().name.lowercase()})",
+        )
+    }
+
+    /**
+     * wires the whole protection stack: command denial + alias expansion,
+     * gamemode guard with sweep, command block audit, op lockdown and the
+     * /servercore admin command.
+     */
+    private fun setupProtection(protectionConfig: ProtectionConfig, i18n: I18n, sessions: GuestSessionService) {
+        val dispatcherRef = AtomicReference<CommandDispatcher<CommandSourceStack>?>(null)
+        val aliasTree = CommandTreeSources.combined(
+            commandMap = { runCatching { Bukkit.getCommandMap() }.getOrNull() },
+            dispatcherRef = dispatcherRef,
+        )
+
+        val service = CommandProtectionService(protectionConfig, { aliasTree }, logger)
+        service.refreshAliases()
+        server.pluginManager.registerEvents(
+            CommandProtectionListener(protectionConfig, service, i18n, logger),
+            this,
+        )
+
+        val registry = AllowedGamemodeOverrideRegistry()
+        val guard = GamemodeGuardListener(
+            plugin = this,
+            config = protectionConfig,
+            registry = registry,
+            logger = logger,
+            // guests live in spectator for their whole session; that state is
+            // sanctioned by the session service, not by op status
+            extraSanction = { uuid, mode ->
+                mode == org.bukkit.GameMode.SPECTATOR && sessions.isRestricted(uuid)
+            },
+        )
+        server.pluginManager.registerEvents(guard, this)
+        guard.start()
+        gamemodeGuard = guard
+
+        val auditor = CommandBlockAuditor(this, protectionConfig, service, logger)
+        server.pluginManager.registerEvents(auditor, this)
+        auditor.start()
+        commandBlockAuditor = auditor
+
+        val opLockdown = OpLockdown(this, logger)
+        opLockdown.verifyOps()
+        ProtectionLifecycle(
+            plugin = this,
+            dispatcherRef = dispatcherRef,
+            onAliasesChanged = { service.refreshAliases() },
+            serverCoreCommands = ServerCoreCommands(this, opLockdown),
+        ).attach()
+    }
+
+    /**
+     * placeholderapi integration. papi is a soft-depend: not installed means
+     * the whole state cache stays cold and the plugin runs exactly as before,
+     * so this is a plain presence check, not a hard requirement.
+     */
+    private fun registerPlaceholderExpansion() {
+        if (server.pluginManager.getPlugin("PlaceholderAPI") == null) {
+            logger.info("placeholderapi not installed, servercore placeholders disabled")
+            return
+        }
+        val stateCache = ServerStateCache()
+        // backend facts: auth verdicts, application verdicts, account deletion
+        backendGateway.addListener(StateWsListener(stateCache))
+        // local facts: join/quit timestamps, live session time, cache seeding
+        server.pluginManager.registerEvents(
+            StatePlayerListener(stateCache, accountsCache),
+            this,
+        )
+        val expansion = ServerCoreExpansion(
+            plugin = this,
+            resolver = PlaceholderResolver(
+                provider = stateCache,
+                config = PlaceholderConfig.load(config),
+                strings = PlaceholderText.fromI18n(i18n),            ),
+        )
+        val registered = runCatching { expansion.register() }
+            .onFailure { logger.warning("placeholderapi expansion registration threw: ${it.message}") }
+            .getOrDefault(false)
+        if (registered) {
+            papiExpansion = expansion
+            logger.info("placeholderapi expansion registered: %servercore_<status|authenticated|application_status|telegram_linked|last_seen|session_duration>%")
+        } else {
+            logger.warning("placeholderapi expansion registration failed, placeholders stay off")
+        }
     }
 
     /** backend revoked the account: end the local session, folia-correctly */
@@ -357,21 +696,40 @@ class ServerCorePlugin : JavaPlugin() {
     override fun onDisable() {
         // reload safety first: every modified client view goes back to vanilla
         // truth before anything else shuts down, so a reload leaves no ghosts
+        papiExpansion?.let { expansion ->
+            runCatching { expansion.unregister() }
+                .onFailure { logger.warning("placeholderapi expansion unregister failed: ${it.message}") }
+        }
+        papiExpansion = null
         syncReconciler?.stop()
         packetSync?.let { sync ->
             sync.restoreAllForReload()
             sync.release()
         }
+        // hidden observer pairs restore next, in deterministic order, while
+        // the packetevents pipeline is still fully alive
+        specHider?.shutdown()
+        specTraceListener?.let { packetService?.unregister(it) }
         // detach our listener first, the shared packetevents instance must outlive us
         packetService?.stop()
+        // sessions never survive a restart: end them, restore what can be
+        // restored live, journal the rest for the next join
+        spec?.shutdown()
         wsGateway?.stop()
         esp?.stop()
         updater?.stop()
         restartSchedule?.stop()
+        if (::inventoryViewer.isInitialized) inventoryViewer.shutdown()
+        disguiseStack?.shutdown()
+        gamemodeGuard?.stop()
+        commandBlockAuditor?.stop()
+        permissionSource?.shutdown()
         // belt and braces: async snapshot writes may still be in flight
         snapshots.shutdown()
         counter.shutdown()
         accountsCache.shutdown()
+        // the trail flushes synchronously before the io pool goes away
+        specTrail?.close()
         io.shutdown()
         logger.info("servercore ${pluginMeta.version} disabled, bye")
     }

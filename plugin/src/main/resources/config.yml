@@ -49,6 +49,10 @@ guest:
   kick-after-limit: true
   # subtle actionbar reminder while a guest waits for authorization
   reminder-interval-seconds: 60
+  # how often the gamemode drift sweep re-checks that a guest is still in
+  # spectator (another plugin may force a different mode); actual corrections
+  # are throttled further so it never becomes a per-tick fight
+  gamemode-sweep-seconds: 2
   # ui language, picks messages_<lang>.yml from the plugin data folder
   # (bundled: en, ru; edit the file to customise every message)
   lang: ru
@@ -102,14 +106,150 @@ anti-esp:
 spec:
   enabled: true
   live-inventory: true
+  # minimum gap between live inventory view updates, milliseconds
+  live-inventory-push-milliseconds: 500
+  # periodic full re-sync of the live view, seconds; catches changes no event
+  # reported (e.g. plugin-side inventory edits)
+  live-inventory-full-resync-seconds: 5
   log-to-audit: true
+  permission:
+    # luckperms is the permission backend when installed, vanilla checks otherwise
+    use-luckperms: true
+    # access levels, highest first: membership in a listed group grants that level
+    levels: [owner, admin, moderator, helper]
+    # the standalone node that also grants access (moderators per product decision)
+    spec-permission: servercore.spec
+    # level index granted by spec-permission alone when no listed group matches
+    fallback-level: helper
+  audit:
+    # local append-only audit trail (jsonl), relative to plugins/ServerCore/;
+    # files rotate daily as spec-audit-YYYY-MM-DD.jsonl. the backend keeps the
+    # same events in its own audit_logs collection
+    directory: audit
+    # rotated files older than this are deleted
+    retention-days: 30
+    # audit rows allowed per single session, overflow is dropped
+    max-entries-per-session: 64
+    # bounded write buffer, a full buffer drops entries instead of blocking
+    queue-capacity: 1024
+  hidden:
+    # how a trace (particle/sound packet aimed at the observed player) gets
+    # attributed to the watching admin: by proximity to the admin's position.
+    # a spectator admin following their target stands within arm's reach of
+    # them, so a bigger radius also starts eating the target's own effects -
+    # keep this small and treat it as a stealth/fidelity trade, not a switch
+    trace-radius: 1.5
+    # drop every actionbar line toward an observed player during a session.
+    # an actionbar packet carries no position or origin, so this is all or
+    # nothing per session: on = maximum stealth, off = the target keeps every
+    # normal server feedback line while being watched
+    suppress-action-bar: true
 
 protection:
-  blocked-commands: []
+  # master switch for the whole stack: command denial, gamemode guard,
+  # command block audit
+  enabled: true
+  # commands players may never run, op or not. aliases are resolved against
+  # the live command tree (tp/teleport, plugin aliases, commands.yml), so
+  # listing one name covers its whole alias group. namespace prefixes are
+  # ignored when matching: minecraft:tp and tp are the same command
+  blocked-commands:
+    - op
+    - deop
+    - fill
+    - clone
+    - setblock
+    - summon
+    - gamemode
+    - tp
+    - teleport
+    - give
+    - item
+    - execute
+    - effect
+    - attribute
+    - kill
+    - difficulty
+    - time
+    - weather
+    - gamerule
+    - worldborder
+    - stop
+    - reload
+  # commands that hand execution to datapack code — a function can carry any
+  # blocked command inside, so its invocation paths are denied for players too
+  blocked-datapack-commands:
+    - function
+    - schedule
+    - datapack
+  # non-survival gamemodes are only allowed through sanctioned servercore
+  # flows (guest sessions, /spec, override registry); everything else is
+  # cancelled and drifted modes are reverted by a periodic sweep
   enforce-gamemode: true
+  # how often the drift sweep runs, seconds; 0 = off
+  gamemode-sweep-interval-seconds: 30
+  # how often loaded chunks are scanned for command blocks carrying a denied
+  # command (no execution event exists for blocks); 0 = audit off. chunk load
+  # events are always audited
+  command-block-audit-interval-seconds: 600
+  # clear a denied command from the block itself, not only log it
+  command-block-neutralize: false
+  # strip denied commands from the client command list (tab completion) —
+  # display only, enforcement happens at execution time
+  hide-from-tab-complete: true
+
+# permissions live in LuckPerms (soft-depend). when LuckPerms is installed on
+# the server, everything below is ignored — groups and nodes are managed
+# through LuckPerms itself. this section is only read without LuckPerms: a
+# static, config-driven stand-in so the plugin still boots and admins keep
+# access. it is never a replacement for real group management.
+luckperms:
+  fallback:
+    # group handed to every player the static map knows nothing about
+    default-group: default
+    # static group overrides, uuid -> group name (rank ordering only)
+    groups:
+      # "069a79f4-44e9-4726-a5be-fca90e38aaf5": admin
+    # static permission grants, only checked while LuckPerms is absent
+    permissions:
+      # nodes granted to every player
+      everyone: []
+      # per-player nodes: exact nodes or prefix wildcards ("servercore.*")
+      players:
+        # "069a79f4-44e9-4726-a5be-fca90e38aaf5":
+        #   - servercore.admin
+        #   - servercore.spec
 
 placeholders:
+  # how long a rendered placeholder value is memoized before recomputing
   cache-ttl-milliseconds: 2000
+  # string for a player this server has never seen
+  unknown-value: "unknown"
+  # while the backend link is down, backend-derived facts older than this
+  # get the stale suffix instead of being re-fetched (placeholders never
+  # block on the network)
+  stale-after-minutes: 10
+  # suffix appended to stale backend-derived values
+  stale-suffix: " (stale)"
+
+# flectonepulse is the moderation and chat authority on this server.
+# servercore never issues bans/mutes/warns/kicks, never formats chat and
+# never ships prefixes - it only reads the public flectonepulse api artifact
+# (net.flectone.pulse:api, compile-only) and consults punishment state when a
+# decision needs it. flectonepulse itself must be installed for any of this
+# to be active; without it servercore simply runs without punishment lookups.
+flectonepulse:
+  # telegram de-duplication. flectonepulse ships its own telegram module, and
+  # when that module is enabled it is the one announcing events - servercore
+  # then keeps its ops notifications out of telegram so nothing is announced
+  # twice. true (recommended) = suppress servercore's telegram announcements
+  # whenever flectonepulse's telegram module is active. false = servercore
+  # announces regardless of what flectonepulse does.
+  disable-tg: true
+  # how long a punishment lookup answer stays cached, seconds. the cache is
+  # invalidated early by flectonepulse player events, so this is just the
+  # safety net.
+  punishment-cache-ttl-seconds: 30
 
 # ops configuration
 # every knob lives under ops:; secrets never go here - the panel api key and
