@@ -205,19 +205,23 @@ export async function handleStatsCommand(ctx: BotContext, deps: BotDeps): Promis
   }
 
   if (deps.collectionStats !== null) {
-    const report = await deps.collectionStats.collect()
-    lines.push(t(locale, "bot.stats.db_header"))
-    for (const collection of report.collections) {
-      lines.push(
-        t(locale, "bot.stats.db_line", {
-          collection: collection.name,
-          documents: collection.documents,
-          size: collection.storageBytes !== null ? `(${formatBytes(collection.storageBytes)})` : "",
-        }),
-      )
-    }
-    if (report.totalStorageBytes !== null) {
-      lines.push(t(locale, "bot.stats.db_total", { size: formatBytes(report.totalStorageBytes) }))
+    try {
+      const report = await deps.collectionStats.collect()
+      lines.push(t(locale, "bot.stats.db_header"))
+      for (const collection of report.collections) {
+        lines.push(
+          t(locale, "bot.stats.db_line", {
+            collection: collection.name,
+            documents: collection.documents,
+            size: collection.storageBytes !== null ? `(${formatBytes(collection.storageBytes)})` : "",
+          }),
+        )
+      }
+      if (report.totalStorageBytes !== null) {
+        lines.push(t(locale, "bot.stats.db_total", { size: formatBytes(report.totalStorageBytes) }))
+      }
+    } catch {
+      // mongo blip mid-command: drop the db section instead of failing /stats
     }
   }
 

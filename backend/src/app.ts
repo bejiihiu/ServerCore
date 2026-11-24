@@ -292,8 +292,10 @@ async function main(): Promise<void> {
     gateway,
     directory,
     counters,
-    // domain counters for /stats; mongo down means the sections just vanish
-    counts: databaseReady() ? new MongoStatsCounts() : null,
+    // domain counters for /stats; constructed unconditionally - a boot-time
+    // readiness check is always false here (connect retries in the
+    // background), and a mongo blip degrades per request via allSettled
+    counts: new MongoStatsCounts(),
   })
 
   // retention: the backend owns the database, so it does the housekeeping.
@@ -322,7 +324,9 @@ async function main(): Promise<void> {
     defaultLanguage: config.opsLocale,
     adminTelegramIds: config.adminTelegramIds,
     stats: statsService,
-    collectionStats: databaseReady() ? new MongoCollectionStats() : null,
+    // constructed unconditionally, same reasoning as the stats counts above;
+    // the /stats route skips the db section when collect() fails
+    collectionStats: new MongoCollectionStats(),
   })
   sharedApi.current = bot?.api ?? null
 

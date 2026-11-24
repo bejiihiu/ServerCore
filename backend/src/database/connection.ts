@@ -1,8 +1,11 @@
 import mongoose from "mongoose"
 import {
+  ApplicationDraftModel,
   ApplicationModel,
   AuditLogModel,
   AuthRequestModel,
+  ConversationStateModel,
+  GroupInviteModel,
   GuestSnapshotModel,
   PlayerSessionModel,
   PunishmentExternalModel,
@@ -10,6 +13,7 @@ import {
   TelegramLinkModel,
   UserModel,
   VoteModel,
+  VotingMessageModel,
 } from "./models/index.js"
 import type { AppConfig } from "../config/env.js"
 import type { Logger } from "../logging/logger.js"
@@ -86,6 +90,12 @@ export async function syncIndexesWithTolerance(logger: Logger): Promise<void> {
     UserModel,
     ApplicationModel,
     VoteModel,
+    // admission-only models: they have no slot in the boot-time sync when mongo
+    // is still connecting, this list is what actually creates their indexes
+    ApplicationDraftModel,
+    VotingMessageModel,
+    GroupInviteModel,
+    ConversationStateModel,
     PlayerSessionModel,
     GuestSnapshotModel,
     AuthRequestModel,
