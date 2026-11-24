@@ -30,3 +30,6 @@ backend/dist/
 # os junk
 Thumbs.db
 .DS_Store
+
+# kotlin compiler session dir
+.kotlin/
