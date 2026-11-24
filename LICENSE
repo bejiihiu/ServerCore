@@ -1,21 +1,30 @@
-MIT License
+Copyright (c) 2026 bejiihiu. All Rights Reserved.
 
-Copyright (c) 2026 bejiihiu
+This source code and any associated documentation, binaries, configuration
+files and other artifacts (collectively, the "Software") are the exclusive
+property of the copyright holder.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Permission is hereby granted to download and use the Software, in binary or
+source form, solely for the purpose of operating a private Minecraft server
+community managed by the copyright holder, subject to the following
+conditions:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. Redistribution of the Software, in whole or in part, in source or binary
+   form, is prohibited without the prior explicit written permission of the
+   copyright holder.
+2. Modification of the Software for internal evaluation purposes is
+   permitted; modified versions must not be published or distributed.
+3. Deriving a commercial product or service from the Software is prohibited.
+4. The above copyright notice and this permission notice shall be included
+   in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+For licensing inquiries, contact the copyright holder through the GitHub
+repository this Software is published in.
