@@ -27,6 +27,12 @@ import kz.bejiihiu.servercore.ops.ServerState
 import kz.bejiihiu.servercore.ops.UpdateInstaller
 import kz.bejiihiu.servercore.ops.UpdaterService
 import kz.bejiihiu.servercore.player.PlayerPresenceService
+import kz.bejiihiu.servercore.sync.EntityIdentityTracker
+import kz.bejiihiu.servercore.sync.InMemoryViewStateRegistry
+import kz.bejiihiu.servercore.sync.PacketStateListener
+import kz.bejiihiu.servercore.sync.PacketStateSync
+import kz.bejiihiu.servercore.sync.SyncReconciler
+import kz.bejiihiu.servercore.sync.VanillaOnlyResyncExecutor
 import kz.bejiihiu.servercore.ui.UiKit
 import kz.bejiihiu.servercore.util.I18n
 import kz.bejiihiu.servercore.websocket.DelayScheduler
@@ -66,6 +72,8 @@ class ServerCorePlugin : JavaPlugin() {
     private lateinit var io: java.util.concurrent.ExecutorService
     private var updater: UpdaterService? = null
     private var restartSchedule: RestartScheduleTask? = null
+    private var packetSync: PacketStateSync? = null
+    private var syncReconciler: SyncReconciler? = null
     private lateinit var opsBus: OpsEventBus
 
     override fun onEnable() {
@@ -225,6 +233,27 @@ class ServerCorePlugin : JavaPlugin() {
         // demo surface for the ui toolkit until real flows consume it everywhere
         server.pluginManager.registerEvents(JoinFlowListener(ui), this)
 
+        // packet state sync: every client-view state transition goes through
+        // the double-load-guarded coordinator. the registry and the packet
+        // writer are seams — the packetevents writer plugs into ResyncExecutor
+        // when it lands; until then the vanilla-only fallback keeps registry
+        // state correct without emitting packets.
+        val viewStates = InMemoryViewStateRegistry()
+        val entityIds = EntityIdentityTracker()
+        packetSync = PacketStateSync.create(
+            states = viewStates,
+            resync = VanillaOnlyResyncExecutor(logger),
+            identities = entityIds,
+            logger = logger,
+        )
+        val sync = packetSync
+        if (sync == null) {
+            logger.severe("packet state sync unavailable (double load), listeners not registered")
+        } else {
+            server.pluginManager.registerEvents(PacketStateListener(sync, entityIds), this)
+            syncReconciler = SyncReconciler(this, sync).also { it.start() }
+        }
+
         // heartbeat keeps the backend's liveness picture fresh
         presenceService.startHeartbeat()
         client.start()
@@ -254,6 +283,13 @@ class ServerCorePlugin : JavaPlugin() {
     }
 
     override fun onDisable() {
+        // reload safety first: every modified client view goes back to vanilla
+        // truth before anything else shuts down, so a reload leaves no ghosts
+        syncReconciler?.stop()
+        packetSync?.let { sync ->
+            sync.restoreAllForReload()
+            sync.release()
+        }
         wsGateway?.stop()
         updater?.stop()
         restartSchedule?.stop()
