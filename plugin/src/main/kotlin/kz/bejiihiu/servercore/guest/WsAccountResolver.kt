@@ -54,11 +54,16 @@ class WsAccountResolver(
         pendingLinks[uuid]?.takeIf { it.fresh(config.linkTtlMs) }
 
     override fun resolve(uuid: UUID, username: String): CompletableFuture<AccountStatus> {
+        // one auth request per uuid: a duplicate login rides the in-flight
+        // check instead of making the backend hand out a second deep link
+        val existing = waiting[uuid]
+        if (existing != null) return existing
         val future = CompletableFuture<AccountStatus>()
-        waiting[uuid] = future
+        val raced = waiting.putIfAbsent(uuid, future)
+        if (raced != null) return raced
         val sent = gateway.send(messageEnvelope(MessageTypes.PLAYER_JOINED, PlayerJoinedPayload(uuid.toString(), username)))
         if (!sent) {
-            waiting.remove(uuid)
+            waiting.remove(uuid, future)
             // link down mid-join: not an error, the caller falls back to the local resolver
             future.completeExceptionally(IllegalStateException("backend link is down"))
             return future
