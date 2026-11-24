@@ -12,6 +12,13 @@ out/
 run/
 run-folia/
 
+# a server started from the repo root leaves its own state behind
+logs/
+plugins/
+world*/
+eula.txt
+server.properties
+
 # project-internal notes and ide notes, never in git
 notes/
 notes.md
@@ -26,6 +33,9 @@ backend/.env
 # backend (bun)
 backend/node_modules/
 backend/dist/
+
+# staged release artifacts (root-level dist/ is written by the release workflow)
+/dist/
 
 # os junk
 Thumbs.db

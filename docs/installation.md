@@ -2,7 +2,12 @@
 
 This guide walks through a full deployment: MongoDB, the backend, the Telegram bot, and the Folia server with the plugin. All commands are examples — adjust paths and names to your environment.
 
-> **Pre-release note.** No tagged `build-*` release has been published yet, so the release-bundle paths below describe what a published release will look like. Until the first one exists, deploy the backend from source and build the plugin jar locally.
+> **Version note.** There is no semantic version and no `v1.0.0`-style release: every build is
+> `build-<commitCount>-<shortSha>`, and that tag is the release name. If the
+> [Releases](https://github.com/bejiihiu/ServerCore/releases) page has no tagged build yet, deploy the
+> backend from source and build the plugin jar locally; everything else below is identical.
+>
+> In a hurry? [First run](first-run.md) is the short operator checklist; this page is the full walkthrough.
 
 ## Prerequisites
 
@@ -48,15 +53,28 @@ Install from Releases (recommended) or from source.
 
 ### From a release bundle
 
-Download the latest backend bundle from [GitHub Releases](https://github.com/bejiihiu/ServerCore/releases), unpack it, and run it with Bun:
+Download the latest backend bundle from [GitHub Releases](https://github.com/bejiihiu/ServerCore/releases) —
+`servercore-backend-<tag>.tar.gz`, where `<tag>` is the build id, for example
+`servercore-backend-build-1234-a1b2c3d.tar.gz`. Verify it against the release's `SHA256SUMS.txt`, unpack it
+and run it with Bun:
 
 ```bash
-unzip servercore-backend-*.zip -d servercore-backend
+sha256sum -c SHA256SUMS.txt        # run inside the directory holding the downloaded files
+mkdir servercore-backend
+tar -xzf servercore-backend-*.tar.gz -C servercore-backend
 cd servercore-backend
 cp .env.example .env
 # edit .env — see the table below and docs/configuration.md
-bun install --production
+bun install --frozen-lockfile --production
 bun run start
+```
+
+The bundle carries the source, `package.json`, `bun.lock`, `.env.example` and a `Dockerfile`, so the same
+archive also builds a container image:
+
+```bash
+docker build -t servercore-backend .
+docker run --rm -p 8080:8080 -p 8081:8081 --env-file .env servercore-backend
 ```
 
 ### From source
@@ -102,7 +120,9 @@ openssl rand -hex 32
 
 ### Steps
 
-1. Download the plugin jar from [GitHub Releases](https://github.com/bejiihiu/ServerCore/releases).
+1. Download the plugin jar from [GitHub Releases](https://github.com/bejiihiu/ServerCore/releases) — the
+   asset is `ServerCore-<tag>.jar` (for example `ServerCore-build-1234-a1b2c3d.jar`). Verify it against
+   `SHA256SUMS.txt` from the same release, then drop it into `plugins/`.
 2. Install PacketEvents (and the optional plugins you want) into `plugins/`.
 3. Start the server once. The plugin generates `plugins/ServerCore/config.yml` but disables itself on that first boot: `backend.url` and `backend.secret` are empty, and an unusable backend block is a boot blocker (the log shows `config error: …`).
 4. Edit the configuration:
@@ -125,7 +145,15 @@ anti-esp:
 
 Full key reference: [configuration.md](configuration.md).
 
-5. Restart the server. On startup the plugin opens an outbound WSS connection to the backend; check the backend log for a successful gateway registration.
+5. Restart the server. On startup the plugin opens an outbound connection to the backend gateway
+   (`<scheme>://<host>:<backend WS_PORT>/ws` — the gateway answers `404` on any other path). The plugin log
+   shows `backend gateway connected as game-1`, and the backend log answers with
+   `game server connected, awaiting hello`. If the plugin instead keeps logging
+   `backend gateway disconnected`, the handshake is being rejected — the backend names the reason
+   (`unknown server id`, `signature mismatch`, `timestamp outside replay window`).
+
+`docs/first-run.md` condenses the whole backend + plugin bring-up into a checklist with the exact log lines
+to look for.
 
 ## 5. Folia server hardening
 
@@ -152,5 +180,11 @@ ServerCore assumes a locked-down server. Before going live:
 
 ## Updating
 
-- Plugin: either replace the jar manually (stop, swap, start — snapshots and sessions survive restarts by design) or let the built-in updater do it: `ops.update.*` polls GitHub releases for `build-*` tags and swaps the jar in place, restarting automatically when `ops.update.auto-restart` is on.
-- Backend: stop the process, replace the bundle (or `git pull`), keep `.env`, start again. Running instances reconnect automatically once the backend returns.
+- Plugin: either replace the jar manually (stop, swap, start — snapshots and sessions survive restarts by
+  design) or let the built-in updater do it: `ops.update.*` polls GitHub releases for `build-*` tags, keeps
+  the newest one, downloads `ServerCore-<tag>.jar`, verifies it against the release's `SHA256SUMS.txt` and
+  swaps it over the running file (`.backup/` keeps the last three). `ops.update.auto-restart` restarts after
+  a verified swap. The updater only moves forward — a release with a lower commit count is ignored — and it
+  refuses any jar whose SHA-256 is missing from the checksum file or does not match.
+- Backend: stop the process, replace the bundle (or `git pull`), keep `.env`, start again. Running instances
+  reconnect automatically once the backend returns.

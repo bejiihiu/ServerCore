@@ -14,7 +14,32 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          # full history: the tag's commit count is verified against it below
           fetch-depth: 0
+
+      - name: Verify the tag matches this commit
+        # the tag IS the version (build-<commitCount>-<shortSha>), so a tag that
+        # lies about its commit would ship a jar the updater can never order
+        # correctly against later builds
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          count="$(git rev-list --count HEAD)"
+          full="$(git rev-parse HEAD)"
+
+          if ! [[ "$tag" =~ ^build-([0-9]+)-([0-9a-f]{7,40})$ ]]; then
+            echo "::error::tag '$tag' is not build-<commitCount>-<shortSha>"
+            exit 1
+          fi
+
+          tag_count="${BASH_REMATCH[1]}"
+          tag_sha="${BASH_REMATCH[2]}"
+          if [[ "$tag_count" != "$count" || "$full" != "$tag_sha"* ]]; then
+            echo "::error::tag '$tag' does not describe this commit."
+            echo "::error::this commit is build-${count}-${full:0:7}. retag it:"
+            echo "::error::  git tag build-${count}-${full:0:7} && git push origin build-${count}-${full:0:7}"
+            exit 1
+          fi
+          echo "tag $tag verified against commit $count ${full:0:7}"
 
       - name: Set up JDK 25
         uses: actions/setup-java@v6
@@ -26,10 +51,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Build plugin jar
-        # the tag IS the version (build-<commitCount>-<shortSha>): the plugin
-        # jar and its paper-plugin.yml must carry it so the in-plugin
-        # auto-updater can compare releases
-        run: ./gradlew :plugin:build --no-daemon -Pversion=${GITHUB_REF_NAME}
+        # -Pversion overrides the local 0.1.0, so both the jar file name and
+        # the ${version} expand in paper-plugin.yml carry the tag
+        run: ./gradlew :plugin:build --no-daemon -Pversion="${GITHUB_REF_NAME}"
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -41,32 +65,69 @@ jobs:
           bun run typecheck
           bun test
 
+      - name: Stage release assets
+        # one jar per release: the shaded plugin, renamed to a self-describing
+        # asset. cp fails loudly if the build ever leaves zero or two jars
+        run: |
+          mkdir -p dist
+          cp plugin/build/libs/*.jar "dist/ServerCore-${GITHUB_REF_NAME}.jar"
+
       - name: Package backend bundle
         working-directory: backend
         run: |
-          mkdir -p ../dist
-          tar -czf ../dist/servercore-backend-${GITHUB_REF_NAME}.tar.gz \
+          tar -czf "../dist/servercore-backend-${GITHUB_REF_NAME}.tar.gz" \
             --exclude=node_modules \
             --exclude=.env \
             package.json bun.lock tsconfig.json src tests .env.example Dockerfile .dockerignore
+
+      - name: Verify the staged jar
+        # a thin jar (no shaded kotlin) or a stale ${version} would pass the
+        # build but break every install, so check what is actually shipping
+        run: |
+          jar_file="dist/ServerCore-${GITHUB_REF_NAME}.jar"
+
+          unzip -l "$jar_file" > /tmp/jar-list.txt
+          grep -q 'kz/bejiihiu/servercore/libs/kotlin/collections/CollectionsKt.class' /tmp/jar-list.txt \
+            || { echo "::error::$jar_file is not the shaded jar (kotlin stdlib missing)"; exit 1; }
+
+          unzip -p "$jar_file" paper-plugin.yml > /tmp/paper-plugin.yml
+          grep -qx "version: ${GITHUB_REF_NAME}" /tmp/paper-plugin.yml \
+            || { echo "::error::paper-plugin.yml does not carry the tag version:"; cat /tmp/paper-plugin.yml; exit 1; }
 
       - name: Generate checksums
         # sha256sums for every release asset; the plugin's auto-updater pulls
         # this file and refuses any jar it cannot verify
         run: |
-          for f in plugin/build/libs/*.jar dist/*.tar.gz; do
-            hash=$(sha256sum "$f" | awk '{print $1}')
-            base=$(basename "$f")
-            echo "${hash}  ${base}"
-          done > dist/SHA256SUMS.txt
-          cat dist/SHA256SUMS.txt
+          cd dist
+          # bare file names, no ./ prefix, and text mode so the separator is
+          # exactly two spaces: the plugin matches the line's name against the
+          # asset name character for character
+          sha256sum --text *.jar *.tar.gz > SHA256SUMS.txt
+          cat SHA256SUMS.txt
 
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
           generate_release_notes: true
+          fail_on_unmatched_files: true
+          body: |
+            Build `${{ github.ref_name }}` — the tag is the version and it is baked into the plugin jar.
+
+            **Assets**
+            | File | What it is |
+            |---|---|
+            | `ServerCore-${{ github.ref_name }}.jar` | Folia plugin (Java 25). Drop into `plugins/` |
+            | `servercore-backend-${{ github.ref_name }}.tar.gz` | Backend source bundle for Bun (`Dockerfile` included) |
+            | `SHA256SUMS.txt` | SHA-256 of both files above |
+
+            ```bash
+            sha256sum -c SHA256SUMS.txt
+            ```
+
+            The in-plugin updater accepts a release only when its commit count is higher than the running
+            build's and the jar's SHA-256 matches `SHA256SUMS.txt`. First-run setup: see `docs/first-run.md`.
           files: |
-            plugin/build/libs/*.jar
-            dist/*.tar.gz
+            dist/ServerCore-*.jar
+            dist/servercore-backend-*.tar.gz
             dist/SHA256SUMS.txt

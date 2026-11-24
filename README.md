@@ -2,7 +2,11 @@
 
 > Closed-community Survival server infrastructure — Telegram-driven admission, passwordless login, and a hardened, Folia-native runtime.
 
-**Project status:** pre-release. No tagged release has been published yet, so the release-based steps below describe the intended production path once one exists — until then, run the backend and build the plugin from source. Builds are identified as `build-<commitCount>-<shortSha>`, not a semantic version. See [CHANGELOG.md](CHANGELOG.md) for the change history.
+**Project status:** unstable API, no semantic versioning. Every build is identified as
+`build-<commitCount>-<shortSha>`, and that tag is the release name. If the Releases page has no tagged
+build yet, run the backend from source and build the plugin locally; the steps below work either way. See
+[CHANGELOG.md](CHANGELOG.md) for the change history and [docs/first-run.md](docs/first-run.md) for the
+short operator checklist.
 
 ![CI](https://github.com/bejiihiu/ServerCore/actions/workflows/ci.yml/badge.svg)
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.x-7F52FF?logo=kotlin&logoColor=white)
@@ -79,8 +83,8 @@ Two independent applications — a Bun/TypeScript backend with a Telegram bot, a
 
 Installation is done from Releases only — do not build from source unless you intend to develop on the project.
 
-1. **Download the plugin jar** from [GitHub Releases](https://github.com/bejiihiu/ServerCore/releases) and drop it into your Folia server's `plugins/` folder.
-2. **Download the backend** — either the prebuilt release bundle or the source if you prefer to run it directly with Bun.
+1. **Download the plugin jar** — `ServerCore-<tag>.jar` from [GitHub Releases](https://github.com/bejiihiu/ServerCore/releases) — and drop it into your Folia server's `plugins/` folder. Verify it against the release's `SHA256SUMS.txt`.
+2. **Download the backend** — either the prebuilt `servercore-backend-<tag>.tar.gz` bundle or the source if you prefer to run it directly with Bun.
 3. **Configure the backend environment** — copy the provided example env file next to the backend and fill in the values. Every variable is documented in [docs/configuration.md](docs/configuration.md).
 4. **Set up MongoDB.** Provision a standalone or replica-set instance, create a database for ServerCore, and put its connection string into the backend environment. Recommended indexes are created automatically on first start.
 5. **Create the Telegram bot** via [@BotFather](https://t.me/BotFather): `/newbot`, save the token, and disable privacy mode (`/setprivacy` → Disable) so the bot can confirm group joins.
@@ -95,6 +99,7 @@ A detailed, step-by-step walkthrough with real configuration examples lives in [
 |---|---|
 | [Architecture](docs/architecture.md) | Components, threading model, data flow |
 | [Installation](docs/installation.md) | Full setup guide with real examples |
+| [First run](docs/first-run.md) | Short operator checklist: bring-up order, expected log lines, where state lives |
 | [Configuration](docs/configuration.md) | Every env var and config key |
 | [WebSocket protocol](docs/websocket-protocol.md) | Message envelope, types, auth, reconnect |
 | [Admission](docs/admission.md) | Linking, applications, voting, quorum, invites |

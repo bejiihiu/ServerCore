@@ -61,6 +61,14 @@ tasks {
         dependsOn(shadowJar)
     }
 
+    // the shaded jar takes the plain name (classifier "") so releases ship a
+    // single, predictable plugin-<version>.jar. the thin jar would otherwise
+    // land on the same path and whichever task wrote last would win - a thin
+    // jar in a release is an unloadable plugin (no kotlin inside)
+    jar {
+        enabled = false
+    }
+
     test {
         useJUnitPlatform()
         testLogging {
