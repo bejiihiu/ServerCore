@@ -34,7 +34,7 @@ Every message, in both directions, shares one envelope:
 
 | Type | Direction | Purpose |
 |---|---|---|
-| `SERVER_STATUS` | plugin → backend | Initial hello and registration; carries server identity, version, current load |
+| `SERVER_STATUS` | plugin → backend | Initial hello and registration; carries server identity, version, current load. The payload also carries an optional `state` — the ops lifecycle: `STARTING`, `RUNNING`, `RESTARTING`, `STOPPING`, `OFFLINE`, `UPDATE_READY`. Backend fans these out to telegram (users + admins). |
 | `SERVER_HEARTBEAT` | plugin → backend | Periodic liveness and metrics snapshot |
 | `SERVER_STATUS` (response) | backend → plugin | Registration acknowledgement, expected heartbeat cadence |
 
