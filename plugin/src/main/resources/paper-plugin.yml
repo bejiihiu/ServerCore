@@ -1,0 +1,12 @@
+name: ServerCore
+description: $description
+version: '${version}'
+
+main: kz.bejiihiu.serverCore.Main
+bootstrapper: kz.bejiihiu.serverCore.MainBootstrap
+loader: kz.bejiihiu.serverCore.MainLoader
+api-version: '26.3'
+load: POSTWORLD
+
+authors: [ bejiihiu.xs ]
+website: https://devfolia.t.me/

@@ -1,0 +1,16 @@
+[versions]
+kotlin = "2.5.0-RC"
+
+folia-api = "26.3.build.+"
+minecraft = "26.3"
+
+shadow = "9.6.1"
+run-task = "3.1.0"
+
+[libraries]
+folia-api = { module = "dev.folia:folia-api", version.ref = "folia-api" }
+kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib-jdk8", version.ref = "kotlin" }
+
+[plugins]
+shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
+run-paper = { id = "xyz.jpenilla.run-paper", version.ref = "run-task" }
