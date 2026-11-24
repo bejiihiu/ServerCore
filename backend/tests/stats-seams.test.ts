@@ -6,7 +6,6 @@ import { ServerDirectory } from "../src/websocket/handlers/server-lifecycle.js"
 import { registerAllHandlers } from "../src/websocket/handlers/wiring.js"
 import type { ServerConnection } from "../src/websocket/connection.js"
 import type { Envelope, MessageType } from "../src/websocket/protocol/message-types.js"
-import type { AccountService } from "../src/modules/account/account-service.js"
 import type { GatewayOwnershipVerifier } from "../src/modules/account/session-probe.js"
 import type { SpecAuditService } from "../src/modules/audit/spec-audit-service.js"
 import { AuthenticationService, type BackendAuthType, type PromptRequest } from "../src/modules/authentication/auth-service.js"
@@ -42,15 +41,6 @@ let msgSeq = 0
 function env(type: MessageType, payload: Record<string, unknown>): Envelope {
   msgSeq += 1
   return { id: `msg_${String(msgSeq).padStart(8, "0")}`, type, timestamp: 1_000, payload } as Envelope
-}
-
-function stubAccounts(): AccountService {
-  return {
-    async getOrCreate() {},
-    async createLinkToken() {
-      return { token: "abcd1234abcd1234", expiresAt: Date.now() + 60_000 }
-    },
-  } as unknown as AccountService
 }
 
 function stubVerifier(): GatewayOwnershipVerifier {
@@ -142,7 +132,6 @@ function buildScenario() {
   registerAllHandlers(registry, {
     directory,
     logger: logger(),
-    accounts: stubAccounts(),
     verifier: stubVerifier(),
     specAudit: stubSpecAudit(),
     hooks: {
