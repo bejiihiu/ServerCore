@@ -142,7 +142,7 @@ class AuthPrompt(
     fun start() {
         // stage a beat behind the welcome card so the two frames don't collide
         player.uiDelayed(kit.plugin, START_DELAY_TICKS) {
-            kit.statusCard(player, "auth.prompt", mapOf("code" to code))
+            kit.statusCard(player, "auth.prompt.card", mapOf("code" to code))
             countdown.start()
             pulseTask = player.uiRepeat(kit.plugin, 20L, PULSE_PERIOD_TICKS) { t -> pulse(t) }
         }

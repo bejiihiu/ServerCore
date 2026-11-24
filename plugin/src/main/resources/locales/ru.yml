@@ -30,7 +30,7 @@ auth:
     card: |
       <gold>подтверждение входа</gold>
       <secondary>код: <bold><gold>{code}</gold></bold></secondary>
-      <secondary>назви код в Telegram-боте — с него придёт подтверждение</secondary>
+      <secondary>назови код в Telegram-боте — с него придёт подтверждение</secondary>
       <muted>без подтверждения сессия закроется по таймеру</muted>
   pulse: "<primary>код <gold>{code}</gold> — подтверди вход в Telegram</primary>"
   window: "<gold>{code}</gold> <muted>·</muted> <secondary>осталось {time}</secondary>"
