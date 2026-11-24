@@ -152,14 +152,49 @@ describe("account deletion pipeline", () => {
     expect(fixture.users.users.get(UUID_1)?.username).toBe(anonymizedUsername(UUID_1))
   })
 
-  test("unlinked account can still delete (identity via the requesting chat)", async () => {
+  test("never-linked account cannot be deleted: fail closed", async () => {
     const fixture = buildFixture()
     await fixture.accounts.getOrCreate(UUID_1, "steve", NOW)
+    let thrown: unknown = null
+    try {
+      await fixture.deletion.deleteAccount(UUID_1, TG_1, NOW)
+    } catch (err) {
+      thrown = err
+    }
+    expect(thrown).toBeInstanceOf(AccountError)
+    expect((thrown as AccountError).code).toBe("DELETION_FAILED")
+    // nothing was touched: no freeze, no session revoke, no deletion audit
+    expect(statusOf(fixture, UUID_1)).toBe("UNREGISTERED")
+    expect(fixture.revoker.revoked.length).toBe(0)
+    expect(fixture.audit.entries.some((entry) => entry.action === "account.deleted")).toBe(false)
+  })
+
+  test("a failed attempt can be retried by the former owner after unlink", async () => {
+    const fixture = await seedActiveLinkedAccount()
+    // kill the pipeline after UNLINKED: the audit write is the last step
+    const realAppend = fixture.audit.append.bind(fixture.audit)
+    fixture.audit.append = async () => {
+      throw new Error("mongo blip")
+    }
+    await fixture.deletion.deleteAccount(UUID_1, TG_1, NOW).catch(() => undefined)
+    // unlinked + anonymized already happened, the user record lost its telegram id
+    expect(fixture.users.users.get(UUID_1)?.telegramId).toBe("")
+    expect(statusOf(fixture, UUID_1)).toBe("DELETION_PENDING")
+
+    // another telegram account knowing the uuid is still refused
+    let thrown: unknown = null
+    try {
+      await fixture.deletion.deleteAccount(UUID_1, TG_2, NOW)
+    } catch (err) {
+      thrown = err
+    }
+    expect(thrown).toBeInstanceOf(AccountError)
+
+    // the former owner retries through the link ledger and finishes the job
+    fixture.audit.append = realAppend
     const outcome = await fixture.deletion.deleteAccount(UUID_1, TG_1, NOW)
-    expect(outcome.steps).toContain("ANONYMIZED")
-    // no group steps: nothing to kick
-    expect(outcome.steps).not.toContain("GROUP_KICK")
-    expect(fixture.group.kicked.length).toBe(0)
+    expect(outcome.steps).toContain("AUDIT")
+    expect(fixture.audit.entries.some((entry) => entry.action === "account.deleted")).toBe(true)
   })
 
   test("unknown account is a hard error", async () => {
