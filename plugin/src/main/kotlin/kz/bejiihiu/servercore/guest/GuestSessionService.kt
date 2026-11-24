@@ -320,7 +320,7 @@ class GuestSessionService(
             val muted = punishmentQuery().hasActive(PunishmentKind.MUTE, uuid)
             if (muted) {
                 onPlayerThread(player) {
-                    if (player.isOnline && sessions.containsKey(uuid)) messages.sendMuteNotice(player)
+                    if (player.isOnline && registry.contains(uuid)) messages.sendMuteNotice(player)
                 }
             }
         })
