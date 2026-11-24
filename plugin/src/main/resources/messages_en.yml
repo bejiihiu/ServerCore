@@ -24,6 +24,8 @@ guest:
       - "<red>You have used all {limit} guest sessions.</red>"
       - "<gray>Register through the bot to play:</gray>"
       - "<gold>{link}</gold>"
+  mute-notice:
+    - "<gray>Note: you are currently muted on this server — chat stays silent until it expires.</gray>"
   kick:
     limit:
       - "<red>Guest session limit reached ({limit}).</red>"

@@ -29,6 +29,12 @@ data class ServerStatusPayload(
     val version: String? = null,
     val state: String? = null,
     val detail: String? = null,
+    /**
+     * true = flectonepulse's telegram module owns announcements right now, so
+     * the backend bot stays quiet for this event (telegram de-duplication).
+     * absent/null = no flectonepulse or state unknown, backend defaults apply.
+     */
+    val telegramSuppressed: Boolean? = null,
 )
 
 /**
@@ -51,6 +57,11 @@ class OpsEventBus(
     private val onlinePlayers: () -> Int,
     private val maxPlayers: () -> Int,
     private val version: () -> String?,
+    /**
+     * consulted per publish so a flectonepulse reload flipping its telegram
+     * module mid-flight is picked up on the next frame, not the next reboot
+     */
+    private val telegramSuppressed: () -> Boolean? = { null },
 ) {
 
     private val sinks = CopyOnWriteArrayList<OpsEventSink>()
@@ -71,6 +82,7 @@ class OpsEventBus(
             version = version(),
             state = state.name,
             detail = detail,
+            telegramSuppressed = telegramSuppressed(),
         )
         for (sink in sinks) {
             try {

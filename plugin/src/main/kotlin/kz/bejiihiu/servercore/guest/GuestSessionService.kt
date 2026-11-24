@@ -6,6 +6,8 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.function.Consumer
 import kz.bejiihiu.servercore.ServerCorePlugin
+import kz.bejiihiu.servercore.integration.flectonepulse.PunishmentKind
+import kz.bejiihiu.servercore.integration.flectonepulse.PunishmentQuery
 import kz.bejiihiu.servercore.ws.BackendGateway
 import kz.bejiihiu.servercore.ws.GuestEndedPayload
 import kz.bejiihiu.servercore.ws.GuestStartedPayload
@@ -59,6 +61,11 @@ class GuestSessionService(
     private val counter: GuestSessionCounter,
     private val gateway: BackendGateway,
     private val messages: GuestMessageService,
+    /**
+     * read-only flectonepulse punishment lookup, resolved lazily so the guest
+     * flow works with and without the fp bridge connected
+     */
+    private val punishmentQuery: () -> PunishmentQuery = { PunishmentQuery.None },
 ) {
 
     private val sessions = ConcurrentHashMap<UUID, GuestSession>()
@@ -266,6 +273,24 @@ class GuestSessionService(
         showPrompt(player, null)
         if (overLimit) messages.sendLimitWarning(player)
         scheduleReminder(uuid, player)
+        notifyIfMuted(uuid, player)
+    }
+
+    /**
+     * flectonepulse integration: if the player carries an active mute, one
+     * line explains why chat stays silent. the lookup may hit fp's storage,
+     * so it runs on the async scheduler and the notice lands via the entity
+     * scheduler like every other player mutation.
+     */
+    private fun notifyIfMuted(uuid: UUID, player: Player) {
+        plugin.server.asyncScheduler.runNow(plugin, Consumer<ScheduledTask> { _ ->
+            val muted = punishmentQuery().hasActive(PunishmentKind.MUTE, uuid)
+            if (muted) {
+                onPlayerThread(player) {
+                    if (player.isOnline && sessions.containsKey(uuid)) messages.sendMuteNotice(player)
+                }
+            }
+        })
     }
 
     private fun scheduleReminder(uuid: UUID, player: Player) {

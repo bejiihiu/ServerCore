@@ -137,9 +137,13 @@ async function main(): Promise<void> {
   })
 
   registerLifecycleHandlers(handlers, directory, logger, {
-    onStateChange: (serverId, state, previous) => {
-      // crash/status events flow to telegram: all events, dm + admin copy
-      void opsNotifier.announce(serverId, eventForState(state)).catch((error) => {
+    onStateChange: (serverId, state, previous, options) => {
+      // crash/status events flow to telegram: all events, dm + admin copy.
+      // when the plugin reports flectonepulse's telegram module as active it
+      // suppresses its own announcements - the bot stays quiet so nothing
+      // lands in the chat twice
+      const telegram = options?.telegramSuppressed === true ? false : true
+      void opsNotifier.announce(serverId, eventForState(state), { telegram }).catch((error) => {
         logger.error({ err: error, serverId, state, previous }, "state-change notification failed")
       })
     },

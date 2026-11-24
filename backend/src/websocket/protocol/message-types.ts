@@ -229,6 +229,10 @@ export const payloadSchemas = {
     version: z.string().max(64).optional(),
     state: z.enum(SERVER_STATES).optional(),
     detail: z.string().max(512).optional(),
+    // true = the game server's flectonepulse integration reports that its own
+    // telegram module owns announcements right now, so the bot stays quiet
+    // for this event. old plugin builds never set the field and stay valid.
+    telegramSuppressed: z.boolean().optional(),
   }),
 
   SERVER_HEARTBEAT: z.object({
