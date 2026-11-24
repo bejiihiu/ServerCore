@@ -1,4 +1,4 @@
-import { isValidLinkTokenFormat } from "../services/token-service.js"
+import { isValidLinkTokenFormat } from "../../services/token-service.js"
 
 export type StartPayloadResult =
   | { ok: true; token: string }

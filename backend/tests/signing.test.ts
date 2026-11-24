@@ -2,16 +2,20 @@ import { describe, expect, test } from "bun:test"
 import { canonicalize, sha256Hex } from "../src/utils/crypto.js"
 import { signEnvelope, verifyWireMessage, signingInput } from "../src/websocket/protocol/signing.js"
 import { randomHex } from "../src/utils/crypto.js"
+import type { MessageType } from "../src/websocket/protocol/message-types.js"
 
 const SECRET = "test-secret-0123456789abcdef0123456789abcdef"
 const NOW = 1_700_000_000_000
 
-function makeEnvelope(overrides: Record<string, unknown> = {}): {
+type TestEnvelope = {
   id: string
-  type: string
+  type: MessageType
   timestamp: number
   payload: Record<string, unknown>
-} {
+  correlationId?: string
+}
+
+function makeEnvelope(overrides: Partial<TestEnvelope> = {}): TestEnvelope {
   return {
     id: randomHex(12),
     type: "SERVER_HEARTBEAT",

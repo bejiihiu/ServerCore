@@ -1,4 +1,4 @@
-import { model, Schema, Types } from "mongoose"
+import { model, Schema } from "mongoose"
 
 export const AUDIT_ACTOR_TYPES = ["PLAYER", "ADMIN", "TELEGRAM", "SYSTEM"] as const
 

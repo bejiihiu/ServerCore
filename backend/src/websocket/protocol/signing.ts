@@ -1,4 +1,4 @@
-import { canonicalize, hmacSha256Hex, safeEqualHex, type JsonValue } from "../../utils/crypto.js"
+import { canonicalize, hmacSha256Hex, safeEqualHex } from "../../utils/crypto.js"
 import { envelopeMetaSchema, payloadSchemas, type Envelope, type MessageType, type WireMessage } from "./message-types.js"
 
 /** number of bytes of hmac output we accept, hex encoded = 64 chars */
@@ -15,7 +15,7 @@ export function signingInput(meta: {
   type: string
   timestamp: number
   correlationId?: string
-  payload: JsonValue
+  payload: unknown
 }): string {
   return canonicalize({
     id: meta.id,
@@ -27,7 +27,7 @@ export function signingInput(meta: {
 }
 
 export function signEnvelope(
-  message: { id: string; type: string; timestamp: number; correlationId?: string; payload: JsonValue },
+  message: { id: string; type: MessageType; timestamp: number; correlationId?: string; payload: unknown },
   secret: string,
 ): WireMessage {
   return {
@@ -105,7 +105,7 @@ export function verifyWireMessage(
       type: metaResult.data.type,
       timestamp: metaResult.data.timestamp,
       correlationId: metaResult.data.correlationId,
-      payload: record["payload"] as JsonValue,
+      payload: record["payload"],
     }),
   )
   if (!safeEqualHex(expected, hmac)) {

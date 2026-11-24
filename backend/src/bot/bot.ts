@@ -5,14 +5,14 @@ import { registerStartCommand } from "./commands/start.js"
 
 export type BotHandle = {
   bot: Bot
-  stop: () => Promise<void>
 }
 
 /**
- * boots the telegram bot in long-polling mode. returns null when no token is
- * configured — the backend then runs without the bot instead of crashing.
+ * builds the telegram bot with all command handlers registered. returns null
+ * when no token is configured — the backend then runs without the bot instead
+ * of crashing. the caller owns start/stop lifecycle.
  */
-export async function startBot(config: AppConfig, logger: Logger): Promise<BotHandle | null> {
+export function createBot(config: AppConfig, logger: Logger): Bot | null {
   if (!config.botToken) {
     logger.warn("no bot token configured, telegram bot disabled")
     return null
@@ -25,20 +25,5 @@ export async function startBot(config: AppConfig, logger: Logger): Promise<BotHa
 
   registerStartCommand(bot)
 
-  // long polling resolves when stop() is called, so run it detached
-  void bot.start({
-    onStart: (me) => {
-      logger.info({ username: me.username }, "telegram bot started")
-    },
-  }).catch((error: unknown) => {
-    logger.error({ err: error }, "telegram bot polling crashed")
-  })
-
-  return {
-    bot,
-    stop: async () => {
-      await bot.stop()
-      logger.info("telegram bot stopped")
-    },
-  }
+  return bot
 }

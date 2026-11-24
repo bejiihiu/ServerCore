@@ -1,4 +1,4 @@
-import { model, Schema, Types } from "mongoose"
+import { model, Schema } from "mongoose"
 
 export const PUNISHMENT_TYPES = ["BAN", "MUTE", "WARN", "KICK"] as const
 

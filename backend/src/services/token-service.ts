@@ -1,4 +1,4 @@
-import { randomToken, sha256Hex, timingSafeEqualHex } from "../utils/crypto.js"
+import { randomToken, safeEqualHex, sha256Hex } from "../utils/crypto.js"
 
 /** link tokens are 16 chars of [A-Za-z0-9], as the deep-link format requires */
 export const LINK_TOKEN_LENGTH = 16
@@ -19,10 +19,13 @@ export type StoredToken = {
 
 export interface TokenStore {
   save(record: StoredToken): Promise<void>
-  /** returns the record only if it exists and is not expired/consumed */
-  findActiveByHash(tokenHash: string, now: number): Promise<StoredToken | null>
-  /** atomically marks the record consumed; second call returns null */
-  consume(tokenHash: string, now: number): Promise<StoredToken | null>
+  /** raw lookup, no expiry/consumption filtering — the service decides */
+  find(tokenHash: string): Promise<StoredToken | null>
+  /**
+   * marks the record consumed (atomically) and returns it with a flag saying
+   * whether it had been consumed before this call; null when it never existed
+   */
+  consume(tokenHash: string, now: number): Promise<{ record: StoredToken; alreadyConsumed: boolean } | null>
 }
 
 export type VerifyOutcome =
@@ -58,8 +61,7 @@ export class TokenService {
   async verify(token: string, now = Date.now()): Promise<VerifyOutcome> {
     if (!isValidLinkTokenFormat(token)) return { valid: false, reason: "BAD_FORMAT" }
 
-    const tokenHash = sha256Hex(token)
-    const record = await this.store.findActiveByHash(tokenHash, now)
+    const record = await this.store.find(sha256Hex(token))
     if (!record) return { valid: false, reason: "NOT_FOUND" }
     if (record.expiresAt <= now) return { valid: false, reason: "EXPIRED" }
     if (record.consumedAt !== null) return { valid: false, reason: "CONSUMED" }
@@ -71,13 +73,12 @@ export class TokenService {
   async redeem(token: string, now = Date.now()): Promise<VerifyOutcome> {
     if (!isValidLinkTokenFormat(token)) return { valid: false, reason: "BAD_FORMAT" }
 
-    const tokenHash = sha256Hex(token)
-    const record = await this.store.consume(tokenHash, now)
-    if (!record) return { valid: false, reason: "NOT_FOUND" }
-    if (record.expiresAt <= now) return { valid: false, reason: "EXPIRED" }
-    if (record.consumedAt !== null) return { valid: false, reason: "CONSUMED" }
+    const result = await this.store.consume(sha256Hex(token), now)
+    if (!result) return { valid: false, reason: "NOT_FOUND" }
+    if (result.alreadyConsumed) return { valid: false, reason: "CONSUMED" }
+    if (result.record.expiresAt <= now) return { valid: false, reason: "EXPIRED" }
 
-    return { valid: true, meta: record.meta }
+    return { valid: true, meta: result.record.meta }
   }
 }
 
@@ -92,19 +93,16 @@ export class InMemoryTokenStore implements TokenStore {
     this.tokens.set(record.tokenHash, record)
   }
 
-  async findActiveByHash(tokenHash: string, now: number): Promise<StoredToken | null> {
-    const record = this.tokens.get(tokenHash)
-    if (!record) return null
-    if (record.expiresAt <= now) return null
-    if (record.consumedAt !== null) return null
-    return record
+  async find(tokenHash: string): Promise<StoredToken | null> {
+    return this.tokens.get(tokenHash) ?? null
   }
 
-  async consume(tokenHash: string, now: number): Promise<StoredToken | null> {
+  async consume(tokenHash: string, now: number): Promise<{ record: StoredToken; alreadyConsumed: boolean } | null> {
     const record = this.tokens.get(tokenHash)
     if (!record) return null
+    const alreadyConsumed = record.consumedAt !== null
     record.consumedAt = now
-    return record
+    return { record, alreadyConsumed }
   }
 
   /** drops expired/consumed records, called opportunistically */
@@ -121,5 +119,5 @@ export class InMemoryTokenStore implements TokenStore {
 
 /** constant-time token hash comparison for flows that verify without lookup */
 export function compareTokenHash(token: string, tokenHash: string): boolean {
-  return timingSafeEqualHex(sha256Hex(token), tokenHash)
+  return safeEqualHex(sha256Hex(token), tokenHash)
 }

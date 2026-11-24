@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify"
+import type { FastifyReply, FastifyRequest } from "fastify"
 import { ZodError } from "zod"
 import { AppError } from "./app-error.js"
 import type { Logger } from "../logging/logger.js"
@@ -15,7 +15,16 @@ function isFastifyValidation(error: unknown): boolean {
   return candidate.validation !== undefined || candidate.code === "FST_ERR_VALIDATION"
 }
 
-export function registerErrorHandler(app: FastifyInstance, logger: Logger): void {
+/**
+ * structural fastify-like surface so the handler works with any fastify
+ * instance generic (the concrete instance types vary with the logger class).
+ */
+type FastifyLike = {
+  setErrorHandler(handler: (error: unknown, request: FastifyRequest, reply: FastifyReply) => unknown): unknown
+  setNotFoundHandler(handler: (request: FastifyRequest, reply: FastifyReply) => unknown): unknown
+}
+
+export function registerErrorHandler(app: FastifyLike, logger: Logger): void {
   app.setErrorHandler((error: unknown, request: FastifyRequest, reply: FastifyReply) => {
     if (error instanceof AppError) {
       reply.status(error.statusCode).send({

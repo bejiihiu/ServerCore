@@ -1,5 +1,5 @@
 import { parseStartPayload } from "./start-payload.js"
-import type { Bot, Context } from "grammy"
+import type { Context, Bot } from "grammy"
 
 /**
  * /start — entry point of the whole flow.
@@ -8,7 +8,8 @@ import type { Bot, Context } from "grammy"
  * /start never creates an account by itself.
  */
 export async function handleStartCommand(ctx: Context): Promise<void> {
-  const match = ctx.match ?? ""
+  const raw = ctx.match
+  const match = typeof raw === "string" ? raw : ""
   const result = parseStartPayload(match)
 
   if (!result.ok) {

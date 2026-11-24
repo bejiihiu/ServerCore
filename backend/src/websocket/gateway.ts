@@ -116,7 +116,10 @@ export function createGateway(config: AppConfig, logger: Logger, handlers: Handl
         const failure = connection.handleFrame(text, Date.now(), (envelope, conn) => handlers.dispatch(envelope, conn))
         if (failure !== null) {
           logger.warn({ serverId: connection.serverId, failure }, "protocol violation")
-          connection.send("ERROR", { code: failure.reason, message: failure.detail ?? failure.reason })
+          connection.send("ERROR", {
+            code: failure.reason,
+            message: "detail" in failure && failure.detail !== undefined ? failure.detail : failure.reason,
+          })
           connection.close(1008, "protocol violation")
           if (connections.get(connection.serverId) === connection) {
             connections.delete(connection.serverId)
@@ -143,7 +146,7 @@ export function createGateway(config: AppConfig, logger: Logger, handlers: Handl
   logger.info({ port: server.port }, "websocket gateway listening")
 
   return {
-    port: server.port,
+    port: server.port ?? config.wsPort,
     stats,
     get connectedServers(): string[] {
       return [...connections.keys()]

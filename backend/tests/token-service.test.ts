@@ -66,7 +66,7 @@ describe("token service", () => {
     expect(first.valid).toBe(true)
     const second = await service.redeem(token, NOW + 1000)
     expect(second.valid).toBe(false)
-    if (!second.valid) expect(second.reason).toBe("NOT_FOUND")
+    if (!second.valid) expect(second.reason).toBe("CONSUMED")
   })
 
   test("verify still succeeds after consume marked the record consumed", async () => {

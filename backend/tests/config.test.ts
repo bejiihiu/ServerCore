@@ -13,6 +13,19 @@ function env(overrides: Record<string, string> = {}): Record<string, string> {
 }
 
 describe("config", () => {
+  test("applies defaults to an empty env", () => {
+    const config = loadConfig({})
+    expect(config.port).toBe(8080)
+    expect(config.wsPort).toBe(8081)
+    expect(config.host).toBe("0.0.0.0")
+    expect(config.env).toBe("development")
+    expect(config.logLevel).toBe("info")
+    expect(config.wsHeartbeatIntervalMs).toBe(15_000)
+    expect(config.authRequestTtlSeconds).toBe(75)
+    expect(config.serverCredentials).toEqual({})
+    expect(config.botToken).toBeUndefined()
+  })
+
   test("parses a valid env with defaults", () => {
     const config = loadConfig(env())
     expect(config.env).toBe("test")

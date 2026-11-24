@@ -8,9 +8,12 @@ export type JsonValue = string | number | boolean | null | JsonValue[] | { [key:
 /**
  * deterministic json serialization with sorted keys.
  * both sides must hash the exact same byte string, so key order has to be
- * normalized regardless of how the peer serialized its object.
+ * normalized regardless of how the peer serialized its object. accepts
+ * unknown because the input is always JSON-shaped by construction; anything
+ * undefined is dropped (top-level undefined hashes as null).
  */
-export function canonicalize(value: JsonValue): string {
+export function canonicalize(value: unknown): string {
+  if (value === undefined) return "null"
   if (value === null || typeof value !== "object") {
     return JSON.stringify(value) ?? "null"
   }
@@ -19,7 +22,7 @@ export function canonicalize(value: JsonValue): string {
     return `[${value.map((item) => canonicalize(item)).join(",")}]`
   }
 
-  const entries = Object.entries(value)
+  const entries = Object.entries(value as Record<string, unknown>)
     .filter(([, v]) => v !== undefined)
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
 
