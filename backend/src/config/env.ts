@@ -105,11 +105,9 @@ const envSchema = z.object({
     .transform((raw) => ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase())),
   // outbound broadcast rate ceiling (telegram allows ~30/s)
   NOTIFICATION_RATE_PER_SECOND: z.coerce.number().int().min(1).max(30).default(30),
-<<<<<<< HEAD
   // custom emoji entities need telegram premium on the bot owner (bot api 9.4);
   // off by default, everything degrades to unicode fallbacks
   BOT_CUSTOM_EMOJI: z.enum(["true", "false"]).default("false"),
-=======
 
   // atlas m0 housekeeping: audit/server_events lifetime and closed-session
   // lifetime in days; the daily cleanup task enforces both
@@ -117,7 +115,6 @@ const envSchema = z.object({
   RETENTION_SESSION_DAYS: z.coerce.number().int().min(7).default(60),
   // first cleanup pass after boot, minutes (then daily)
   RETENTION_INITIAL_DELAY_MINUTES: z.coerce.number().int().min(1).default(5),
->>>>>>> feature/accounts
 })
 
 export type AppConfig = {
@@ -129,7 +126,6 @@ export type AppConfig = {
   botToken?: string
   telegramBotUsername: string
   telegramGroupChatId: string
-  defaultLanguage: "ru" | "en"
   logTimezone: string
   logLevel: "trace" | "debug" | "info" | "warn" | "error" | "fatal"
   serverCredentials: Record<string, string>
@@ -155,13 +151,10 @@ export type AppConfig = {
   serverOfflineAlertMinutes: number
   notifyUsersOnOffline: boolean
   notificationRatePerSecond: number
-<<<<<<< HEAD
   botCustomEmoji: boolean
-=======
   retentionAuditDays: number
   retentionSessionDays: number
   retentionInitialDelayMinutes: number
->>>>>>> feature/accounts
 }
 
 export class ConfigError extends Error {
@@ -268,12 +261,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     serverOfflineAlertMinutes: result.data.SERVER_OFFLINE_ALERT_MINUTES,
     notifyUsersOnOffline: result.data.NOTIFY_USERS_ON_OFFLINE,
     notificationRatePerSecond: result.data.NOTIFICATION_RATE_PER_SECOND,
-<<<<<<< HEAD
     botCustomEmoji: result.data.BOT_CUSTOM_EMOJI === "true",
-=======
     retentionAuditDays: result.data.RETENTION_AUDIT_DAYS,
     retentionSessionDays: result.data.RETENTION_SESSION_DAYS,
     retentionInitialDelayMinutes: result.data.RETENTION_INITIAL_DELAY_MINUTES,
->>>>>>> feature/accounts
   }
 }

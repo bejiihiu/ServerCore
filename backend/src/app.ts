@@ -62,7 +62,6 @@ class FanoutAdapter implements NotificationFanout {
     await this.notifications.sendToChats(this.adminChatIds, text)
   }
 }
->>>>>>> feature/accounts
 
 async function main(): Promise<void> {
   let config: AppConfig
