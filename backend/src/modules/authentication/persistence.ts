@@ -39,6 +39,27 @@ export type UserRecord = {
 export type TerminalAuthStatus = Exclude<AuthRequestStatus, "PENDING">
 
 /**
+ * durable copy of what the plugin captured before it degraded a player to
+ * guest. one document per plugin session id; the first capture wins.
+ */
+export type GuestSnapshotRecord = {
+  sessionId: string
+  minecraftUuid: string
+  world: string
+  location: {
+    x: number
+    y: number
+    z: number
+    yaw: number
+    pitch: number
+  }
+  gameMode: string
+  flying: boolean
+  flySpeed: number
+  walkSpeed: number
+}
+
+/**
  * storage seam for the authentication module. the mongo implementation is the
  * production path; tests run against the in-memory twin so the whole
  * protection matrix stays hermetic.
@@ -56,6 +77,17 @@ export interface AuthenticationStore {
 
   /** closes the open session as DISCONNECTED, idempotent, null when already closed */
   closeOpenSession(minecraftUuid: string): Promise<SessionRecord | null>
+
+  // ---- guest snapshots ----
+
+  /**
+   * stores the pre-guest state for a plugin session. insert-only: a redelivered
+   * durable frame must never overwrite the original capture, only confirm it.
+   */
+  saveGuestSnapshot(snapshot: GuestSnapshotRecord): Promise<void>
+
+  /** drops the snapshot of a session that is over, returns how many rows died */
+  deleteGuestSnapshot(sessionId: string): Promise<number>
 
   // ---- auth requests ----
 

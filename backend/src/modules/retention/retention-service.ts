@@ -33,12 +33,10 @@ export interface SessionPurgePort {
 export interface GuestSnapshotPurgePort {
   /**
    * snapshots whose session is over (ended/closed) and that nobody restored
-   * from anymore. delete-on-session-completion is wired by the auth phase;
-   * this catches everything that would otherwise accumulate forever
+   * from anymore. the auth phase drops snapshots on session completion; this
+   * sweep catches everything that would otherwise accumulate forever
    */
   deleteOrphanedOlderThan(cutoff: Date): Promise<number>
-  /** direct hook for the auth phase: drop the snapshot of a completing session */
-  deleteBySessionId(sessionId: string): Promise<number>
 }
 
 export type RetentionOptions = {

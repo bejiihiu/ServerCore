@@ -67,9 +67,4 @@ export class MongoGuestSnapshotPurge implements GuestSnapshotPurgePort {
     })
     return result.deletedCount ?? 0
   }
-
-  async deleteBySessionId(sessionId: string): Promise<number> {
-    const result = await GuestSnapshotModel.deleteMany({ sessionId })
-    return result.deletedCount ?? 0
-  }
 }

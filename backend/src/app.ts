@@ -161,8 +161,9 @@ async function main(): Promise<void> {
     logger,
   })
 
-  // guest snapshot janitor, shared between the guest-end hook and the daily
-  // retention sweep
+  // guest snapshot janitor for the daily retention sweep. the session-end
+  // purge rides the authentication store, this catches everything orphaned
+  // by crashes and restarts
   const snapshotPurge = new MongoGuestSnapshotPurge()
 
   const gateway: Gateway = createGateway(config, logger, handlers)
@@ -261,14 +262,6 @@ async function main(): Promise<void> {
         void authService.handleGuestEnded(event).catch((error) => {
           logger.error({ err: error, uuid: event.minecraftUuid }, "guest end handling failed")
         })
-        // the guest session is over for good: drop the stored snapshot now
-        // instead of waiting for the daily orphan sweep. AUTHENTICATED keeps
-        // it - the session stays open, only the mode flipped
-        if (event.reason !== "AUTHENTICATED") {
-          void snapshotPurge.deleteBySessionId(event.sessionId).catch((error) => {
-            logger.error({ err: error, sessionId: event.sessionId }, "guest snapshot purge failed")
-          })
-        }
       },
     },
   })

@@ -209,12 +209,49 @@ export class AuthenticationService {
     }
   }
 
-  /** plugin announced a live guest session: record it when we have nothing on file */
+  /** plugin announced a live guest session: keep its snapshot and record the session */
   async handleGuestStarted(
-    event: { minecraftUuid: string; sessionId: string },
+    event: {
+      minecraftUuid: string
+      sessionId: string
+      /** absent on frames from builds that predate the snapshot field */
+      snapshot?: PayloadOf<"GUEST_STARTED">["snapshot"]
+    },
     serverId: string,
     now: number,
   ): Promise<void> {
+    // before any early return: a redelivered durable frame must be able to
+    // backfill a snapshot that failed to land the first time. the store
+    // upsert is insert-only, so repeats never move the original capture
+    const snapshot = event.snapshot
+    if (snapshot !== undefined) {
+      try {
+        await this.store.saveGuestSnapshot({
+          sessionId: event.sessionId,
+          minecraftUuid: event.minecraftUuid,
+          world: snapshot.world,
+          location: {
+            x: snapshot.x,
+            y: snapshot.y,
+            z: snapshot.z,
+            yaw: snapshot.yaw,
+            pitch: snapshot.pitch,
+          },
+          gameMode: snapshot.gameMode,
+          flying: snapshot.flying,
+          flySpeed: snapshot.flySpeed,
+          walkSpeed: snapshot.walkSpeed,
+        })
+      } catch (error) {
+        // the plugin keeps its own durable copy, so a db blip here degrades
+        // the backup, not the session. the next redelivery retries the write
+        this.logger.warn(
+          { err: error, uuid: event.minecraftUuid, sessionId: event.sessionId },
+          "guest snapshot persist failed",
+        )
+      }
+    }
+
     const existing = await this.store.findOpenSession(event.minecraftUuid)
     if (existing !== null) {
       // same session id = a redelivered GUEST_STARTED (reconnect replay):
@@ -248,6 +285,19 @@ export class AuthenticationService {
     }
     await this.store.closeOpenSession(event.minecraftUuid)
     this.openSessions.delete(event.minecraftUuid)
+    if (event.sessionId !== undefined) {
+      // the guest session is over for good, nothing will ever restore this
+      // snapshot. AUTHENTICATED took the other branch: the session stays open
+      try {
+        await this.store.deleteGuestSnapshot(event.sessionId)
+      } catch (error) {
+        // the daily orphan sweep is the safety net for exactly this case
+        this.logger.warn(
+          { err: error, sessionId: event.sessionId },
+          "guest snapshot purge failed, leaving it to the orphan sweep",
+        )
+      }
+    }
   }
 
   // ---- telegram decisions ----
