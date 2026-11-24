@@ -46,7 +46,7 @@ class LocalePushListener(
             is LocalePushResult.Accepted -> {
                 logger.info(
                     "locale bundle applied: ${result.locale} @ ${result.revision} " +
-                        "(${locale.snapshot().size} entries)",
+                        "(${locale.snapshot(result.locale).size} entries)",
                 )
                 runCatching(onApplied).onFailure {
                     logger.warning("locale applied but ambient re-render failed: ${it.message}")

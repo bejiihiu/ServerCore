@@ -80,13 +80,14 @@ Two surfaces may combine (title announces, card explains), three never overlap a
 
 ## Localization
 
-Two layers, with a hard boundary:
+One runtime store, no second layer:
 
-- **Canonical runtime locale** (`locale/LocaleService.kt`, seed `plugin/src/main/resources/locales/ru.yml`). Toolkit keys — tab list, welcome card, auth window — pushed by the backend as a **full file** over WS as `LOCALE_PUSH` (see `docs/websocket-protocol.md`); the plugin acknowledges with `LOCALE_ACK` and persists it to `plugins/ServerCore/locales/ru.yml`, which wins over the seed on boot.
-- **Feature copy** (`util/I18n.kt`, seed `messages_en.yml` + `messages_ru.yml`). Guest lifecycle, observation replies, protection denials, permission debug. Admins edit these in the data folder; missing keys fall back to english, missing everywhere renders the key.
-- Both layers use the same theme tags; vanilla color names are forbidden and a test fails the build on them. `placeholders.*` in `messages_*.yml` is the exception: those values are consumed as plain legacy text by PlaceholderAPI, so they carry no markup at all.
-- Placeholder values are MiniMessage-escaped at injection (`I18n.component` / `Theme.render`); a feature never concatenates a player name into a template. Pushed templates are trusted only as far as their yaml parses.
-- `ResourceMarkupTest` parses every bundled template in strict MiniMessage (unknown and unclosed tags fail), rejects vanilla colors, legacy `§`, empty tag pairs and doubled spaces. `MessagesResourcesTest` holds ru/en key parity and the list of keys the code actually renders.
+- **Canonical locale store** (`locale/LocaleService.kt`, seeds `plugin/src/main/resources/locales/ru.yml` + `locales/en.yml`). Every player-facing string lives here: toolkit surfaces (tab list, welcome, auth window, countdown) and feature copy (guest lifecycle, observation replies, protection denials, permission debug, `placeholders.*`). `guest.lang` picks the active language; a key missing from it falls back to the English base, and a key missing everywhere renders as the key itself.
+- Templates arrive as **full files** pushed by the backend over WS as `LOCALE_PUSH` (see `docs/websocket-protocol.md`); the plugin validates the file, swaps the store for that language atomically, acknowledges with `LOCALE_ACK` and persists it to `plugins/ServerCore/locales/<lang>.yml`, which wins over the seed on boot. The backend serves the canonical `ru` bundle today; `en` ships in the plugin jar and can be pushed through the same channel.
+- `util/I18n.kt` is a thin facade over the service, kept so feature call sites still speak `text`/`component`/`components`. It owns no strings and no files.
+- Both locales use the same theme tags; vanilla color names are forbidden and a test fails the build on them. `placeholders.*` is the exception: those values are consumed as plain legacy text by PlaceholderAPI, so they carry no markup at all.
+- Placeholder values are MiniMessage-escaped at injection (`LocaleService.component` / `Theme.render`); a feature never concatenates a player name into a template. Pushed templates are trusted only as far as their yaml parses.
+- `ResourceMarkupTest` parses every bundled template in strict MiniMessage (unknown and unclosed tags fail), rejects vanilla colors, legacy `§`, empty tag pairs and doubled spaces. `MessagesResourcesTest` holds ru/en key parity, the list of keys the code actually renders, and asserts the old flat `messages_*.yml` layer is gone.
 
 ## Toolkit map
 
@@ -101,5 +102,5 @@ Two layers, with a hard boundary:
 | Holograms | `ui/Holograms.kt` | expiring `TextDisplay`, Folia-safe |
 | Scheduling | `ui/UiScheduler.kt` | `uiNow`/`uiDelayed`/`uiRepeat` entity-scheduler wrappers |
 | Locale | `locale/*` | store, service, WS DTOs |
-| Feature copy | `util/I18n.kt` | flat key store with theme-rendered components |
+| Feature copy facade | `util/I18n.kt` | thin `text`/`component` wrapper over the locale service |
 | Join identity | `boot/JoinFlowListener.kt` | tab list on arrival |

@@ -122,7 +122,7 @@ Located at `plugins/ServerCore/config.yml`, generated on first start. The plugin
 | `guest.kick-after-limit` | `true` | Past the limit: `true` kicks with a register-now screen, `false` lets the player keep exploring with a loud warning |
 | `guest.reminder-interval-seconds` | `60` | Cadence of the subtle actionbar reminder shown while a guest waits for authorization |
 | `guest.gamemode-sweep-seconds` | `2` | How often the sweep re-checks that a guest is still in Spectator (another plugin may force a different mode); corrections are throttled so it never becomes a per-tick fight |
-| `guest.lang` | `ru` | UI language, selects `messages_<lang>.yml` from the plugin data folder (`en` and `ru` are bundled) |
+| `guest.lang` | `ru` | UI language, picks `locales/<lang>.yml` from the canonical store (`en` and `ru` are bundled) |
 | `guest.bot-username` | `ServerCoreBot` | Telegram bot username, used for the fallback deep link when no personal one-time link has been handed out |
 | `guest.link-ttl-milliseconds` | `90000` | Personal deep links carry one-time tokens; they stop being shown after this window |
 | `guest.snapshot-storage-path` | `guest-snapshots.json` | Durable snapshot storage file, relative to `plugins/ServerCore/` |
@@ -139,7 +139,9 @@ Per-guest interaction toggles. Each defaults to `true` (restricted):
 
 ### guest messages
 
-Player-facing text lives in `messages_en.yml` / `messages_ru.yml` (bundled, then copied to the plugin data folder on first start where admins can edit them). Missing keys fall back to the bundled English file. Keys cover `guest.*`, `auth.approved.*`, `account.revoked`, `spec.*`, `protection.*` and `luckperms.groups.*`, and the `placeholders.*` block that feeds the PlaceholderAPI expansion.
+Player-facing text lives in one canonical store: `locales/ru.yml` and `locales/en.yml`. Both files ship inside the plugin jar and share the same nested key set — `tablist.*`, `guest.*`, `auth.*`, `account.*`, `spec.*`, `protection.*`, `luckperms.groups.*`, the `placeholders.*` block that feeds the PlaceholderAPI expansion, and `countdown.*`. `guest.lang` picks the active language; a key missing from it falls back to the English file, and a key missing everywhere renders as the key itself.
+
+The backend pushes the canonical `ru` bundle as a full file over the WebSocket (`LOCALE_PUSH`); the plugin persists it to `plugins/ServerCore/locales/ru.yml`, and that persisted copy wins over the jar seed on boot. The same channel accepts `en`, but the backend currently serves only `ru` — the English file travels in the plugin jar as the base layer.
 
 Templates are MiniMessage with the plugin's theme tags only (`<primary>`, `<secondary>`, `<muted>`, `<gold>`, `<ok>`, `<warn>`, `<danger>`, `<info>`); vanilla color names are rejected by a build test so the palette stays in one place. Values arrive as `{name}` placeholders and are escaped before substitution. `placeholders.*` is the exception: those values are plain legacy text for PlaceholderAPI and carry no tags.
 

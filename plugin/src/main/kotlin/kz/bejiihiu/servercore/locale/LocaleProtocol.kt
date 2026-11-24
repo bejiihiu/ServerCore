@@ -1,6 +1,7 @@
 package kz.bejiihiu.servercore.locale
 
 import kotlinx.serialization.Serializable
+import java.util.Locale
 
 /**
  * locale channel of the ws protocol. the backend owns the canonical bundle
@@ -16,8 +17,25 @@ object LocaleProtocol {
     /** plugin → backend: outcome of an applied push, correlates with the push */
     const val TYPE_LOCALE_ACK = "LOCALE_ACK"
 
-    /** the only locale shipped and accepted right now */
+    /** the primary locale: the backend serves this one, the plugin boots on it */
     const val CANONICAL = "ru"
+
+    /** bundled locales; a full-file push is accepted for any of them */
+    val SUPPORTED = listOf("ru", "en")
+
+    /**
+     * base layer for reads: a key missing from the active language resolves
+     * here before falling back to the key itself.
+     */
+    const val FALLBACK = "en"
+
+    /** config language tag → a bundled locale; anything unknown stays canonical */
+    fun normalize(language: String?): String {
+        val tag = language?.trim()?.lowercase(Locale.ROOT).orEmpty()
+        return if (tag in SUPPORTED) tag else CANONICAL
+    }
+
+    fun isSupported(locale: String): Boolean = locale in SUPPORTED
 }
 
 /** body of a LOCALE_PUSH message; content is the full yaml file, not a diff */

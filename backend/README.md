@@ -47,7 +47,7 @@ bun run typecheck
 - `src/database/` — mongoose connection + models, one file per collection
 - `src/bot/` — grammY bootstrap, routes, conversations, i18n (ru/en), keyboards
 - `src/services/` — business logic shared by bot and websocket layers
-- `src/locales/` — the canonical locale bundle (`ru.yml`) pushed to every plugin on connect (`LOCALE_PUSH`)
+- `src/locales/` — the canonical in-game locale bundle (`ru.yml`) pushed to every plugin on connect (`LOCALE_PUSH`); the plugin's `en` base layer ships in the plugin jar, not here
 - `src/config/` — env parsing (zod), `.env.example` holds every knob
 - `src/errors/` — typed errors + the fastify error handler
 - `src/logging/` — pino setup (timestamps in Europe/Moscow)

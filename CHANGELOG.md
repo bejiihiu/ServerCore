@@ -145,8 +145,11 @@ current, unreleased state of the codebase.
   a single Folia entry point.
 - One canonical view-state enum and one packet bridge shared by ESP, disguises and synchronization.
 - Observation sessions unified under a single coordinator instead of separate spec wiring paths.
-- Locale handling accepts full-file `LOCALE_PUSH` frames and answers `LOCALE_ACK`; the persisted file
-  wins on boot. The plugin side is live; the backend does not originate pushes yet.
+- Locale handling accepts full-file `LOCALE_PUSH` frames for `ru` and `en` and answers `LOCALE_ACK`; the
+  persisted file wins on boot. The backend serves and pushes the canonical `ru` bundle today, while `en`
+  ships inside the plugin jar as the base layer.
+- Player-facing text has one canonical store (`locales/ru.yml`, `locales/en.yml`). The old flat
+  `messages_*.yml` layer is gone and `util/I18n.kt` is now a thin facade over `locale/LocaleService`.
 - Documentation synced with the implemented code: real environment keys, full plugin config
   reference, protocol types and commands.
 

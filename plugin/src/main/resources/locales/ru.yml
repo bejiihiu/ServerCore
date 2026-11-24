@@ -1,5 +1,9 @@
 # ServerCore canonical locale: ru
 #
+# the single source of truth for every player-facing string: toolkit surfaces
+# (tab list, welcome, auth window, countdown) and feature copy (guest lifecycle,
+# observation, protection denials, permission debug, placeholder values).
+#
 # this seed ships inside the plugin jar and serves as the fallback until the
 # backend pushes the current full file over the ws channel (LOCALE_PUSH).
 # templates are miniMessage; color tags are the plugin theme tokens
@@ -24,6 +28,37 @@ guest:
       <secondary>мир открыт для осмотра, взаимодействие ограничено</secondary>
       <secondary>сессия <gold>{n}</gold> из <gold>{max}</gold></secondary>
       <muted>полный доступ открывается после одобрения заявки</muted>
+  welcome-back:
+    subtitle: "<secondary>точка входа восстановлена · сессия <gold>{n}</gold> из <gold>{max}</gold></secondary>"
+  link-prompt:
+    - "<secondary>играть можно после регистрации в Telegram-боте</secondary>"
+    - "<secondary>ссылка для входа</secondary> <click:open_url:'{link}'><underlined><gold>{link}</gold></underlined></click>"
+  restriction:
+    actionbar: "<danger>гостевой режим: действие закрыто · регистрация — /link</danger>"
+  reminder:
+    actionbar: "<secondary>регистрация:</secondary> <gold>{link}</gold>"
+  limit:
+    warning:
+      title: "<danger>лимит гостевых сессий</danger>"
+      subtitle: "<secondary>регистрация в Telegram-боте открывает игру</secondary>"
+    last-session: "<warn>последняя гостевая сессия</warn> <muted>·</muted> <secondary>регистрация в боте</secondary>"
+    chat:
+      - "<danger>гостевые сессии закончились: {limit} из {limit}</danger>"
+      - "<secondary>мир открыт до выхода · игра — после регистрации</secondary>"
+      - "<gold>{link}</gold>"
+  mute-notice: "<secondary>сейчас действует мут — чат молчит до его окончания</secondary>"
+  kick:
+    limit:
+      - "<danger>гостевые сессии исчерпаны: {limit}</danger>"
+      - "<secondary>регистрация в Telegram-боте открывает игру</secondary>"
+      - "<gold>{link}</gold>"
+    banned:
+      - "<danger>доступ к серверу ограничен</danger>"
+      - "<secondary>если это ошибка — напишите администрации в боте</secondary>"
+    disabled:
+      - "<danger>вход на сервер — только по регистрации</danger>"
+      - "<secondary>пройдите её в Telegram-боте</secondary>"
+      - "<gold>{link}</gold>"
 
 auth:
   prompt:
@@ -35,6 +70,68 @@ auth:
   pulse: "<primary>код <gold>{code}</gold> — подтвердите вход в боте</primary>"
   window: "<gold>{code}</gold> <muted>·</muted> <secondary>осталось {time}</secondary>"
   expired: "окно подтверждения истекло"
+  approved:
+    title: "<ok>доступ открыт</ok>"
+    subtitle: "<secondary>регистрация подтверждена · гостевой режим снят</secondary>"
+
+# disconnect screen when the backend revoked the account
+account:
+  revoked:
+    - "<danger>аккаунт удалён</danger>"
+    - "<secondary>доступ отозван · если это ошибка — напишите в бот</secondary>"
+
+spec:
+  inventory-title: "<secondary>инвентарь</secondary> <muted>·</muted> <gold>{target}</gold>"
+  started: "<ok>наблюдение</ok> <primary>{target}</primary> <secondary>· завершить — /spec</secondary>"
+  exited: "<ok>наблюдение завершено, состояние восстановлено</ok>"
+  aborted: "<danger>наблюдение за {target} не началось</danger>"
+  disabled: "<danger>наблюдение отключено на этом сервере</danger>"
+  no-target: "<danger>{target} не в сети</danger>"
+  self: "<danger>нельзя наблюдать за собой</danger>"
+  busy-admin: "<danger>вы уже наблюдаете за {target} · завершите сессию</danger>"
+  busy-target: "<danger>за {target} уже наблюдает другой сотрудник</danger>"
+  not-observing: "<secondary>вы ни за кем не наблюдаете</secondary>"
+  denied-permission: "<danger>нет доступа к наблюдению</danger>"
+  denied-level: "<danger>уровень доступа {target} выше вашего</danger>"
+
+protection:
+  denied:
+    chat: "<danger>команда <bold>{command}</bold> недоступна на этом сервере</danger>"
+
+# admin debug command: /servercore groups <player>
+luckperms:
+  groups:
+    usage: "<secondary>использование:</secondary> <gold>/servercore groups {arg}</gold>"
+    no-permission: "<danger>нет прав на эту команду</danger>"
+    player-not-found: "<danger>{player} не в сети</danger>"
+    header: "<secondary>группы</secondary> <primary>{player}</primary>"
+    entry: "<muted>▸</muted> <primary>{group}</primary><muted>{primary}</muted>"
+    primary-mark: " · основная"
+    none: "<muted>игрок не состоит в группах</muted>"
+    lookup-failed: "<danger>не удалось прочитать группы · подробности в логе</danger>"
+
+# values %servercore_*%: plain text for placeholderapi, no tags
+placeholders:
+  "yes": "да"
+  "no": "нет"
+  status:
+    active: "активен"
+    banned: "заблокирован"
+    guest: "гость"
+  application:
+    voting: "на голосовании"
+    approved: "одобрена"
+    rejected: "отклонена"
+    expired: "истекла"
+  last-seen:
+    now: "сейчас"
+    minutes: "{n} мин назад"
+    hours: "{n} ч назад"
+    days: "{n} дн назад"
+  duration:
+    h: "{n}ч"
+    m: "{n}м"
+    s: "{n}с"
 
 countdown:
   tick: "<secondary>время на исходе</secondary>"

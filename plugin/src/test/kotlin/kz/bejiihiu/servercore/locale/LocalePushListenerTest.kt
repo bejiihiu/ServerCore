@@ -86,13 +86,30 @@ class LocalePushListenerTest {
         val listener = LocalePushListener(service, link, logger)
         val bundledRevision = service.revision
 
-        listener.onMessage(push(locale = "en"))
+        listener.onMessage(push(locale = "de"))
 
         assertEquals(bundledRevision, service.revision)
         val ack = link.sent.single().decodePayload<LocaleAckPayload>()
         assertFalse(ack.accepted)
+        assertEquals("de", ack.locale)
+        assertTrue(ack.reason!!.contains("unsupported"))
+    }
+
+    @Test
+    fun `an en bundle is applied to the english store`() {
+        val (service, link) = harness()
+        val listener = LocalePushListener(service, link, logger)
+
+        listener.onMessage(
+            push(locale = "en", content = "greeting:\n  line: \"<info>new wave</info>\"\n"),
+        )
+
+        service.setLanguage("en")
+        assertEquals("<info>new wave</info>", service.text("greeting.line"))
+        val ack = link.sent.single().decodePayload<LocaleAckPayload>()
+        assertTrue(ack.accepted)
         assertEquals("en", ack.locale)
-        assertTrue(ack.reason!!.contains("canonical"))
+        assertTrue(Files.exists(temp.resolve("locales/en.yml")))
     }
 
     @Test
@@ -151,7 +168,7 @@ class LocalePushListenerTest {
         val (service, link) = harness()
         val listener = LocalePushListener(service, link, logger) { applied++ }
 
-        listener.onMessage(push(locale = "en"))
+        listener.onMessage(push(locale = "de"))
         assertEquals(0, applied, "a rejected push must not repaint the tab list")
 
         listener.onMessage(push())

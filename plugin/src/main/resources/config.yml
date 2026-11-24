@@ -53,8 +53,8 @@ guest:
   # spectator (another plugin may force a different mode); actual corrections
   # are throttled further so it never becomes a per-tick fight
   gamemode-sweep-seconds: 2
-  # ui language, picks messages_<lang>.yml from the plugin data folder
-  # (bundled: en, ru; edit the file to customise every message)
+  # ui language, picks locales/<lang>.yml (bundled: en, ru)
+  # (one store: feature copy and toolkit surfaces share it)
   lang: ru
   # telegram bot username, used for the fallback deep link when the backend
   # has not handed out a personal one-time link yet
