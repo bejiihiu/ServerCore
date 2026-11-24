@@ -18,6 +18,11 @@ import kz.bejiihiu.servercore.guest.LocalAccountResolver
 import kz.bejiihiu.servercore.guest.SnapshotStore
 import kz.bejiihiu.servercore.guest.WsAccountResolver
 import kz.bejiihiu.servercore.disguise.DisguiseStack
+import kz.bejiihiu.servercore.integration.luckperms.GroupsDebugHandler
+import kz.bejiihiu.servercore.integration.luckperms.LuckPermsConfig
+import kz.bejiihiu.servercore.integration.luckperms.PermissionSource
+import kz.bejiihiu.servercore.integration.luckperms.PermissionSourceFactory
+import kz.bejiihiu.servercore.boot.GroupsDebugCommand
 import kz.bejiihiu.servercore.locale.LocaleService
 import kz.bejiihiu.servercore.packet.CachedViewStateStore
 import kz.bejiihiu.servercore.packet.PacketConfig
@@ -118,6 +123,7 @@ class ServerCorePlugin : JavaPlugin() {
     private var gamemodeGuard: GamemodeGuardListener? = null
     private var commandBlockAuditor: CommandBlockAuditor? = null
     private var spec: SpecService? = null
+    private var permissionSource: PermissionSource? = null
 
     override fun onLoad() {
         // packetevents is a server-installed plugin we attach to, not one we
@@ -240,7 +246,14 @@ class ServerCorePlugin : JavaPlugin() {
         // guest mode stack (uses its own local gateway handle for envelope-level
         // helpers; both handles share the same backend connection semantics)
         val guestConfig = GuestConfig.load(config, logger)
+        // permissions: luckperms when installed, static config fallback otherwise.
+        // the /servercore debug command plugs into whatever source came up
         val i18n = I18n(this, guestConfig.lang)
+
+        val lpConfig = LuckPermsConfig.load(config, logger)
+        val permissions = PermissionSourceFactory.create(lpConfig, logger)
+        permissionSource = permissions
+        GroupsDebugCommand.handler = GroupsDebugHandler(permissions, i18n, logger)
 
         snapshots = SnapshotStore(dataFolder.toPath().resolve(guestConfig.snapshotStoragePath), io)
         snapshots.load()
@@ -521,6 +534,7 @@ class ServerCorePlugin : JavaPlugin() {
         disguiseStack?.shutdown()
         gamemodeGuard?.stop()
         commandBlockAuditor?.stop()
+        permissionSource?.shutdown()
         // belt and braces: async snapshot writes may still be in flight
         snapshots.shutdown()
         counter.shutdown()
