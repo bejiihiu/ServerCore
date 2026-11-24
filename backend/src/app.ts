@@ -8,7 +8,7 @@ import { buildHttpServer } from "./http/server.js"
 import { createGateway, type Gateway } from "./websocket/gateway.js"
 import { HandlerRegistry } from "./websocket/handlers/registry.js"
 import { registerLifecycleHandlers, ServerDirectory } from "./websocket/handlers/server-lifecycle.js"
-import { registerAccountHandlers } from "./websocket/handlers/account-handlers.js"
+import { AccountJoinFlow, registerAccountHandlers } from "./websocket/handlers/account-handlers.js"
 import { registerSpecHandlers } from "./websocket/handlers/spec-handlers.js"
 import { SpecAuditService } from "./modules/audit/spec-audit-service.js"
 import { InMemoryTokenStore, TokenService } from "./services/token-service.js"
@@ -32,6 +32,7 @@ import { OpsNotifier, eventForState } from "./services/ops-notifier.js"
 import { OfflineWatcher } from "./services/offline-watcher.js"
 import { SessionCounters, StatsService } from "./services/runtime-stats.js"
 import { VotingScheduler } from "./services/voting-scheduler.js"
+import type { ApplicationWireFanout } from "./services/ports.js"
 import { RetentionService } from "./modules/retention/retention-service.js"
 import {
   MongoAuditLogPurge,
@@ -69,6 +70,40 @@ class FanoutAdapter implements NotificationFanout {
 
   async notifyAdmins(text: string): Promise<void> {
     await this.notifications.sendToChats(this.adminChatIds, text)
+  }
+}
+
+/**
+ * pushes admission verdicts to every connected game server, best effort:
+ * placeholders are informational, a downed link or an absent server just
+ * means the plugin keeps its last known status until the next event.
+ */
+function applicationFanout(gateway: Gateway, logger: Logger): ApplicationWireFanout {
+  const broadcast = async (
+    type: "APPLICATION_SUBMITTED" | "APPLICATION_APPROVED" | "APPLICATION_REJECTED" | "APPLICATION_EXPIRED",
+    payload: Record<string, string>,
+  ): Promise<void> => {
+    const servers = gateway.connectedServers
+    const results = await Promise.allSettled(
+      servers.map((serverId) => gateway.sendTo(serverId, type, payload as never, { awaitAck: false })),
+    )
+    for (const result of results) {
+      if (result.status === "rejected") {
+        logger.warn({ err: result.reason, type }, "application fan-out to plugin failed")
+      }
+    }
+  }
+  return {
+    submitted: (event) => broadcast("APPLICATION_SUBMITTED", event),
+    decided: (event) =>
+      broadcast(
+        event.outcome === "APPROVED"
+          ? "APPLICATION_APPROVED"
+          : event.outcome === "REJECTED"
+            ? "APPLICATION_REJECTED"
+            : "APPLICATION_EXPIRED",
+        { applicationId: event.applicationId, minecraftUuid: event.minecraftUuid },
+      ),
   }
 }
 
@@ -138,6 +173,12 @@ async function main(): Promise<void> {
     sendPrompt: (request) => authUi.send(request),
   })
 
+  // the player-join pipeline is composed further down, once the account and
+  // gateway services exist; until then a join frame is dropped silently
+  // (the ws gateway does not even exist yet at this point)
+  let joinPipeline: ((event: { minecraftUuid: string; username: string; serverId: string }) => Promise<void>) | null =
+    null
+
   registerLifecycleHandlers(handlers, directory, logger, {
     onStateChange: (serverId, state, previous, options) => {
       // crash/status events flow to telegram: all events, dm + admin copy.
@@ -150,7 +191,7 @@ async function main(): Promise<void> {
       })
     },
     onPlayerJoined: (event) => {
-      void authService.handlePlayerJoined(event, Date.now()).catch((error) => {
+      void joinPipeline?.(event).catch((error) => {
         logger.error({ err: error, uuid: event.minecraftUuid }, "player join handling failed")
       })
     },
@@ -237,7 +278,16 @@ async function main(): Promise<void> {
     logger,
   })
 
-  registerAccountHandlers(handlers, { accounts, verifier, logger })
+  registerAccountHandlers(handlers, { verifier, logger })
+
+  // one join = one pipeline: the account row first (the auth flow only ever
+  // answers ACTIVE+linked accounts and looks the row up by uuid), then the
+  // personal deep-link push for unlinked players, then the auth flow
+  const accountJoin = new AccountJoinFlow({ accounts, gateway, logger })
+  joinPipeline = async (event) => {
+    await accountJoin.onPlayerJoined(event)
+    await authService.handlePlayerJoined(event, Date.now())
+  }
 
   // spec audit trail: every observation start/end the plugin reports lands in
   // audit_logs (kind "spec"). the collection has no ttl index — the retention
@@ -282,6 +332,7 @@ async function main(): Promise<void> {
     // engine; /start /status /help /stats are owned by the account routes
     admission = registerAdmissionFlows(bot, config, logger, createAdmissionRepositories(), {
       notifications,
+      pluginFanout: applicationFanout(gateway, logger),
     })
     // auth approve/reject buttons ride the same instance
     registerAuthCallbacks(bot, { auth: authService, ui: authUi, logger })
