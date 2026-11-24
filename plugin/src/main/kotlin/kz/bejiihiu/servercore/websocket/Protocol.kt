@@ -41,6 +41,7 @@ enum class MessageType(val wire: String) {
     APPLICATION_SUBMITTED("APPLICATION_SUBMITTED"),
     APPLICATION_APPROVED("APPLICATION_APPROVED"),
     APPLICATION_REJECTED("APPLICATION_REJECTED"),
+    APPLICATION_EXPIRED("APPLICATION_EXPIRED"),
     LOCALE_PUSH("LOCALE_PUSH"),
     LOCALE_ACK("LOCALE_ACK"),
     /** catch-all for wire types this build has never heard of */
@@ -381,6 +382,7 @@ class EnvelopeCodec(private val secret: String) {
             MessageType.APPLICATION_SUBMITTED,
             MessageType.APPLICATION_APPROVED,
             MessageType.APPLICATION_REJECTED,
+            MessageType.APPLICATION_EXPIRED,
             MessageType.LOCALE_PUSH,
             MessageType.LOCALE_ACK,
             MessageType.UNKNOWN,

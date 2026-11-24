@@ -1,0 +1,552 @@
+{
+  "_readme": [
+    "Cross-language contract for the WebSocket protocol: one entry per wire type.",
+    "ADD YOUR TYPE HERE when you add it to the protocol. The backend schema, the plugin",
+    "codec and this manifest are one change; the contract tests fail the build when they drift.",
+    "",
+    "fields[] is the payload contract. type is one of: uuid, objectId, string, integer,",
+    "number, boolean, enum (with values[]), object (with fields[]). required=false means",
+    "the sender may omit the key.",
+    "",
+    "example is a complete, schema-valid payload: it must carry every required field and",
+    "may carry any subset of the optional ones. The plugin test decodes it through the real",
+    "codec/DTOs, the backend test validates it against the zod schema.",
+    "",
+    "direction: plugin_to_backend | backend_to_plugin | both.",
+    "pluginTransport: typed (MessageType + Payload branch) | raw (MessageType, Payload.Raw)",
+    "                 | absent (defined in the protocol, not carried by the plugin).",
+    "pluginDto: kotlinx type the ws layer decodes this payload into, when there is one.",
+    "status: active | reserved. reserved = documented but not on the wire today."
+  ],
+  "version": 1,
+  "messages": [
+    {
+      "type": "PLAYER_JOINED",
+      "direction": "plugin_to_backend",
+      "status": "active",
+      "pluginTransport": "typed",
+      "pluginDto": "PlayerJoinedPayload",
+      "summary": "a session started; triggers account checks and, if needed, an auth request",
+      "fields": [
+        { "name": "minecraftUuid", "type": "uuid", "required": true },
+        { "name": "username", "type": "string", "required": true },
+        { "name": "serverId", "type": "string", "required": false }
+      ],
+      "example": {
+        "minecraftUuid": "0f4d2f3e-8a44-4c21-9d0e-3b1f2a4c5d60",
+        "username": "bejiihiu",
+        "serverId": "game-1"
+      }
+    },
+    {
+      "type": "PLAYER_LEFT",
+      "direction": "plugin_to_backend",
+      "status": "active",
+      "pluginTransport": "typed",
+      "pluginDto": "PlayerLeftPayload",
+      "summary": "session ended; pending auth requests for that session are cancelled",
+      "fields": [
+        { "name": "minecraftUuid", "type": "uuid", "required": true },
+        { "name": "username", "type": "string", "required": false },
+        {
+          "name": "reason",
+          "type": "enum",
+          "values": ["DISCONNECT", "KICK", "BAN", "TIMEOUT", "ERROR"],
+          "required": false
+        }
+      ],
+      "example": {
+        "minecraftUuid": "0f4d2f3e-8a44-4c21-9d0e-3b1f2a4c5d60",
+        "username": "bejiihiu",
+        "reason": "DISCONNECT"
+      }
+    },
+    {
+      "type": "AUTH_REQUEST",
+      "direction": "backend_to_plugin",
+      "status": "active",
+      "pluginTransport": "raw",
+      "pluginDto": "AuthRequestPayload",
+      "summary": "backend asks the plugin to gate a session pending Telegram confirmation",
+      "fields": [
+        { "name": "minecraftUuid", "type": "uuid", "required": true },
+        { "name": "username", "type": "string", "required": true },
+        { "name": "sessionId", "type": "string", "required": true },
+        { "name": "expiresInSeconds", "type": "integer", "required": false }
+      ],
+      "example": {
+        "minecraftUuid": "0f4d2f3e-8a44-4c21-9d0e-3b1f2a4c5d60",
+        "username": "bejiihiu",
+        "sessionId": "auth-1",
+        "expiresInSeconds": 90
+      }
+    },
+    {
+      "type": "AUTH_APPROVED",
+      "direction": "backend_to_plugin",
+      "status": "active",
+      "pluginTransport": "raw",
+      "pluginDto": "AuthDecisionPayload",
+      "summary": "confirmation accepted; plugin restores the player to normal play",
+      "fields": [
+        { "name": "minecraftUuid", "type": "uuid", "required": true },
+        { "name": "sessionId", "type": "string", "required": true }
+      ],
+      "example": {
+        "minecraftUuid": "0f4d2f3e-8a44-4c21-9d0e-3b1f2a4c5d60",
+        "sessionId": "auth-1"
+      }
+    },
+    {
+      "type": "AUTH_REJECTED",
+      "direction": "backend_to_plugin",
+      "status": "active",
+      "pluginTransport": "raw",
+      "pluginDto": "AuthDecisionPayload",
+      "summary": "confirmation denied; the session stays gated",
+      "fields": [
+        { "name": "minecraftUuid", "type": "uuid", "required": true },
+        { "name": "sessionId", "type": "string", "required": true },
+        { "name": "reason", "type": "string", "required": false }
+      ],
+      "example": {
+        "minecraftUuid": "0f4d2f3e-8a44-4c21-9d0e-3b1f2a4c5d60",
+        "sessionId": "auth-1",
+        "reason": "cancelled by the player"
+      }
+    },
+    {
+      "type": "AUTH_EXPIRED",
+      "direction": "backend_to_plugin",
+      "status": "active",
+      "pluginTransport": "raw",
+      "pluginDto": "AuthDecisionPayload",
+      "summary": "token TTL elapsed without a decision",
+      "fields": [
+        { "name": "minecraftUuid", "type": "uuid", "required": true },
+        { "name": "sessionId", "type": "string", "required": true }
+      ],
+      "example": {
+        "minecraftUuid": "0f4d2f3e-8a44-4c21-9d0e-3b1f2a4c5d60",
+        "sessionId": "auth-1"
+      }
+    },
+    {
+      "type": "GUEST_STARTED",
+      "direction": "plugin_to_backend",
+      "status": "active",
+      "pluginTransport": "raw",
+      "pluginDto": "GuestStartedPayload",
+      "summary": "guest session created, snapshot stored (durable frame)",
+      "fields": [
+        { "name": "minecraftUuid", "type": "uuid", "required": true },
+        { "name": "username", "type": "string", "required": true },
+        { "name": "sessionId", "type": "string", "required": true },
+        {
+          "name": "snapshot",
+          "type": "object",
+          "required": true,
+          "fields": [
+            { "name": "world", "type": "string", "required": true },
+            { "name": "x", "type": "number", "required": true },
+            { "name": "y", "type": "number", "required": true },
+            { "name": "z", "type": "number", "required": true },
+            { "name": "yaw", "type": "number", "required": true },
+            { "name": "pitch", "type": "number", "required": true },
+            { "name": "gameMode", "type": "string", "required": true },
+            { "name": "flying", "type": "boolean", "required": true },
+            { "name": "flySpeed", "type": "number", "required": true },
+            { "name": "walkSpeed", "type": "number", "required": true }
+          ]
+        }
+      ],
+      "example": {
+        "minecraftUuid": "0f4d2f3e-8a44-4c21-9d0e-3b1f2a4c5d60",
+        "username": "bejiihiu",
+        "sessionId": "guest-1",
+        "snapshot": {
+          "world": "world",
+          "x": 120.5,
+          "y": -60.0,
+          "z": 8.25,
+          "yaw": 90.0,
+          "pitch": 0.0,
+          "gameMode": "SURVIVAL",
+          "flying": false,
+          "flySpeed": 0.05,
+          "walkSpeed": 0.1
+        }
+      }
+    },
+    {
+      "type": "GUEST_ENDED",
+      "direction": "plugin_to_backend",
+      "status": "active",
+      "pluginTransport": "raw",
+      "pluginDto": "GuestEndedPayload",
+      "summary": "guest session finished (authed, or left with the snapshot retained)",
+      "fields": [
+        { "name": "minecraftUuid", "type": "uuid", "required": true },
+        { "name": "sessionId", "type": "string", "required": true },
+        {
+          "name": "reason",
+          "type": "enum",
+          "values": ["AUTHENTICATED", "LOGOUT", "KICK", "BAN", "ERROR"],
+          "required": true
+        }
+      ],
+      "example": {
+        "minecraftUuid": "0f4d2f3e-8a44-4c21-9d0e-3b1f2a4c5d60",
+        "sessionId": "guest-1",
+        "reason": "AUTHENTICATED"
+      }
+    },
+    {
+      "type": "APPLICATION_SUBMITTED",
+      "direction": "backend_to_plugin",
+      "status": "active",
+      "pluginTransport": "raw",
+      "pluginDto": "ApplicationSubmittedPayload",
+      "summary": "an application entered voting (informational, feeds in-game placeholders)",
+      "fields": [
+        { "name": "applicationId", "type": "objectId", "required": true },
+        { "name": "minecraftUuid", "type": "uuid", "required": true },
+        { "name": "telegramId", "type": "string", "required": true }
+      ],
+      "example": {
+        "applicationId": "64b1f0c0a1b2c3d4e5f60718",
+        "minecraftUuid": "0f4d2f3e-8a44-4c21-9d0e-3b1f2a4c5d60",
+        "telegramId": "6153453766"
+      }
+    },
+    {
+      "type": "APPLICATION_APPROVED",
+      "direction": "backend_to_plugin",
+      "status": "active",
+      "pluginTransport": "raw",
+      "pluginDto": "ApplicationApprovedPayload",
+      "summary": "application accepted; the account may become ACTIVE",
+      "fields": [
+        { "name": "applicationId", "type": "objectId", "required": true },
+        { "name": "minecraftUuid", "type": "uuid", "required": true }
+      ],
+      "example": {
+        "applicationId": "64b1f0c0a1b2c3d4e5f60718",
+        "minecraftUuid": "0f4d2f3e-8a44-4c21-9d0e-3b1f2a4c5d60"
+      }
+    },
+    {
+      "type": "APPLICATION_REJECTED",
+      "direction": "backend_to_plugin",
+      "status": "active",
+      "pluginTransport": "raw",
+      "pluginDto": "ApplicationRejectedPayload",
+      "summary": "application rejected",
+      "fields": [
+        { "name": "applicationId", "type": "objectId", "required": true },
+        { "name": "minecraftUuid", "type": "uuid", "required": true },
+        { "name": "reason", "type": "string", "required": false }
+      ],
+      "example": {
+        "applicationId": "64b1f0c0a1b2c3d4e5f60718",
+        "minecraftUuid": "0f4d2f3e-8a44-4c21-9d0e-3b1f2a4c5d60",
+        "reason": "no quorum in the voting window"
+      }
+    },
+    {
+      "type": "APPLICATION_EXPIRED",
+      "direction": "backend_to_plugin",
+      "status": "active",
+      "pluginTransport": "raw",
+      "pluginDto": "ApplicationExpiredPayload",
+      "summary": "voting window closed without quorum after the single auto-extension",
+      "fields": [
+        { "name": "applicationId", "type": "objectId", "required": true },
+        { "name": "minecraftUuid", "type": "uuid", "required": true }
+      ],
+      "example": {
+        "applicationId": "64b1f0c0a1b2c3d4e5f60718",
+        "minecraftUuid": "0f4d2f3e-8a44-4c21-9d0e-3b1f2a4c5d60"
+      }
+    },
+    {
+      "type": "ACCOUNT_DELETED",
+      "direction": "backend_to_plugin",
+      "status": "active",
+      "pluginTransport": "typed",
+      "pluginDto": "AccountDeletedPayload",
+      "summary": "account removed; any live session must be terminated",
+      "fields": [
+        { "name": "minecraftUuid", "type": "uuid", "required": true },
+        {
+          "name": "reason",
+          "type": "enum",
+          "values": ["SELF_REQUESTED", "ADMIN_ACTION", "INACTIVITY"],
+          "required": true
+        }
+      ],
+      "example": {
+        "minecraftUuid": "0f4d2f3e-8a44-4c21-9d0e-3b1f2a4c5d60",
+        "reason": "SELF_REQUESTED"
+      }
+    },
+    {
+      "type": "LINK_TOKEN",
+      "direction": "backend_to_plugin",
+      "status": "active",
+      "pluginTransport": "typed",
+      "pluginDto": "LinkTokenPayload",
+      "summary": "fresh one-time deep-link token; the game chat shows the personal bot link",
+      "fields": [
+        { "name": "minecraftUuid", "type": "uuid", "required": true },
+        { "name": "username", "type": "string", "required": true },
+        { "name": "token", "type": "string", "required": true },
+        { "name": "expiresAt", "type": "integer", "required": true }
+      ],
+      "example": {
+        "minecraftUuid": "0f4d2f3e-8a44-4c21-9d0e-3b1f2a4c5d60",
+        "username": "bejiihiu",
+        "token": "abcd1234ABCD5678",
+        "expiresAt": 1764000060000
+      }
+    },
+    {
+      "type": "SESSION_CHECK",
+      "direction": "backend_to_plugin",
+      "status": "active",
+      "pluginTransport": "typed",
+      "summary": "ownership probe: is this UUID in the game right now?",
+      "fields": [
+        { "name": "minecraftUuid", "type": "uuid", "required": true }
+      ],
+      "example": {
+        "minecraftUuid": "0f4d2f3e-8a44-4c21-9d0e-3b1f2a4c5d60"
+      }
+    },
+    {
+      "type": "SESSION_CHECK_RESULT",
+      "direction": "plugin_to_backend",
+      "status": "active",
+      "pluginTransport": "typed",
+      "summary": "probe answer carrying the live session state",
+      "fields": [
+        { "name": "minecraftUuid", "type": "uuid", "required": true },
+        { "name": "online", "type": "boolean", "required": true },
+        { "name": "sessionId", "type": "string", "required": false },
+        {
+          "name": "sessionKind",
+          "type": "enum",
+          "values": ["GUEST", "WAITING_AUTH", "AUTHENTICATED"],
+          "required": false
+        }
+      ],
+      "example": {
+        "minecraftUuid": "0f4d2f3e-8a44-4c21-9d0e-3b1f2a4c5d60",
+        "online": true,
+        "sessionId": "guest-1",
+        "sessionKind": "GUEST"
+      }
+    },
+    {
+      "type": "SPEC_STARTED",
+      "direction": "plugin_to_backend",
+      "status": "active",
+      "pluginTransport": "typed",
+      "summary": "observation session started; the backend opens the audit trail",
+      "fields": [
+        { "name": "adminUuid", "type": "uuid", "required": true },
+        { "name": "targetUuid", "type": "uuid", "required": true },
+        { "name": "sessionId", "type": "string", "required": false },
+        { "name": "adminUsername", "type": "string", "required": false },
+        { "name": "targetUsername", "type": "string", "required": false }
+      ],
+      "example": {
+        "adminUuid": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+        "targetUuid": "0f4d2f3e-8a44-4c21-9d0e-3b1f2a4c5d60",
+        "sessionId": "spec-1",
+        "adminUsername": "admin",
+        "targetUsername": "bejiihiu"
+      }
+    },
+    {
+      "type": "SPEC_ENDED",
+      "direction": "plugin_to_backend",
+      "status": "active",
+      "pluginTransport": "typed",
+      "summary": "observation ended; the backend closes the audit trail",
+      "fields": [
+        { "name": "adminUuid", "type": "uuid", "required": true },
+        { "name": "targetUuid", "type": "uuid", "required": true },
+        { "name": "sessionId", "type": "string", "required": false },
+        { "name": "adminUsername", "type": "string", "required": false },
+        { "name": "targetUsername", "type": "string", "required": false },
+        { "name": "durationSec", "type": "integer", "required": false },
+        {
+          "name": "reason",
+          "type": "enum",
+          "values": ["NORMAL", "FORCED", "TARGET_DISCONNECTED", "ADMIN_DISCONNECTED", "ERROR"],
+          "required": false
+        }
+      ],
+      "example": {
+        "adminUuid": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+        "targetUuid": "0f4d2f3e-8a44-4c21-9d0e-3b1f2a4c5d60",
+        "sessionId": "spec-1",
+        "adminUsername": "admin",
+        "targetUsername": "bejiihiu",
+        "durationSec": 42,
+        "reason": "NORMAL"
+      }
+    },
+    {
+      "type": "SERVER_STATUS",
+      "direction": "plugin_to_backend",
+      "status": "active",
+      "pluginTransport": "typed",
+      "summary": "registration and status pushes, including the ops lifecycle state",
+      "fields": [
+        { "name": "onlinePlayers", "type": "integer", "required": true },
+        { "name": "maxPlayers", "type": "integer", "required": true },
+        { "name": "tps", "type": "number", "required": false },
+        { "name": "version", "type": "string", "required": false },
+        {
+          "name": "state",
+          "type": "enum",
+          "values": ["STARTING", "RUNNING", "RESTARTING", "STOPPING", "OFFLINE", "UPDATE_READY"],
+          "required": false
+        },
+        { "name": "detail", "type": "string", "required": false },
+        { "name": "activeSpecSessions", "type": "integer", "required": false },
+        { "name": "telegramSuppressed", "type": "boolean", "required": false }
+      ],
+      "example": {
+        "onlinePlayers": 7,
+        "maxPlayers": 60,
+        "tps": 19.98,
+        "version": "1.21.8",
+        "state": "RUNNING",
+        "detail": "scheduled restart in 10m",
+        "activeSpecSessions": 1,
+        "telegramSuppressed": false
+      }
+    },
+    {
+      "type": "SERVER_HEARTBEAT",
+      "direction": "plugin_to_backend",
+      "status": "active",
+      "pluginTransport": "typed",
+      "summary": "periodic liveness and metrics snapshot; acked on purpose",
+      "fields": [
+        { "name": "onlinePlayers", "type": "integer", "required": true },
+        { "name": "maxPlayers", "type": "integer", "required": true },
+        { "name": "tps", "type": "number", "required": false },
+        { "name": "activeSpecSessions", "type": "integer", "required": false }
+      ],
+      "example": {
+        "onlinePlayers": 7,
+        "maxPlayers": 60,
+        "tps": 19.95,
+        "activeSpecSessions": 1
+      }
+    },
+    {
+      "type": "SERVER_HELLO",
+      "direction": "plugin_to_backend",
+      "status": "reserved",
+      "pluginTransport": "absent",
+      "summary": "legacy in-band hello; auth moved to the pre-upgrade signature, the frame is refused",
+      "fields": [
+        { "name": "serverId", "type": "string", "required": true },
+        { "name": "clientNonce", "type": "string", "required": true }
+      ],
+      "example": {
+        "serverId": "game-1",
+        "clientNonce": "abcdefgh12"
+      }
+    },
+    {
+      "type": "SERVER_READY",
+      "direction": "backend_to_plugin",
+      "status": "reserved",
+      "pluginTransport": "absent",
+      "summary": "registration ack with the heartbeat cadence; defined, not emitted yet",
+      "fields": [
+        { "name": "serverNonce", "type": "string", "required": true },
+        { "name": "heartbeatIntervalMs", "type": "integer", "required": true },
+        { "name": "heartbeatTimeoutMs", "type": "integer", "required": true }
+      ],
+      "example": {
+        "serverNonce": "abcdefgh12",
+        "heartbeatIntervalMs": 15000,
+        "heartbeatTimeoutMs": 45000
+      }
+    },
+    {
+      "type": "LOCALE_PUSH",
+      "direction": "backend_to_plugin",
+      "status": "active",
+      "pluginTransport": "raw",
+      "pluginDto": "LocalePushPayload",
+      "summary": "full content of one locale file; replaces the plugin's copy wholesale",
+      "fields": [
+        { "name": "locale", "type": "string", "required": true },
+        { "name": "revision", "type": "string", "required": true },
+        { "name": "content", "type": "string", "required": true }
+      ],
+      "example": {
+        "locale": "ru",
+        "revision": "9f2c1ab4de77c001",
+        "content": "prefix: \"<gray>[</gray><gold>SC</gold><gray>]</gray> \"\nguest:\n  prompt: \"Сначала привяжите аккаунт\"\n"
+      }
+    },
+    {
+      "type": "LOCALE_ACK",
+      "direction": "plugin_to_backend",
+      "status": "active",
+      "pluginTransport": "raw",
+      "pluginDto": "LocaleAckPayload",
+      "summary": "outcome of an applied push, correlated with the push",
+      "fields": [
+        { "name": "locale", "type": "string", "required": true },
+        { "name": "revision", "type": "string", "required": true },
+        { "name": "accepted", "type": "boolean", "required": true },
+        { "name": "reason", "type": "string", "required": false }
+      ],
+      "example": {
+        "locale": "ru",
+        "revision": "9f2c1ab4de77c001",
+        "accepted": true
+      }
+    },
+    {
+      "type": "ACK",
+      "direction": "both",
+      "status": "active",
+      "pluginTransport": "typed",
+      "summary": "frame acknowledgement; every non-transport frame expects one",
+      "fields": [
+        { "name": "ackedId", "type": "string", "required": true }
+      ],
+      "example": {
+        "ackedId": "a1b2c3d4e5f6"
+      }
+    },
+    {
+      "type": "ERROR",
+      "direction": "backend_to_plugin",
+      "status": "active",
+      "pluginTransport": "typed",
+      "summary": "transport-level error report",
+      "fields": [
+        { "name": "code", "type": "string", "required": true },
+        { "name": "message", "type": "string", "required": true },
+        { "name": "inReplyTo", "type": "string", "required": false }
+      ],
+      "example": {
+        "code": "BAD_HMAC",
+        "message": "signature mismatch",
+        "inReplyTo": "a1b2c3d4e5f6"
+      }
+    }
+  ]
+}
