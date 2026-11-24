@@ -43,6 +43,21 @@ const envSchema = z.object({
     .transform((raw) => ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase())),
   // outbound broadcast rate ceiling (telegram allows ~30/s)
   NOTIFICATION_RATE_PER_SECOND: z.coerce.number().int().min(1).max(30).default(30),
+
+  // pretty name of the game server shown in telegram prompts
+  SERVER_NAME: z.string().min(1).max(64).default("ServerCore"),
+
+  // sliding window rate limits for auth request issuance and approvals
+  AUTH_RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().min(10).max(3600).default(300),
+  AUTH_RATE_LIMIT_REQUESTS_PER_PLAYER: z.coerce.number().int().min(1).max(100).default(5),
+  AUTH_RATE_LIMIT_REQUESTS_PER_TELEGRAM: z.coerce.number().int().min(1).max(100).default(10),
+  AUTH_RATE_LIMIT_APPROVALS_PER_TELEGRAM: z.coerce.number().int().min(1).max(200).default(30),
+
+  // telegram message effect for the auth prompt, unset = no effect
+  AUTH_MESSAGE_EFFECT_ID: z.string().min(1).max(64).optional(),
+
+  // how often pending auth requests are swept for expiry and delivery retries
+  AUTH_SWEEP_INTERVAL_MS: z.coerce.number().int().min(250).max(60_000).default(1_000),
 })
 
 export type AppConfig = {
@@ -66,6 +81,13 @@ export type AppConfig = {
   serverOfflineAlertMinutes: number
   notifyUsersOnOffline: boolean
   notificationRatePerSecond: number
+  serverName: string
+  authRateLimitWindowSeconds: number
+  authRateLimitRequestsPerPlayer: number
+  authRateLimitRequestsPerTelegram: number
+  authRateLimitApprovalsPerTelegram: number
+  authMessageEffectId?: string
+  authSweepIntervalMs: number
 }
 
 export class ConfigError extends Error {
@@ -129,5 +151,12 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     serverOfflineAlertMinutes: result.data.SERVER_OFFLINE_ALERT_MINUTES,
     notifyUsersOnOffline: result.data.NOTIFY_USERS_ON_OFFLINE,
     notificationRatePerSecond: result.data.NOTIFICATION_RATE_PER_SECOND,
+    serverName: result.data.SERVER_NAME,
+    authRateLimitWindowSeconds: result.data.AUTH_RATE_LIMIT_WINDOW_SECONDS,
+    authRateLimitRequestsPerPlayer: result.data.AUTH_RATE_LIMIT_REQUESTS_PER_PLAYER,
+    authRateLimitRequestsPerTelegram: result.data.AUTH_RATE_LIMIT_REQUESTS_PER_TELEGRAM,
+    authRateLimitApprovalsPerTelegram: result.data.AUTH_RATE_LIMIT_APPROVALS_PER_TELEGRAM,
+    authMessageEffectId: result.data.AUTH_MESSAGE_EFFECT_ID,
+    authSweepIntervalMs: result.data.AUTH_SWEEP_INTERVAL_MS,
   }
 }

@@ -48,6 +48,7 @@ export type MessageType = (typeof MESSAGE_TYPES)[number]
 
 /** types the backend pushes to the plugin, everything else originates plugin-side */
 export const BACKEND_TO_PLUGIN_TYPES: readonly MessageType[] = [
+  "AUTH_REQUEST",
   "AUTH_APPROVED",
   "AUTH_REJECTED",
   "AUTH_EXPIRED",
@@ -111,6 +112,8 @@ export const payloadSchemas = {
     minecraftUuid,
     username,
     sessionId: serverId,
+    // seconds left before the request dies, lets the plugin run a real countdown
+    expiresInSeconds: z.number().int().min(1).max(600).optional(),
   }),
 
   AUTH_APPROVED: z.object({

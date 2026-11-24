@@ -10,6 +10,8 @@ export interface AuthRequest {
   sessionId: string
   tokenHash: string
   status: AuthRequestStatus
+  /** first successful prompt delivery to telegram, null while retries are due */
+  deliveredAt: Date | null
   expiresAt: Date
   createdAt: Date
 }
@@ -21,6 +23,7 @@ const authRequestSchema = new Schema<AuthRequest>(
     sessionId: { type: String, required: true },
     tokenHash: { type: String, required: true },
     status: { type: String, enum: AUTH_REQUEST_STATUSES, required: true },
+    deliveredAt: { type: Date, default: null },
     expiresAt: { type: Date, required: true },
   },
   { timestamps: true },
@@ -30,6 +33,8 @@ const authRequestSchema = new Schema<AuthRequest>(
 authRequestSchema.index({ tokenHash: 1 }, { unique: true })
 // pending requests per session for the cancel-previous-request flow
 authRequestSchema.index({ sessionId: 1, status: 1 })
+// delivery retry sweep picks pending requests that never reached telegram
+authRequestSchema.index({ status: 1, deliveredAt: 1, expiresAt: 1 })
 // ttl: expired requests are dead weight, mongo drops them automatically
 authRequestSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })
 

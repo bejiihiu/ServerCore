@@ -13,12 +13,18 @@ export type BotOpsDeps = {
   stats: StatsService
 }
 
+/** optional telegram handlers contributed by feature modules */
+export type BotModuleDeps = {
+  /** login confirmation buttons, wired by the authentication module */
+  registerCallbacks?: (bot: Bot) => void
+}
+
 /**
  * builds the telegram bot with all command handlers registered. returns null
  * when no token is configured - the backend then runs without the bot instead
  * of crashing. the caller owns start/stop lifecycle.
  */
-export function createBot(config: AppConfig, logger: Logger, ops?: BotOpsDeps): Bot | null {
+export function createBot(config: AppConfig, logger: Logger, ops?: BotOpsDeps, modules?: BotModuleDeps): Bot | null {
   if (!config.botToken) {
     logger.warn("no bot token configured, telegram bot disabled")
     return null
@@ -33,6 +39,7 @@ export function createBot(config: AppConfig, logger: Logger, ops?: BotOpsDeps): 
   if (ops) {
     registerStatsCommand(bot, { stats: ops.stats, adminIds: config.adminTelegramIds, locale: config.opsLocale })
   }
+  modules?.registerCallbacks?.(bot)
 
   return bot
 }
