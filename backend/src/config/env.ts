@@ -43,6 +43,9 @@ const envSchema = z.object({
     .transform((raw) => ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase())),
   // outbound broadcast rate ceiling (telegram allows ~30/s)
   NOTIFICATION_RATE_PER_SECOND: z.coerce.number().int().min(1).max(30).default(30),
+  // custom emoji entities need telegram premium on the bot owner (bot api 9.4);
+  // off by default, everything degrades to unicode fallbacks
+  BOT_CUSTOM_EMOJI: z.enum(["true", "false"]).default("false"),
 })
 
 export type AppConfig = {
@@ -66,6 +69,7 @@ export type AppConfig = {
   serverOfflineAlertMinutes: number
   notifyUsersOnOffline: boolean
   notificationRatePerSecond: number
+  botCustomEmoji: boolean
 }
 
 export class ConfigError extends Error {
@@ -129,5 +133,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     serverOfflineAlertMinutes: result.data.SERVER_OFFLINE_ALERT_MINUTES,
     notifyUsersOnOffline: result.data.NOTIFY_USERS_ON_OFFLINE,
     notificationRatePerSecond: result.data.NOTIFICATION_RATE_PER_SECOND,
+    botCustomEmoji: result.data.BOT_CUSTOM_EMOJI === "true",
   }
 }
