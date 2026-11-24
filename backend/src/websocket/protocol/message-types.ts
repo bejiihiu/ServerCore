@@ -307,7 +307,6 @@ export const payloadSchemas = {
 } as const satisfies Record<MessageType, z.ZodType>
 
 export type PayloadOf<T extends MessageType> = z.output<(typeof payloadSchemas)[T]>
-export type EnvelopePayloads = { [T in MessageType]: PayloadOf<T> }
 
 /**
  * wire type names are open-ended on purpose: a newer plugin may send a type
