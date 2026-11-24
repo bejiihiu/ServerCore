@@ -41,6 +41,6 @@ export async function handleStartCommand(ctx: Context): Promise<void> {
   )
 }
 
-export function registerStartCommand(bot: Bot): void {
+export function registerStartCommand<C extends Context>(bot: Bot<C>): void {
   bot.command("start", (ctx) => handleStartCommand(ctx))
 }

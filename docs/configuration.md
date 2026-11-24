@@ -18,9 +18,10 @@ All variables come from `.env` (copy `.env.example` as the starting point). Plac
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `BOT_TOKEN` | yes | — | Token issued by [@BotFather](https://t.me/BotFather) |
-| `BOT_USERNAME` | no | — | Bot username without `@`, used to render deep links (inferred from the token when omitted) |
-| `TELEGRAM_GROUP_ID` | yes | — | Numeric chat ID of the private community group the bot administers |
-| `TELEGRAM_API_BASE` | no | Telegram default | Override for self-hosted Bot API servers |
+| `TELEGRAM_BOT_USERNAME` | no | `ServerCoreBot` | Bot username used in deep links |
+| `GROUP_CHAT_ID` | no | — | Numeric chat ID of the closed community group (voting + membership). Empty disables the group flow |
+| `ADMIN_CHAT_ID` | no | — | Chat that receives duplicates of key events (approvals, anomalies, expired votes) |
+| `DEFAULT_LANGUAGE` | no | `ru` | Interface language for group and admin messages (`ru` / `en`) |
 
 ### WebSocket gateway
 
@@ -37,12 +38,16 @@ All variables come from `.env` (copy `.env.example` as the starting point). Plac
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `LOG_LEVEL` | no | `info` | Pino level: `trace`, `debug`, `info`, `warn`, `error`, `fatal` |
-| `ADMISSION_VOTE_HOURS` | no | `3` | Voting window duration |
-| `ADMISSION_QUORUM_PERCENT` | no | `50` | Minimum share of eligible voters who must vote |
-| `ADMISSION_APPROVAL_PERCENT` | no | `50` | Minimum share of valid votes that must be in favour (strictly greater) |
-| `ADMISSION_COOLDOWN_MONTHS` | no | `3` | Reapplication cooldown per Minecraft UUID |
-| `AUTH_TOKEN_TTL_SECONDS` | no | `75` | One-time login token lifetime (allowed range 60–90) |
-| `AUTH_RATE_LIMIT_PER_HOUR` | no | `30` | Maximum auth requests per account per hour |
+| `APPLICATION_QUESTIONS_RU` | no | spec defaults | Questionnaire questions (Russian), json array of 1–10 strings |
+| `APPLICATION_QUESTIONS_EN` | no | spec defaults | Questionnaire questions (English), must match the RU list length |
+| `VOTING_DURATION_MINUTES` | no | `180` | Voting window duration |
+| `VOTING_SCAN_INTERVAL_MS` | no | `60000` | How often the scheduler sweeps for expired votings |
+| `GROUP_INVITE_TTL_HOURS` | no | `48` | Lifetime of a one-time group invite |
+| `VOTE_BUTTON_ICONS_ENABLED` | no | `false` | Custom emoji icons on vote buttons (needs Premium on the bot owner) |
+| `VOTE_BUTTON_ICON_ACCEPT_ID` / `VOTE_BUTTON_ICON_REJECT_ID` | no | — | Custom emoji ids for the vote buttons |
+| `APPROVAL_MESSAGE_EFFECT_ID` | no | confetti | Message effect played on the approval notification |
+| `APPLICATION_START_LIMIT` / `APPLICATION_START_WINDOW_MS` | no | `3` / `60000` | Rate limit on questionnaire starts per account |
+| `AUTH_REQUEST_TTL_SECONDS` | no | `75` | One-time login token lifetime (allowed range 60–90) |
 
 Secrets never belong in the repository or in logs — keep them only in the environment.
 

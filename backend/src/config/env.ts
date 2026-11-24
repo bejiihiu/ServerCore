@@ -5,6 +5,14 @@ const serverCredentialsSchema = z.record(
   z.string().min(32).max(256),
 )
 
+/** int field that treats an empty env value as "not configured" */
+function optionalInt() {
+  return z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    z.coerce.number().int().optional(),
+  )
+}
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   PORT: z.coerce.number().int().min(1).max(65535).default(8080),
@@ -17,6 +25,57 @@ const envSchema = z.object({
   BOT_TOKEN: z.string().min(1).optional(),
   TELEGRAM_BOT_USERNAME: z.string().min(1).default("ServerCoreBot"),
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info"),
+
+  // closed telegram group the voting runs in and approved members join.
+  // empty until the group exists — the group flow degrades gracefully
+  GROUP_CHAT_ID: optionalInt(),
+  // admin chat that receives duplicates of key events (approvals, anomalies)
+  ADMIN_CHAT_ID: optionalInt(),
+
+  // default interface language for group/admin messages, per-user language
+  // overrides this for personal messages
+  DEFAULT_LANGUAGE: z.enum(["ru", "en"]).default("ru"),
+
+  // questionnaire questions as json arrays, one entry per question.
+  // ru and en lists must have the same length
+  APPLICATION_QUESTIONS_RU: z.string().default(
+    JSON.stringify([
+      "Как давно играешь в Minecraft?",
+      "Почему хочешь присоединиться?",
+      "Как часто планируешь играть?",
+      "Есть ли опыт игры на подобных серверах?",
+    ]),
+  ),
+  APPLICATION_QUESTIONS_EN: z.string().default(
+    JSON.stringify([
+      "How long have you been playing Minecraft?",
+      "Why do you want to join?",
+      "How often do you plan to play?",
+      "Do you have experience on similar servers?",
+    ]),
+  ),
+
+  // voting window, the spec value is 3 hours
+  VOTING_DURATION_MINUTES: z.coerce.number().int().min(1).default(180),
+  // how often the scheduler sweeps for expired votings
+  VOTING_SCAN_INTERVAL_MS: z.coerce.number().int().min(1000).default(60_000),
+
+  // one-time group invite lifetime
+  GROUP_INVITE_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(48),
+
+  // vote button icons via icon_custom_emoji_id (bot api 9.4). needs telegram
+  // premium on the bot owner — default off until confirmed, api degrades to
+  // plain buttons on failure
+  VOTE_BUTTON_ICONS_ENABLED: z.coerce.boolean().default(false),
+  VOTE_BUTTON_ICON_ACCEPT_ID: z.string().default(""),
+  VOTE_BUTTON_ICON_REJECT_ID: z.string().default(""),
+
+  // message effect (bot api 7.4) played on the approval celebration message
+  APPROVAL_MESSAGE_EFFECT_ID: z.string().default("5104841245759776310"),
+
+  // application starts per rate-limit window per telegram account
+  APPLICATION_START_LIMIT: z.coerce.number().int().min(1).default(3),
+  APPLICATION_START_WINDOW_MS: z.coerce.number().int().min(1000).default(60_000),
 
   // json object mapping server id -> per-server secret
   SERVERCORE_SERVER_CREDENTIALS: z.string().min(1).default("{}"),
@@ -47,6 +106,17 @@ export type AppConfig = {
   wsReplayWindowMs: number
   wsNonceTtlMs: number
   authRequestTtlSeconds: number
+  groupChatId: number | null
+  adminChatId: number | null
+  defaultLanguage: "ru" | "en"
+  questions: { ru: string[]; en: string[] }
+  votingDurationMs: number
+  votingScanIntervalMs: number
+  groupInviteTtlMs: number
+  applicationStartLimit: number
+  applicationStartWindowMs: number
+  voteButtonIcons: { enabled: boolean; acceptId: string | null; rejectId: string | null }
+  approvalEffectId: string | null
 }
 
 export class ConfigError extends Error {
@@ -73,10 +143,36 @@ function parseServerCredentials(raw: string): Record<string, string> {
   return result.data
 }
 
+/** parses a json string array of question texts, with shape validation */
+function parseQuestions(raw: string, field: string): string[] {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw) as unknown
+  } catch {
+    throw new ConfigError([`${field} is not valid json`])
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0 || parsed.length > 10) {
+    throw new ConfigError([`${field} must be a json array with 1..10 questions`])
+  }
+  const questions = parsed.map((item) => {
+    if (typeof item !== "string" || item.trim().length === 0 || item.length > 500) {
+      throw new ConfigError([`${field} must contain non-empty strings of at most 500 chars`])
+    }
+    return item.trim()
+  })
+  return questions
+}
+
 export function loadConfig(env: Record<string, string | undefined> = process.env): AppConfig {
   const result = envSchema.safeParse(env)
   if (!result.success) {
     throw new ConfigError(result.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`))
+  }
+
+  const questionsRu = parseQuestions(result.data.APPLICATION_QUESTIONS_RU, "APPLICATION_QUESTIONS_RU")
+  const questionsEn = parseQuestions(result.data.APPLICATION_QUESTIONS_EN, "APPLICATION_QUESTIONS_EN")
+  if (questionsRu.length !== questionsEn.length) {
+    throw new ConfigError(["APPLICATION_QUESTIONS_RU and APPLICATION_QUESTIONS_EN must have the same length"])
   }
 
   return {
@@ -95,5 +191,20 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     wsReplayWindowMs: result.data.WS_REPLAY_WINDOW_MS,
     wsNonceTtlMs: result.data.WS_NONCE_TTL_MS,
     authRequestTtlSeconds: result.data.AUTH_REQUEST_TTL_SECONDS,
+    groupChatId: result.data.GROUP_CHAT_ID ?? null,
+    adminChatId: result.data.ADMIN_CHAT_ID ?? null,
+    defaultLanguage: result.data.DEFAULT_LANGUAGE,
+    questions: { ru: questionsRu, en: questionsEn },
+    votingDurationMs: result.data.VOTING_DURATION_MINUTES * 60_000,
+    votingScanIntervalMs: result.data.VOTING_SCAN_INTERVAL_MS,
+    groupInviteTtlMs: result.data.GROUP_INVITE_TTL_HOURS * 3_600_000,
+    applicationStartLimit: result.data.APPLICATION_START_LIMIT,
+    applicationStartWindowMs: result.data.APPLICATION_START_WINDOW_MS,
+    voteButtonIcons: {
+      enabled: result.data.VOTE_BUTTON_ICONS_ENABLED,
+      acceptId: result.data.VOTE_BUTTON_ICON_ACCEPT_ID || null,
+      rejectId: result.data.VOTE_BUTTON_ICON_REJECT_ID || null,
+    },
+    approvalEffectId: result.data.APPROVAL_MESSAGE_EFFECT_ID || null,
   }
 }
