@@ -18,6 +18,17 @@ import kz.bejiihiu.servercore.ws.BackendGateway
  * subsystem boundaries. Subsystem objects themselves are not parked here: an
  * installer owns what it builds and exposes it narrowly, so the boot order
  * stays visible in one place.
+ *
+ * Installer contract: every `boot/<Feature>Installer` has one owner (the plugin field
+ * assigned in `onEnable`) and three optional phases. `install()` runs once on
+ * the enable path (the global region thread) and may be abandoned halfway —
+ * a boot blocker disables the plugin and `stop()` then runs against whatever
+ * was actually built, so nullable subsystem fields are the norm. `start()` is
+ * for work that must wait until the rest of the graph exists (listeners,
+ * transport connect). `stop()` runs once from `onDisable`, must tolerate a
+ * failed or partial install, must not throw, and must finish before [io] is
+ * shut down. Nothing here may block the enable path: long work goes to [io]
+ * or a Folia scheduler.
  */
 class PluginContext(
     val plugin: ServerCorePlugin,

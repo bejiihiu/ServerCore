@@ -118,7 +118,8 @@ export type AuditEvent = {
   details?: Record<string, unknown>
 }
 
-/** append-only audit writer, shared by every admission service */
+/** append-only audit writer, shared by every admission service. a rejection
+ * propagates to the caller — failures here are not silent bookkeeping */
 export interface AuditSink {
   record(event: AuditEvent): Promise<void>
 }
@@ -146,10 +147,18 @@ export function applicationDecisionMessageType(outcome: "APPROVED" | "REJECTED" 
   return "APPLICATION_REJECTED"
 }
 
+/** time source injected wherever a decision depends on "now"; tests use
+ * a fixed clock instead of sleeping, production passes Date.now */
 export interface Clock {
   nowMs(): number
 }
 
+/**
+ * account rows keyed by uuid and telegram id. the account module is the only
+ * writer; mutations that change status are guarded transitions (see
+ * `setStatus`) rather than blind updates, so a lost race reports false instead
+ * of overwriting newer state.
+ */
 export interface UserRepository {
   findByUuid(uuid: string): Promise<UserInfo | null>
   findByTelegramId(telegramId: string): Promise<UserInfo | null>
@@ -165,6 +174,12 @@ export interface UserRepository {
   setLanguage(uuid: string, language: Lang): Promise<void>
 }
 
+/**
+ * applications plus their embedded voting counters. admission services own
+ * writes; every transition is guarded — only a live application can be
+ * decided or extended, and only once. a caller that lost the race gets false
+ * and must skip its side effects instead of repeating them.
+ */
 export interface ApplicationRepository {
   /**
    * inserts a new application. "duplicate-live" means the partial unique
@@ -205,6 +220,11 @@ export interface ApplicationRepository {
   findExpiredVotings(now: Date): Promise<ApplicationInfo[]>
 }
 
+/**
+ * individual ballots. one vote per (application, voter) is a database
+ * invariant — the compound unique index, not a service check — so insert
+ * reports "duplicate" and the caller treats a repeated press as a no-op.
+ */
 export interface VoteRepository {
   /**
    * insert is deduplicated by (applicationId, voterUuid): "duplicate" means
@@ -219,12 +239,22 @@ export interface VoteRepository {
   countByDecision(applicationId: string): Promise<{ votesFor: number; votesAgainst: number }>
 }
 
+/**
+ * telegram message ids tied to an application, so vote keyboards can be edited
+ * or removed after a restart. this is delivery bookkeeping, not the tally —
+ * losing rows only costs a stale keyboard, never a vote.
+ */
 export interface VotingMessageRepository {
   saveMany(messages: VotingMessageInfo[]): Promise<void>
   listByApplication(applicationId: string): Promise<VotingMessageInfo[]>
   deleteByApplication(applicationId: string): Promise<void>
 }
 
+/**
+ * single-use invite links, keyed by telegram's link name. `markUsed` is the
+ * atomic gate that decides which join activates an account: two joins racing
+ * on one link produce exactly one "used".
+ */
 export interface GroupInviteRepository {
   insert(invite: NewGroupInvite): Promise<void>
   findByName(name: string): Promise<GroupInviteInfo | null>
@@ -232,6 +262,11 @@ export interface GroupInviteRepository {
   markUsed(name: string, usedAt: Date): Promise<"used" | "already-used" | "not-found">
 }
 
+/**
+ * durable questionnaire progress, so a half-filled form survives a bot
+ * restart. the draft is claimed by exactly one delete (single-winner), which
+ * is also the anti-double-submit gate for the whole application.
+ */
 export interface ApplicationDraftRepository {
   save(draft: DraftInfo): Promise<void>
   findByTelegramId(telegramId: string): Promise<DraftInfo | null>

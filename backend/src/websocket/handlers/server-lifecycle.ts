@@ -45,6 +45,15 @@ export class ServerDirectory {
 
 type PlayerCountPatch = Pick<ServerRuntimeStatus, "onlinePlayers" | "maxPlayers" | "tps" | "activeSpecSessions">
 
+/**
+ * module seams fired by the lifecycle handlers. every hook is called
+ * synchronously on the socket's frame path, so a throw fails that frame: the
+ * connection logs it and answers with ERROR (inReplyTo set) while keeping the
+ * socket. work that can be slow, or must not fail the frame, is started
+ * detached by the hook itself (the composition root does this for the auth and
+ * notification pipelines). a missing hook means the module is not wired, not
+ * an error; `onStateChange` only fires on a real state flip.
+ */
 export type LifecycleHooks = {
   /** fires only when the explicit ops state actually changes, not on every status frame */
   onStateChange?: (

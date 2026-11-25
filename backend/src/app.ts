@@ -77,6 +77,17 @@ class FanoutAdapter implements NotificationFanout {
   }
 }
 
+/**
+ * composition root. constructs every service and port, wires the websocket
+ * handlers and lifecycle hooks once, starts the background loops, and owns
+ * the shutdown order. no business rules live here — if a decision needs a
+ * database or a message body it belongs in a module/service, not in this file.
+ *
+ * wiring order is deliberate: config -> database -> gateway -> handlers ->
+ * services that depend on them -> bots/schedulers. anything constructed late
+ * receives a lazily dereferenced reference (the bot api, the gateway binding)
+ * instead of being reordered around the bot lifecycle.
+ */
 async function main(): Promise<void> {
   let config: AppConfig
   try {

@@ -100,6 +100,7 @@ A detailed, step-by-step walkthrough with real configuration examples lives in [
 | Document | Contents |
 |---|---|
 | [Architecture](docs/architecture.md) | Components, threading model, data flow |
+| [Extending](docs/extending.md) | Recipes for a new plugin module, wire message, bar or backend module |
 | [Installation](docs/installation.md) | Full setup guide with real examples |
 | [First run](docs/first-run.md) | Short operator checklist: bring-up order, expected log lines, where state lives |
 | [Configuration](docs/configuration.md) | Every env var and config key |
