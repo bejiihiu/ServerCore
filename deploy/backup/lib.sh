@@ -88,7 +88,9 @@ SC_STATE_FILES=(
   spec-restore-journal.json
 )
 
-SC_AUDIT_DIR=audit
+# exported so the scripts that source this file can use it (and so a standalone
+# lint run sees a reader instead of a dead assignment)
+export SC_AUDIT_DIR=audit
 
 # prints the plugin state files present in $1, one per line: the known list
 # first, then any extra top-level *.json. config.yml and locales/ are not state.

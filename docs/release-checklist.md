@@ -40,6 +40,12 @@ Optional local dry run of the same artifact CI will ship:
 ./gradlew :plugin:build --no-daemon -Pversion="build-$(git rev-list --count HEAD)-$(git rev-parse --short=7 HEAD)"
 ```
 
+Or let GitHub do the whole thing without publishing: run the `Release` workflow manually
+(**Actions → Release → Run workflow**). A `workflow_dispatch` run uses the stand-in version
+`build-dryrun`, goes through the build, the backend checks, the staging and the jar verification, and
+then stops — the `Create release` step only runs for a `build-*` tag push. Use it after touching
+`release.yml`; nothing appears on the releases page.
+
 ## 3. Cut the release
 
 ```bash
@@ -64,7 +70,7 @@ Pushing a `build-*` tag is the release trigger. Nothing else publishes.
 | Stage the jar | the build did not produce `ServerCore-<tag>.jar` |
 | Package the backend | the tarball is built from `package.json bun.lock tsconfig.json src tests .env.example Dockerfile .dockerignore`, with `node_modules` and `.env` excluded |
 | Verify the staged jar | the jar is thin (`kz/bejiihiu/servercore/libs/kotlin/collections/CollectionsKt.class` missing) or `paper-plugin.yml` does not carry exactly `version: <tag>` |
-| Generate checksums | `sha256sum --text *.jar *.tar.gz > SHA256SUMS.txt` — bare file names, two-space separator, no `./` prefix |
+| Generate checksums | `sha256sum --text ServerCore-<version>.jar servercore-backend-<version>.tar.gz > SHA256SUMS.txt` — bare file names, two-space separator, no `./` prefix; a missing asset fails the command |
 | Publish | an expected asset is missing from the upload (`fail_on_unmatched_files`) |
 
 What CI does **not** prove: that the shaded jar loads on a real Folia server, that the backend actually

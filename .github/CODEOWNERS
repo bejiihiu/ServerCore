@@ -1,0 +1,3 @@
+# every path: the repo owner. this is also how Dependabot pull requests get a
+# review request now that `reviewers:` is gone from dependabot.yml.
+* @bejiihiu

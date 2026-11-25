@@ -75,27 +75,36 @@ connection strings, not an unknown custom format.
 
 | Item | State |
 |---|---|
-| workflow actions pinned to a fixed ref | yes — `actions/checkout@v6`, `actions/setup-java@v6`, `gradle/actions/setup-gradle@v6`, `oven-sh/setup-bun@v2`, `softprops/action-gh-release@v2`. No `@master`, `@main` or branch refs. Tags are still mutable (see follow-ups). |
+| workflow actions pinned to a fixed ref | yes — `actions/checkout@v6`, `actions/setup-java@v6`, `gradle/actions/setup-gradle@v6`, `oven-sh/setup-bun@v2`, `softprops/action-gh-release@v2`. No `@master`, `@main` or branch refs. Tags are still mutable (see open items). |
 | Gradle wrapper integrity | `distributionSha256Sum` set for Gradle 9.9.2 and verified against the downloaded distribution; `validateDistributionUrl=true` |
-| `curl … \| bash` or remote script execution in CI | none — both workflows only run `./gradlew` and `bun` |
+| `curl … \| bash` or remote script execution in CI | none — the workflows only run `./gradlew`, `bun`, `tar`/`unzip` and the distro's `shellcheck` package |
 | release asset integrity | `SHA256SUMS.txt` is published with every release and the in-plugin updater refuses a jar whose hash does not match |
 | jar contents verified before release | yes — the workflow fails if the shaded Kotlin stdlib is missing or `paper-plugin.yml` does not carry the tag |
 | container build | `backend/Dockerfile` installs with `--frozen-lockfile --production`, runs as a non-root user, has a healthcheck |
 | repository protocol for dependencies | HTTPS everywhere (Maven Central, papermc, codemc, helpch, npm) |
-| backend toolchain in CI | `bun-version: latest` — floats between runs |
+| backend toolchain in CI | `bun-version: "1.4.2"` pinned in both `ci.yml` and `release.yml` — a Bun release cannot change what CI measures overnight |
 | Docker base image | `oven/bun:1.4-slim` — floats within the 1.4 line |
-| automated dependency updates | Dependabot alerts and version updates are disabled on the repository |
+| deploy scripts are linted | `shellcheck -x deploy/*.sh deploy/backup/*.sh` as a blocking `ci` job (the distro package on `ubuntu-latest`), so backup/restore drift is caught before it ships |
+| automated dependency updates | Dependabot version updates enabled for `bun` (`/backend`), `gradle` (`/`) and `github-actions` (`/`): weekly, one PR for all minor+patch per ecosystem, majors one per dependency. Auto-merge is **not** enabled — every PR still has to pass `ci` and be merged by hand. Dependabot alerts do not read `bun.lock`, so backend *transitive* advisories are still only caught by `bun audit` |
 | Gradle artifact verification | no `gradle/verification-metadata.xml`; artifacts are resolved by coordinate only |
 
-## Follow-ups
+## Open items
 
-1. **Enable Dependabot** (alerts + version updates) for the `bun` and `gradle` ecosystems — it is the
-   cheapest early warning for exactly the classes of advisory listed above.
-2. **Pin CI actions to commit SHAs.** Major-version tags are convenient but mutable; a SHA is not.
-3. **Pin `bun-version`** in both workflows (for example `1.4.x`) so a toolchain release cannot change
-   what CI measures overnight.
-4. **Consider Gradle dependency verification** (`--write-verification-metadata sha256`) once the
-   version catalog settles; it is the mirror image of `distributionSha256Sum` for the artifacts
-   themselves.
-5. **Re-check the netty advisories** whenever PacketEvents publishes a version with a newer netty-all
-   pin, and once more when Folia's API moves off log4j 2.26.0 / guava 33.6.0.
+Automated (nothing to do by hand):
+
+| Item | Where |
+|---|---|
+| version updates for backend, plugin and workflow actions | `.github/dependabot.yml` — grouped weekly PRs, majors in their own PR |
+| CI/release toolchain drift | `bun-version` pinned to `1.4.2`, JDK 25 and Gradle come from the wrapper + `setup-java`/`setup-gradle@v6` |
+| shell correctness of the operator scripts | blocking `shellcheck` job in `.github/workflows/ci.yml` |
+| release artifacts are buildable and self-consistent | `Release` dry run (`workflow_dispatch`) builds and verifies the jar, the bundle and `SHA256SUMS.txt`, then stops before publishing |
+
+Still needs a human:
+
+| Item | Why Dependabot/CI cannot do it |
+|---|---|
+| **MongoDB backups** | Atlas M0 ships no backups, so there is nothing to schedule server-side: someone has to run `deploy/backup/backup.sh` (or an equivalent cron on the host) and keep the archive off the Atlas cluster. The script is linted, not scheduled — see [backup-restore.md](backup-restore.md) |
+| refreshing [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md) | license text is curated by hand after a dependency change; a bot bump only updates the version |
+| pinning workflow actions to commit SHAs | major-version tags are convenient but mutable; a SHA is not, and Dependabot will happily move a pinned SHA for you once the policy is chosen |
+| re-checking netty/guava/log4j on the `compileOnly` classpath | those versions belong to Folia and PacketEvents, not to us; a bump here would only change a build-report number |
+| Gradle dependency verification | `--write-verification-metadata sha256` is worth doing once the version catalog settles; that is a one-off decision, not an update |
