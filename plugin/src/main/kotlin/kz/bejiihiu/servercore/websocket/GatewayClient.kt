@@ -92,6 +92,8 @@ private class OutgoingFrame(
     val key: String,
     val durability: Durability,
     val enqueuedAt: Long,
+    /** correlated backend failures this frame already survived */
+    val errorAttempts: Int = 0,
 )
 
 private class InFlight(
@@ -99,6 +101,9 @@ private class InFlight(
     var attempts: Int,
     var deadline: Long,
 )
+
+/** a frame the backend failed to process, waiting for the retry tick */
+private class ErrorRetry(val frame: OutgoingFrame, val dueAt: Long)
 
 /**
  * the plugin side of the backend websocket gateway.
@@ -126,6 +131,8 @@ class GatewayClient(
     private val durablePark: DurableOutbox,
     /** injectable clock so the state machine is testable */
     private val now: () -> Long = { System.currentTimeMillis() },
+    /** warnings about frames the backend rejected or abandoned; the plugin wires it to its logger */
+    private val log: (String) -> Unit = {},
 ) : WebSocket.Listener {
     private val codec = EnvelopeCodec(config.secret)
     private val httpClient: HttpClient = HttpClient.newBuilder()
@@ -144,6 +151,28 @@ class GatewayClient(
 
     /** frames sent but not yet acked, keyed by envelope id */
     private val inFlight = ConcurrentHashMap<String, InFlight>()
+
+    /**
+     * frames the backend acked but may still answer with a correlated ERROR.
+     * an ack means "received", not "processed", and the failure answer follows
+     * on the same connection, so a retired frame has to stay addressable for a
+     * short window. only replayable classes are kept: a heartbeat storm must
+     * never evict the frames that actually need a retry.
+     */
+    private val recentlyAcked = LinkedHashMap<String, OutgoingFrame>()
+    private val recentlyAckedLock = Any()
+
+    /**
+     * at least the outbox cap: a reconnect replays up to that many frames in a
+     * burst, and a handler failure behind the burst must still find its frame
+     */
+    private val recentlyAckedLimit = maxOf(config.outboxMaxEntries, MIN_RECENTLY_ACKED)
+
+    /** failed frames waiting for the retry tick, keyed by their fresh envelope id */
+    private val errorRetries = ConcurrentHashMap<String, ErrorRetry>()
+
+    /** frames given up on after a correlated failure */
+    private val droppedAfterError = AtomicLong()
 
     /** serializes every socket write so frame order is deterministic */
     private val sendLock = Any()
@@ -186,6 +215,11 @@ class GatewayClient(
             }
         }
         connected.set(false)
+        // error retries still waiting for their tick go back to the park, not
+        // into the void: durable copies are already there, queued ones are not
+        val pendingRetries = errorRetries.values.map { it.frame }
+        errorRetries.clear()
+        pendingRetries.forEach { park(it, "shutdown before error retry") }
         durablePark.flushNow()
     }
 
@@ -266,7 +300,14 @@ class GatewayClient(
     private fun park(frame: OutgoingFrame, reason: String) {
         when (frame.durability) {
             Durability.DURABLE -> durablePark.park(
-                ParkedFrame(id = frame.id, key = frame.key, type = frame.type.wire, wire = frame.wire, enqueuedAt = frame.enqueuedAt),
+                ParkedFrame(
+                    id = frame.id,
+                    key = frame.key,
+                    type = frame.type.wire,
+                    wire = frame.wire,
+                    enqueuedAt = frame.enqueuedAt,
+                    errorAttempts = frame.errorAttempts,
+                ),
             )
             Durability.QUEUE -> synchronized(pendingLock) {
                 // the same frame can be parked twice (the send-failure callback
@@ -300,6 +341,7 @@ class GatewayClient(
                 key = parked.key,
                 durability = Durability.DURABLE,
                 enqueuedAt = parked.enqueuedAt,
+                errorAttempts = parked.errorAttempts,
             )
         }
         for (frame in (ephemeral + durable).sortedBy { it.enqueuedAt }) {
@@ -392,6 +434,19 @@ class GatewayClient(
                 park(pending.frame, "ack timeout after ${pending.attempts + 1} attempts")
             }
         }
+        // correlated failures: resend what the backend reported as not applied
+        for ((id, retry) in errorRetries) {
+            if (t < retry.dueAt) continue
+            if (!errorRetries.remove(id, retry)) continue
+            val socket = webSocketRef.get()
+            if (socket == null || !connected.get()) {
+                // durable copies are already parked; a queued frame still needs
+                // its park so the next link replays it
+                park(retry.frame, "link gone before error retry")
+                continue
+            }
+            sendTracked(socket, retry.frame)
+        }
         if (connected.get()) {
             val socket = webSocketRef.get()
             if (socket != null && t - lastInboundAt.get() > config.livenessTimeoutMs) {
@@ -465,14 +520,17 @@ class GatewayClient(
         when (envelope.type) {
             MessageType.ACK -> {
                 val acked = (envelope.payload as Payload.Ack).ackedId
-                inFlight.remove(acked)
+                val retired = inFlight.remove(acked)
                 // retire the parked copy even when the in-flight entry is
                 // already gone (a concurrent retry tick removed it first) -
                 // otherwise an acked durable frame parks forever and replays
                 // on every reconnect
                 durablePark.unpark(acked)
+                // the ack is only "received": remember the frame in case the
+                // handler fails and the backend answers with a correlated ERROR
+                if (retired != null) rememberAcked(retired.frame)
             }
-            MessageType.ERROR -> Unit // transport-level, nothing to do
+            MessageType.ERROR -> handleError(envelope.payload as Payload.Error)
             MessageType.SESSION_CHECK -> answerSessionCheck(webSocket, envelope)
             else -> deliver(decoded)
         }
@@ -504,6 +562,86 @@ class GatewayClient(
         val wireName = (envelope.payload as? Payload.Raw)?.wireType ?: envelope.type.wire
         listener.onWireMessage(wireName, decoded.rawPayload, envelope.correlationId, envelope.timestamp)
     }
+
+    private fun rememberAcked(frame: OutgoingFrame) {
+        if (frame.durability == Durability.DROP) return
+        synchronized(recentlyAckedLock) {
+            recentlyAcked.remove(frame.id)
+            recentlyAcked[frame.id] = frame
+            while (recentlyAcked.size > recentlyAckedLimit) {
+                recentlyAcked.remove(recentlyAcked.keys.first())
+            }
+        }
+    }
+
+    private fun takeAcked(id: String): OutgoingFrame? =
+        synchronized(recentlyAckedLock) { recentlyAcked.remove(id) }
+
+    /**
+     * a correlated failure: the backend acked the frame and then failed to
+     * process it (database blip mid-handler). the ack already retired the
+     * frame, so put it back and let the retry tick send it again under a fresh
+     * envelope id — the backend would only re-ack a recycled id without ever
+     * running the handler again.
+     */
+    private fun handleError(error: Payload.Error) {
+        val inReplyTo = error.inReplyTo
+        if (inReplyTo == null) {
+            log("backend reported ${error.code}: ${error.message}")
+            return
+        }
+        // rarely the failure can land before the ack: take the frame from
+        // whichever side still holds it
+        val frame = takeAcked(inReplyTo) ?: inFlight.remove(inReplyTo)?.frame
+        if (frame == null) {
+            log("backend reported ${error.code} for frame $inReplyTo, which is not pending: ignored")
+            return
+        }
+        when {
+            // deterministic: the backend will never accept this payload, so a
+            // retry only burns attempts and outbox slots
+            error.code in NON_RETRYABLE_CODES ->
+                giveUp(frame, "${error.code}: ${error.message}, not retried")
+            frame.durability == Durability.DROP ->
+                log("backend failed ${frame.type.wire}: ${error.code}: ${error.message}")
+            frame.errorAttempts >= MAX_ERROR_RETRIES ->
+                giveUp(frame, "${error.code}: ${error.message} after ${frame.errorAttempts} retries")
+            else -> requeue(frame, error)
+        }
+    }
+
+    private fun requeue(frame: OutgoingFrame, error: Payload.Error) {
+        val attempts = frame.errorAttempts + 1
+        val retried = reissue(frame, attempts)
+        if (retried == null) {
+            giveUp(frame, "${error.code}: ${error.message}, the frame could not be re-signed")
+            return
+        }
+        // park before the retry actually goes out: a link that dies in between
+        // must not swallow the frame. the ack of the retried copy unparks it.
+        if (retried.durability == Durability.DURABLE) park(retried, "backend failed ${error.code}")
+        errorRetries[retried.id] = ErrorRetry(retried, now() + ERROR_RETRY_DELAY_MS)
+        log(
+            "backend failed ${frame.type.wire} (${error.code}: ${error.message}), " +
+                "retry $attempts/$MAX_ERROR_RETRIES scheduled",
+        )
+    }
+
+    /** same frame, fresh id and timestamp: a retry has to be a new frame to the backend */
+    private fun reissue(frame: OutgoingFrame, errorAttempts: Int): OutgoingFrame? {
+        val id = codec.newMessageId()
+        val wire = runCatching { codec.reissue(frame.wire, id, now()) }.getOrNull() ?: return null
+        return OutgoingFrame(id, frame.type, wire, frame.key, frame.durability, frame.enqueuedAt, errorAttempts)
+    }
+
+    private fun giveUp(frame: OutgoingFrame, reason: String) {
+        droppedAfterError.incrementAndGet()
+        durablePark.unpark(frame.id)
+        log("dropping ${frame.type.wire} frame ${frame.id}: $reason")
+    }
+
+    /** frames abandoned after a correlated backend failure (rejected payloads included) */
+    internal fun droppedAfterBackendError(): Long = droppedAfterError.get()
 
     private fun sendAck(webSocket: WebSocket, id: String, correlationId: String?) {
         val ack = Envelope(
@@ -553,6 +691,18 @@ class GatewayClient(
     private companion object {
         const val MAX_PENDING = 1_000
         const val WATCHDOG_TICK_MS = 1_000L
+
+        /** floor of the recently-acked window, the real cap follows the outbox size */
+        const val MIN_RECENTLY_ACKED = 128
+
+        /** resends after correlated backend failures, then the frame is dropped */
+        const val MAX_ERROR_RETRIES = 3
+
+        /** how long a failed frame waits before the retry tick resends it */
+        const val ERROR_RETRY_DELAY_MS = 1_000L
+
+        /** failures the backend repeats no matter how often we resend */
+        val NON_RETRYABLE_CODES = setOf("BAD_PAYLOAD")
 
         /** backend pushes a redelivery of these must never re-trigger */
         val DEDUPEABLE_TYPES = setOf(

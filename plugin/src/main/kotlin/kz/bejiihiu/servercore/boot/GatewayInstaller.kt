@@ -117,6 +117,7 @@ class GatewayInstaller(
             stats = stats,
             presenceLookup = { uuid -> presenceService?.isOnline(uuid) ?: false },
             durablePark = durableOutbox,
+            log = { message -> plugin.logger.warning(message) },
         )
         gatewayClient = client
         gatewayLink = GatewayLink(client)

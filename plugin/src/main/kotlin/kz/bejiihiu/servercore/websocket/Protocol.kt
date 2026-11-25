@@ -119,7 +119,13 @@ sealed interface Payload {
         val reason: String = "NORMAL",
     ) : Payload
     data class Ack(val ackedId: String) : Payload
-    data class Error(val code: String, val message: String) : Payload
+
+    /**
+     * transport-level failure report. [inReplyTo] names the frame whose
+     * handling failed; without it the report is about the connection, not
+     * about one of our frames.
+     */
+    data class Error(val code: String, val message: String, val inReplyTo: String? = null) : Payload
 
     /**
      * a wire type we don't map to a typed payload: auth verdicts, guest
@@ -184,6 +190,31 @@ class EnvelopeCodec(private val secret: String) {
         val signed = buildJsonObject {
             meta.forEach { (key, value) -> put(key, value) }
             put("hmac", sign(envelope))
+        }
+        return canonicalize(signed)
+    }
+
+    /**
+     * rebuilds a stored signed frame under a fresh identity: same type,
+     * payload and correlation, new id and timestamp. the backend drops a known
+     * id as a duplicate (ack, no handler), so a retry after a failed handler
+     * has to look like a new frame to actually be processed.
+     */
+    fun reissue(raw: String, newId: String, timestamp: Long): String {
+        val root = json.parseToJsonElement(raw) as? JsonObject
+            ?: throw ProtocolException("message is not an object")
+        val type = root.string("type") ?: throw ProtocolException("missing type")
+        val payload = root["payload"] ?: throw ProtocolException("missing payload")
+        val meta = buildJsonObject {
+            put("id", newId)
+            put("type", type)
+            put("timestamp", timestamp)
+            root.string("correlationId")?.let { put("correlationId", it) }
+            put("payload", payload)
+        }
+        val signed = buildJsonObject {
+            meta.forEach { (key, value) -> put(key, value) }
+            put("hmac", hmac(canonicalize(meta)))
         }
         return canonicalize(signed)
     }
@@ -306,6 +337,7 @@ class EnvelopeCodec(private val secret: String) {
         is Payload.Error -> buildJsonObject {
             put("code", payload.code)
             put("message", payload.message)
+            payload.inReplyTo?.let { put("inReplyTo", it) }
         }
         is Payload.Raw -> payload.fields
     }
@@ -367,7 +399,11 @@ class EnvelopeCodec(private val secret: String) {
                 obj.string("reason") ?: "NORMAL",
             )
             MessageType.ACK -> Payload.Ack(obj.stringOrThrow("ackedId"))
-            MessageType.ERROR -> Payload.Error(obj.stringOrThrow("code"), obj.stringOrThrow("message"))
+            MessageType.ERROR -> Payload.Error(
+                obj.stringOrThrow("code"),
+                obj.stringOrThrow("message"),
+                obj.string("inReplyTo"),
+            )
 
             // backend pushes without typed payloads yet: auth verdicts, guest
             // lifecycle (the ws layer owns that shape), application events,

@@ -22,6 +22,7 @@ internal class GatewayTestHarness(dir: Path) {
     val disconnectedEvents = AtomicInteger(0)
     val linkTokens = mutableListOf<Payload.LinkToken>()
     val rawFrames = mutableListOf<RecordedFrame>()
+    val logs = mutableListOf<String>()
 
     val outbox = DurableOutbox(dir.resolve(OUTBOX_FILE), Runnable::run)
     val codec = EnvelopeCodec(SECRET)
@@ -63,6 +64,7 @@ internal class GatewayTestHarness(dir: Path) {
         presenceLookup = { true },
         durablePark = outbox,
         now = { clock.get() },
+        log = { message -> logs.add(message) },
     )
 
     fun guestPayload(sessionId: String): JsonObject = buildJsonObject {

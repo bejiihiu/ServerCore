@@ -17,6 +17,8 @@ data class ParkedFrame(
     /** byte-exact signed wire form, replayed as-is so the peer can dedupe by id */
     val wire: String,
     val enqueuedAt: Long,
+    /** correlated backend failures this frame already survived; bounds the retries */
+    val errorAttempts: Int = 0,
 )
 
 /**
