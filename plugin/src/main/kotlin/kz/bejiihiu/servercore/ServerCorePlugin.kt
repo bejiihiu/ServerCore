@@ -4,6 +4,7 @@ import java.io.File
 import kz.bejiihiu.servercore.boot.AdminCommandInstaller
 import kz.bejiihiu.servercore.boot.BarsInstaller
 import kz.bejiihiu.servercore.boot.ConfigInstaller
+import kz.bejiihiu.servercore.boot.DiagnosticsInstaller
 import kz.bejiihiu.servercore.boot.EspInstaller
 import kz.bejiihiu.servercore.boot.FlectonePulseInstaller
 import kz.bejiihiu.servercore.boot.GatewayInstaller
@@ -21,6 +22,7 @@ import kz.bejiihiu.servercore.boot.SpecReportingInstaller
 import kz.bejiihiu.servercore.boot.SyncInstaller
 import kz.bejiihiu.servercore.boot.UiInstaller
 import kz.bejiihiu.servercore.boot.ViewerInstaller
+import kz.bejiihiu.servercore.diagnostics.DiagnosticsSources
 import kz.bejiihiu.servercore.packet.PacketConfig
 import org.bukkit.plugin.java.JavaPlugin
 
@@ -52,6 +54,7 @@ class ServerCorePlugin : JavaPlugin() {
     private var esp: EspInstaller? = null
     private var papi: PapiInstaller? = null
     private var bars: BarsInstaller? = null
+    private var diagnostics: DiagnosticsInstaller? = null
 
     override fun onLoad() {
         // packetevents is a server-installed plugin we attach to, not one we
@@ -132,10 +135,11 @@ class ServerCorePlugin : JavaPlugin() {
         esp.install()
         this.esp = esp
 
-        // one /servercore tree for both admin subcommands, registered from the
+        // one /servercore tree for the admin subcommands, registered from the
         // commands lifecycle event once the permission source and op lockdown
-        // are in place
-        AdminCommandInstaller(ctx, integrations, protection).install()
+        // are in place; diag resolves its handler lazily, because the
+        // self-check is wired at the very end of the boot
+        AdminCommandInstaller(ctx, integrations, protection, { diagnostics?.service }).install()
 
         // deferred wiring, in the order the flow needs it: session recovery and
         // join listeners first, then the ui surface, then the transport goes
@@ -158,6 +162,25 @@ class ServerCorePlugin : JavaPlugin() {
         val papi = PapiInstaller(ctx, guest, bars)
         papi.install()
         this.papi = papi
+
+        // the self-check reads every installer, so it is wired last; the
+        // command tree already points at it through a lazy supplier
+        val diagnostics = DiagnosticsInstaller(
+            ctx,
+            DiagnosticsSources(
+                guest = guest,
+                packet = packet,
+                esp = esp,
+                protection = protection,
+                spec = spec,
+                bars = bars,
+                papi = papi,
+                gateway = gateway,
+                flectonePulse = flectonePulse,
+            ),
+        )
+        diagnostics.install()
+        this.diagnostics = diagnostics
 
         ops.announce()
 

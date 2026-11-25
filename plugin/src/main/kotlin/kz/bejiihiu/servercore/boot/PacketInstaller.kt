@@ -25,11 +25,20 @@ class PacketInstaller(private val ctx: PluginContext) {
     var disguise: DisguiseStack? = null
         private set
 
+    /** config flag, kept so the self-check can tell "off" from "failed" */
+    var enabledByConfig: Boolean = false
+        private set
+
+    /** true while our listener is attached to the shared packetevents instance */
+    val online: Boolean get() = if (this::service.isInitialized) service.online else false
+
     fun install() {
         val plugin = ctx.plugin
+        val packetConfig = PacketConfig.load(plugin.config)
+        enabledByConfig = packetConfig.enabled
         val packets = PacketService(
             plugin = plugin,
-            config = PacketConfig.load(plugin.config),
+            config = packetConfig,
             store = WsSyncedViewStateStore(
                 CachedViewStateStore(
                     maxViewers = 1024,

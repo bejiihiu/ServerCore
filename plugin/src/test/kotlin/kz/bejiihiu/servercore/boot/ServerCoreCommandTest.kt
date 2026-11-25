@@ -9,20 +9,27 @@ class ServerCoreCommandTest {
         ServerCoreCommand(
             groups = { null },
             deopAll = { null },
+            diagnostics = { null },
             runOnGlobalThread = { task -> task.run() },
         ).build()
 
     @Test
-    fun `one servercore root carries both subcommands`() {
+    fun `one servercore root carries every subcommand`() {
         val root = tree()
         assertEquals("servercore", root.name)
-        assertEquals(setOf("groups", "deop-all"), root.children.map { it.name }.toSet())
+        assertEquals(setOf("groups", "deop-all", "diag"), root.children.map { it.name }.toSet())
     }
 
     @Test
     fun `groups takes an optional player argument`() {
         val groups = tree().getChild("groups")
         assertEquals(setOf("player"), groups.children.map { it.name }.toSet())
+    }
+
+    @Test
+    fun `diag takes the optional json flag`() {
+        val diag = tree().getChild("diag")
+        assertEquals(setOf("--json"), diag.children.map { it.name }.toSet())
     }
 
     @Test

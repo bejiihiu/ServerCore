@@ -16,10 +16,11 @@ import org.bukkit.plugin.java.JavaPlugin
 /**
  * /servercore — the plugin's single administrative command tree.
  *
- * one root literal with both subcommands, so nothing overwrites anybody's
+ * one root literal with every subcommand, so nothing overwrites anybody's
  * registration:
  * - `groups <player>`: debug output of a player's permission-source groups
  * - `deop-all`: strips operator status from every account holding it
+ * - `diag [--json]`: operator self-check, card for players and plain/json for console
  *
  * the root and every subcommand require servercore.admin, which luckperms
  * resolves; console is always allowed. handlers resolve lazily through the
@@ -29,6 +30,7 @@ import org.bukkit.plugin.java.JavaPlugin
 class ServerCoreCommand(
     private val groups: () -> Groups?,
     private val deopAll: () -> OpLockdown.DeopReport?,
+    private val diagnostics: () -> Diagnostics?,
     /** scheduler hop for the op-list mutation, never the calling thread */
     private val runOnGlobalThread: (Runnable) -> Unit,
 ) {
@@ -38,6 +40,11 @@ class ServerCoreCommand(
         fun execute(stack: CommandSourceStack, args: Array<out String>)
 
         fun suggest(stack: CommandSourceStack, args: Array<out String>): List<String>
+    }
+
+    /** the self-check behind `diag [--json]` */
+    interface Diagnostics {
+        fun run(source: CommandSourceStack, json: Boolean)
     }
 
     /** hooks the commands lifecycle event; fires once the whole boot has run */
@@ -54,6 +61,7 @@ class ServerCoreCommand(
         }
         .then(groupsNode())
         .then(deopAllNode())
+        .then(diagNode())
         .build()
 
     private fun groupsNode(): LiteralArgumentBuilder<CommandSourceStack> = Commands.literal("groups")
@@ -72,15 +80,36 @@ class ServerCoreCommand(
     private fun executeGroups(source: CommandSourceStack, args: Array<out String>): Int {
         val handler = groups()
         if (handler == null) {
-            // the locale store is not up yet, so this one line is hardcoded on
-            // purpose; it only shows inside the first seconds of boot
-            source.sender.sendMessage(
-                Theme.render("<muted>ServerCore is still starting up, try again in a moment</muted>"),
-            )
+            stillStarting(source)
         } else {
             handler.execute(source, args)
         }
         return Command.SINGLE_SUCCESS
+    }
+
+    private fun diagNode(): LiteralArgumentBuilder<CommandSourceStack> = Commands.literal("diag")
+        .executes { context -> executeDiagnostics(context.source, json = false) }
+        .then(
+            Commands.literal(JSON_FLAG)
+                .executes { context -> executeDiagnostics(context.source, json = true) },
+        )
+
+    private fun executeDiagnostics(source: CommandSourceStack, json: Boolean): Int {
+        val handler = diagnostics()
+        if (handler == null) {
+            stillStarting(source)
+        } else {
+            handler.run(source, json)
+        }
+        return Command.SINGLE_SUCCESS
+    }
+
+    /** the locale store is not up yet during the first seconds of boot */
+    private fun stillStarting(source: CommandSourceStack) {
+        // hardcoded on purpose: this line only renders before i18n exists
+        source.sender.sendMessage(
+            Theme.render("<muted>ServerCore is still starting up, try again in a moment</muted>"),
+        )
     }
 
     private fun deopAllNode(): LiteralArgumentBuilder<CommandSourceStack> = Commands.literal("deop-all")
@@ -100,5 +129,6 @@ class ServerCoreCommand(
     private companion object {
         const val ROOT = "servercore"
         const val DESCRIPTION = "servercore admin tools"
+        const val JSON_FLAG = "--json"
     }
 }

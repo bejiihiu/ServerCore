@@ -25,6 +25,9 @@ class PapiInstaller(
 
     private var expansion: ServerCoreExpansion? = null
 
+    /** true when the expansion registered and the placeholders answer */
+    val active: Boolean get() = expansion != null
+
     fun install() {
         if (ctx.plugin.server.pluginManager.getPlugin("PlaceholderAPI") == null) {
             ctx.logger.info("placeholderapi not installed, servercore placeholders disabled")

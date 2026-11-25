@@ -49,6 +49,15 @@ class UiKit(
         player.uiNow(plugin) { UiFx.sendFrame(player, lines) }
     }
 
+    /**
+     * a card built from live data rather than one locale block: the caller
+     * composes the lines, the theme still frames them. used by the operator
+     * self-check, whose sections change with the server state.
+     */
+    fun card(player: Player, lines: List<Component>) {
+        player.uiNow(plugin) { UiFx.sendFrame(player, lines) }
+    }
+
     /** single-line system event ping, colored by kind */
     fun banner(player: Player, kind: BannerKind, key: String, values: Map<String, String> = emptyMap()) {
         val line = Component.text("${Theme.MARK} ", Theme.GOLD)

@@ -82,6 +82,9 @@ class GuestSessionService(
     /** a guest is anyone restricted right now: confirmed session or pending check */
     fun isRestricted(uuid: UUID): Boolean = config.enabled && (uuid in provisional || registry.contains(uuid))
 
+    /** live guest load for the self-check: confirmed sessions plus in-flight resolves */
+    fun activeCount(): Int = (registry.all().keys + provisional).size
+
     /** true while the plugin itself is switching the mode, lets the guard listener pass it */
     fun isInModeTransition(uuid: UUID): Boolean = uuid in modeTransitions
 

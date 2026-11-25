@@ -42,8 +42,21 @@ class BarsInstaller(private val ctx: PluginContext) {
     /** last readings, for placeholderapi; null when the whole stack is off */
     private var snapshots: BarSnapshots? = null
 
+    /** config flag, kept so the self-check can tell "off" from "failed" */
+    var enabledByConfig: Boolean = false
+        private set
+
+    /** how many bar types the config actually turned on */
+    var enabledBarCount: Int = 0
+        private set
+
+    /** true while the renderer and its refresh tasks are up */
+    val active: Boolean get() = service != null
+
     fun install() {
         val config = BarsConfig.load(ctx.plugin.config, ctx.logger)
+        enabledByConfig = config.enabled
+        enabledBarCount = config.enabledBars().size
         if (!config.enabled) return
 
         // the network view: fed by the backend's aggregate, rendered from a

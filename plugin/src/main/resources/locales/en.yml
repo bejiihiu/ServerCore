@@ -134,6 +134,98 @@ placeholders:
 countdown:
   tick: "<secondary>time is running out</secondary>"
 
+# /servercore diag: operator self-check. sections mirror the report model;
+# findings carry no tags because the card colors them by severity
+diag:
+  header: "<gold>diagnostics</gold> <muted>·</muted> <secondary>{version}</secondary>"
+  section:
+    build: "<gold>build</gold>"
+    modules: "<gold>modules</gold>"
+    link: "<gold>backend link</gold>"
+    counts: "<gold>counts</gold>"
+    versions: "<gold>versions</gold>"
+    verdict: "<gold>verdict</gold>"
+  label:
+    plugin: "plugin"
+    jar: "jar"
+    server: "server"
+    folia: "folia"
+    java: "java"
+    link: "link"
+    heartbeat: "last heartbeat"
+    outbox: "outbox"
+    last-disconnect: "last disconnect"
+    reconnect-attempts: "reconnect attempts"
+    guests: "guests"
+    spec-sessions: "spec sessions"
+    bars: "bars"
+    players: "players"
+  module:
+    guest: "guest"
+    packet: "packet"
+    anti-esp: "anti-esp"
+    protection: "protection"
+    spec: "spec"
+    bars: "bars"
+    luckperms: "luckperms"
+    placeholderapi: "placeholderapi"
+    flectonepulse: "flectonepulse"
+  status:
+    enabled: "<ok>enabled</ok>"
+    disabled: "<muted>disabled by config</muted>"
+    absent: "<warn>absent dependency</warn>"
+    failed: "<danger>failed</danger>"
+  detail:
+    packet-idle: "packet layer idle"
+    all-bars-off: "every bar is off"
+    static-fallback: "static config fallback"
+    fp-incompatible: "api version not supported"
+    fp-connecting: "still connecting"
+  value:
+    "yes": "<ok>yes</ok>"
+    "no": "<warn>no</warn>"
+    connected: "<ok>connected</ok>"
+    disconnected: "<danger>disconnected</danger>"
+    absent: "<muted>absent</muted>"
+    never: "<muted>never</muted>"
+    none: "<muted>none</muted>"
+  version:
+    packetevents: "packetevents"
+    luckperms: "luckperms"
+    placeholderapi: "placeholderapi"
+    flectonepulse: "flectonepulse"
+  finding:
+    packet-offline: "the packet layer is offline: anti-esp, disguises and inventory views are off"
+    backend-down: "the backend link is down: authentication and moderation events are unavailable"
+    guest-failed: "guest mode is enabled in config but the session machine did not start"
+    protection-failed: "protection is enabled in config but its guards did not start"
+    spec-failed: "spec is enabled in config but the session machine did not start"
+    esp-failed: "anti-esp is enabled in config but the engine did not start"
+    bars-failed: "bars are enabled in config but the renderer did not start"
+    heartbeat-stale: "no backend traffic for {seconds}s while the link claims to be up"
+    outbox-backlog: "the durable outbox holds {count} frame(s): the backend is not acknowledging"
+    anti-esp-disabled: "anti-esp is disabled in config: clients see everything"
+    protection-disabled: "protection is disabled in config: command and gamemode guards are off"
+    luckperms-absent: "luckperms is not installed: permissions fall back to the static config map"
+    flectonepulse-incompatible: "the flectonepulse api is not the expected version: punishment lookups are off"
+    flectonepulse-absent: "flectonepulse is not installed: punishment lookups are off"
+    placeholderapi-absent: "placeholderapi is not installed: %servercore_*% placeholders are unavailable"
+  hint:
+    install-packetevents: "<secondary>install packetevents 2.14.x: anti-esp rides on the packet layer</secondary>"
+    start-backend: "<secondary>start the backend and check backend.url and the shared secret</secondary>"
+    check-config: "<secondary>read the boot log: an enabled module failed to start</secondary>"
+    drain-outbox: "<secondary>the outbox drains itself once the backend acknowledges frames</secondary>"
+    check-network: "<secondary>check the network between the server and the backend</secondary>"
+    install-luckperms: "<secondary>install luckperms: permissions and /servercore groups need it</secondary>"
+    install-flectonepulse: "<secondary>install flectonepulse: moderation lookups need it</secondary>"
+    update-flectonepulse: "<secondary>update flectonepulse to a 1.15.x build</secondary>"
+    enable-anti-esp: "<secondary>set anti-esp.enabled to true to hide players behind cover</secondary>"
+    enable-protection: "<secondary>set protection.enabled to true to restore the guards</secondary>"
+  verdict:
+    ok: "<ok>OK</ok> <muted>·</muted> <secondary>every configured module is up</secondary>"
+    warn: "<warn>WARN</warn> <muted>·</muted> <secondary>issues: {count}</secondary>"
+    fail: "<danger>FAIL</danger> <muted>·</muted> <secondary>blockers: {count}</secondary>"
+
 # server info bars: /rambar, /tpsbar, /msptbar, /playersbar, /worldbar and
 # /netbar. the bar title is the live line (health coloring comes from the
 # bossbar fill or the leading mark), the rest is toggle feedback. numbers are

@@ -149,6 +149,10 @@ class GatewayClient(
     private val reconnectAttempt = AtomicLong(0)
     private val lastInboundAt = AtomicLong(0)
 
+    /** last reason a disconnect was scheduled; survives the reconnect that follows */
+    @Volatile
+    private var lastDisconnectReason: String? = null
+
     /** frames sent but not yet acked, keyed by envelope id */
     private val inFlight = ConcurrentHashMap<String, InFlight>()
 
@@ -224,6 +228,23 @@ class GatewayClient(
     }
 
     fun isConnected(): Boolean = connected.get()
+
+    /**
+     * readings for /servercore diag. the age is measured against the same clock
+     * the liveness watchdog uses, so "stale" here means "the watchdog is about
+     * to call it dead" — null before the first inbound frame of this boot.
+     */
+    fun lastHeartbeatAgeMs(): Long? {
+        val last = lastInboundAt.get()
+        return if (last == 0L) null else (now() - last).coerceAtLeast(0)
+    }
+
+    fun reconnectAttempts(): Long = reconnectAttempt.get()
+
+    fun outboxSize(): Int = durablePark.size()
+
+    /** the reason the last disconnect was scheduled, kept for the self-check */
+    fun lastDisconnectReason(): String? = lastDisconnectReason
 
     /** test seam: pretend a socket exists without going through the transport */
     internal fun attachForTest(socket: WebSocket) {
@@ -382,6 +403,9 @@ class GatewayClient(
 
     private fun scheduleReconnect(reason: String) {
         if (shuttingDown.get()) return
+        // the only trace of why the link died, kept in memory for the
+        // self-check as well as the log line
+        lastDisconnectReason = reason
         val attempt = reconnectAttempt.incrementAndGet()
         val delay = reconnectPolicy.delayFor(attempt)
         // the reason is the only trace of why the link died, so it rides into

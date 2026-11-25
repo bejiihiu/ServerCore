@@ -24,8 +24,16 @@ class EspInstaller(
 
     private var esp: EspModule? = null
 
+    /** config flag, kept so the self-check can tell "off" from "failed" */
+    var enabledByConfig: Boolean = false
+        private set
+
+    /** true while the engine object exists and its cycle runs */
+    val active: Boolean get() = esp != null
+
     fun install() {
         val config = EspConfig.load(ctx.plugin.config, ctx.logger)
+        enabledByConfig = config.enabled
         if (!config.enabled) return
 
         val module = EspModule.create(

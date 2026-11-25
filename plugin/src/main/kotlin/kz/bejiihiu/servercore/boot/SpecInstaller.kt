@@ -44,9 +44,17 @@ class SpecInstaller(
 
     private var service: SpecService? = null
 
+    /** config flag, kept so the self-check can tell "off" from "failed" */
+    var enabledByConfig: Boolean = false
+        private set
+
+    /** true while the session machine is up */
+    val active: Boolean get() = service != null
+
     fun install() {
         val plugin = ctx.plugin
         val specConfig = SpecConfig.load(plugin.config, ctx.logger)
+        enabledByConfig = specConfig.enabled
         if (!specConfig.enabled) return
 
         val luckPerms: LuckPerms? = if (specConfig.permission.useLuckPerms) {
