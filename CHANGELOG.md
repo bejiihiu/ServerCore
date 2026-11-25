@@ -192,3 +192,6 @@ current, unreleased state of the codebase.
 - Every observation session and account deletion is audit-logged; hidden observation is invisible to
   the observed player but never to the audit trail.
 - Secrets exist only in environment variables; examples and documentation carry placeholders only.
+- Dependency and supply-chain status is audited and recorded: `bun audit` clean, every flagged plugin
+  advisory traced to a server-provided compile-only API, the Gradle distribution pinned by SHA-256, and
+  the license split (shipped / provided by the server) documented in `THIRD_PARTY_LICENSES.md`.
