@@ -32,13 +32,13 @@ class LuckPermsAdapter(
             // an exceptional future would be "unknown", not "denied"
             when {
                 error != null -> {
-                    logger.warning("permission check failed for $uuid / '$node': ${rootMessage(error)} — denying")
+                    logger.warning("permission check failed for $uuid / '$node': ${rootMessage(error)}, denying")
                     false
                 }
                 else -> try {
                     user.permissionValue(node)
                 } catch (t: Exception) {
-                    logger.warning("permission evaluation failed for $uuid / '$node': ${rootMessage(t)} — denying")
+                    logger.warning("permission evaluation failed for $uuid / '$node': ${rootMessage(t)}, denying")
                     false
                 }
             }

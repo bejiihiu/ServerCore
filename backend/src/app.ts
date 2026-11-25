@@ -276,7 +276,7 @@ async function main(): Promise<void> {
       },
       onPlayerJoined: (event) => {
         void joinPipeline(event).catch((error) => {
-          logger.error({ err: error, uuid: event.minecraftUuid }, "player join handling failed")
+          logger.error({ err: error, uuid: event.minecraftUuid, serverId: event.serverId }, "player join handling failed")
         })
       },
       onPlayerLeft: (event) => {
@@ -286,12 +286,18 @@ async function main(): Promise<void> {
       },
       onGuestStarted: (event, serverId) => {
         void authService.handleGuestStarted(event, serverId, Date.now()).catch((error) => {
-          logger.error({ err: error, uuid: event.minecraftUuid }, "guest start handling failed")
+          logger.error(
+            { err: error, uuid: event.minecraftUuid, sessionId: event.sessionId, serverId },
+            "guest start handling failed",
+          )
         })
       },
       onGuestEnded: (event) => {
         void authService.handleGuestEnded(event).catch((error) => {
-          logger.error({ err: error, uuid: event.minecraftUuid }, "guest end handling failed")
+          logger.error(
+            { err: error, uuid: event.minecraftUuid, sessionId: event.sessionId },
+            "guest end handling failed",
+          )
         })
       },
     },

@@ -74,9 +74,11 @@ export class AccountJoinFlow {
   }
 
   onPlayerLeft(event: { minecraftUuid: string; username?: string; reason: string }): void {
-    this.logger.info(
+    // the lifecycle handler already logs the player-left milestone; here only
+    // the account-side view of it, useful when chasing a linking problem
+    this.logger.debug(
       { uuid: event.minecraftUuid, username: event.username, reason: event.reason },
-      "account observed player left",
+      "account flow saw the player leave",
     )
   }
 }

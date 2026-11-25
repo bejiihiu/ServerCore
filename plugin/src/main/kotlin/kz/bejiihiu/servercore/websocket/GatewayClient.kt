@@ -384,6 +384,9 @@ class GatewayClient(
         if (shuttingDown.get()) return
         val attempt = reconnectAttempt.incrementAndGet()
         val delay = reconnectPolicy.delayFor(attempt)
+        // the reason is the only trace of why the link died, so it rides into
+        // the log line; the listener no longer reports a generic disconnect
+        log("backend link down ($reason), reconnect $attempt in ${delay}ms")
         listener.onDisconnected()
         scheduler.scheduleDelayed({ connect() }, delay)
     }

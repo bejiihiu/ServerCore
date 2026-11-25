@@ -60,9 +60,9 @@ object PermissionSourceFactory {
             // luckperms classes not on the classpath or the provider not
             // loaded yet — both mean "no lp on this server"
             logger.warning(
-                "LuckPerms not found (${t.javaClass.simpleName}: ${t.message}). " +
-                    "Falling back to the static permission map in config.yml " +
-                    "under luckperms.fallback — group management is disabled until LuckPerms is installed.",
+                "luckperms not found (${t.javaClass.simpleName}: ${t.message}), " +
+                    "falling back to the static permission map in config.yml " +
+                    "under luckperms.fallback; group management is disabled until luckperms is installed",
             )
             StaticPermissionFallback(config.fallback, logger)
         }

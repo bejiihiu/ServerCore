@@ -97,10 +97,10 @@ class CommandBlockAuditor(
         if (config.commandBlockNeutralize) {
             block.setCommand("")
             block.update()
-            logger.warning("cleared command block at $where — it carried a denied command ($match)")
+            logger.warning("cleared command block at $where - it carried a denied command ($match)")
         } else {
             logger.warning(
-                "command block at $where carries a denied command ($match) — " +
+                "command block at $where carries a denied command ($match) - " +
                     "set protection.command-block-neutralize to true to clear such blocks automatically",
             )
         }

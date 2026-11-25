@@ -54,7 +54,7 @@ class LocalePushListener(
                 LocaleAckPayload(result.locale, result.revision, accepted = true)
             }
             is LocalePushResult.Rejected -> {
-                logger.warning("locale bundle rejected: ${result.locale} @ ${result.revision} — ${result.reason}")
+                logger.warning("locale bundle rejected: ${result.locale} @ ${result.revision}, ${result.reason}")
                 LocaleAckPayload(result.locale, result.revision, accepted = false, reason = result.reason)
             }
         }

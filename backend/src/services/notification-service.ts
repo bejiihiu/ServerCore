@@ -113,7 +113,8 @@ export class NotificationService {
       result.failed = retry.failed
     }
 
-    this.logger.info(
+    // per-broadcast bookkeeping; delivery failures already warn per chat
+    this.logger.debug(
       { recipients: result.recipients, sent: result.sent, failed: result.failed.length },
       "broadcast finished",
     )

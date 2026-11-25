@@ -1,5 +1,6 @@
 package kz.bejiihiu.servercore.protection
 
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.logging.Logger
 
 /**
@@ -18,16 +19,23 @@ class CommandProtectionService(
     @Volatile
     private var matcher = buildMatcher()
 
+    /** the alias set is rebuilt on every commands reload; arm loudly once */
+    private val armed = AtomicBoolean(false)
+
     /** null when the line may run */
     fun match(commandLine: String): BlockedCommandMatcher.Match? = matcher.match(commandLine)
 
     /** rebuild the alias expansion against the current command tree */
     fun refreshAliases() {
         matcher = buildMatcher()
-        logger.info(
-            "command protection armed: ${config.blockedCommands.size} blocked commands, " +
-                "${matcher.deniedNames().size} names after alias expansion",
-        )
+        if (armed.compareAndSet(false, true)) {
+            logger.info(
+                "command protection armed: ${config.blockedCommands.size} blocked commands, " +
+                    "${matcher.deniedNames().size} names after alias expansion",
+            )
+        } else {
+            logger.fine("command protection re-armed: ${matcher.deniedNames().size} names after alias expansion")
+        }
     }
 
     /** entries of the client command list whose bare name is denied */
