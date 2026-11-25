@@ -251,6 +251,10 @@ Same for all three paths:
 2. `/start` the bot, confirm the linkage, fill in the application.
 3. Members vote in the group; after quorum the single-use invite arrives, then the login prompt.
 4. `audit_logs` and `server_events` start filling in; `/stats` answers for the ids in `ADMIN_TELEGRAM_IDS`.
+5. Put a backup schedule in place before real players arrive: [backup tooling](backup/README.md) dumps
+   MongoDB, the plugin's durable state files and optionally the backend env into one verified archive,
+   with a restore script and runbook ([policy and disaster steps](../docs/backup-restore.md)). This matters
+   most on Atlas M0, which has no backups you can rely on.
 
 Full walkthrough and every config key: [installation.md](../docs/installation.md),
 [first-run.md](../docs/first-run.md), [configuration.md](../docs/configuration.md).

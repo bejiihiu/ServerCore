@@ -98,6 +98,9 @@ current, unreleased state of the codebase.
 - Server status and heartbeat tracking, offline detection with admin alerts (optionally DM-ed to all
   linked users), and `/stats` with real player, TPS, version and observation-session counts.
 - Retention sweeps for audit records, server events and closed sessions.
+- Backup and restore tooling (`deploy/backup/`): a verified MongoDB dump plus the plugin's durable
+  state files in one archive, with retention, dry runs, a checksum-verified restore and a disaster
+  runbook.
 
 #### Integrations
 
