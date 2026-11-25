@@ -1,6 +1,5 @@
 package kz.bejiihiu.servercore.bars
 
-import kz.bejiihiu.servercore.locale.LocaleService
 import kz.bejiihiu.servercore.ui.Theme
 import net.kyori.adventure.bossbar.BossBar
 import net.kyori.adventure.text.Component
@@ -41,10 +40,21 @@ object BarPresentation {
      * the full line: the brand mark plus the locale template. the bossbar keeps
      * the brass mark (its progress color already carries health), the
      * actionbar colors the mark by health because it has no fill.
+     *
+     * the body comes from [titles], which parses a template once instead of
+     * once per tick; only the values are rendered here.
      */
-    fun line(locale: LocaleService, bar: BarId, reading: BarReading, surface: BarSurface): Component {
-        val body = locale.component(reading.titleKey ?: bar.titleKey, reading.values)
-        val mark = if (surface == BarSurface.BOSSBAR) Theme.GOLD else markColor(reading.health)
-        return Component.text("${Theme.MARK} ", mark).append(body)
+    fun line(titles: BarTitleCache, bar: BarId, reading: BarReading, surface: BarSurface): Component {
+        val body = titles.component(reading.titleKey ?: bar.titleKey, reading.values)
+        // append copies, so the shared mark is only a base here, never mutated
+        val mark = if (surface == BarSurface.BOSSBAR) BRASS_MARK else actionbarMark(reading.health)
+        return mark.append(body)
     }
+
+    private val BRASS_MARK: Component = Component.text("${Theme.MARK} ", Theme.GOLD)
+
+    private val ACTIONBAR_MARKS: Array<Component> =
+        BarHealth.entries.map { Component.text("${Theme.MARK} ", markColor(it)) }.toTypedArray()
+
+    private fun actionbarMark(health: BarHealth): Component = ACTIONBAR_MARKS[health.ordinal]
 }

@@ -14,12 +14,15 @@ import org.bukkit.entity.Player
  * everything here assumes the caller is already on the player's entity
  * scheduler — folia sends player packets from the owning region thread only.
  */
-class BarRenderer(private val locale: LocaleService) {
+class BarRenderer(locale: LocaleService) {
 
     private val bossBars = ConcurrentHashMap<UUID, BossBar>()
 
+    /** parsed titles; the line's numbers change per tick, the template does not */
+    private val titles = BarTitleCache(locale)
+
     fun render(player: Player, bar: BarId, reading: BarReading, surface: BarSurface) {
-        val line = BarPresentation.line(locale, bar, reading, surface)
+        val line = BarPresentation.line(titles, bar, reading, surface)
         val progress = BarPresentation.progress(reading.fraction)
         val color = BarPresentation.bossBarColor(reading.health)
 

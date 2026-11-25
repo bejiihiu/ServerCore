@@ -102,14 +102,15 @@ Measured on the commit that added this page (after the fixes below).
 | apply DISGUISED (no disguise layer) | 66.0 | 127 | 15,149,165 | 32 | degrades to HIDDEN |
 | resyncTarget | 46.6 | 115 | 21,482,117 | 16 | policy get + execute |
 | resetViewer (100 targets) | 3,600 | 11,800 | 277,778 | 6,780 | re-asserts every policy row |
-| **bars / formatting and render** | | | | | |
-| formats gigabytes | 74.1 | 129 | 13,493,976 | 504 | `String.format` |
-| formats percent | 71.2 | 188 | 14,051,512 | 552 | `String.format` |
-| formats tps | 93.7 | 223 | 10,670,975 | 552 | `String.format` |
-| formats clock | 130 | 408 | 7,714,286 | 624 | `String.format` |
-| theme render (MiniMessage) | 5,800 | 10,400 | 172,414 | 18,828 | regex substitute + tag parse |
-| presentation line | 7,200 | 22,900 | 138,889 | 19,500 | locale lookup + render + mark |
-| locale text (raw string) | 3,101 | 6,039 | 322,438 | 8,144 | |
+| **bars / formatting and template render** | | | | | |
+| formats gigabytes | 74.1 | 136 | 13,486,877 | 504 | `String.format` |
+| formats percent | 73.7 | 165 | 13,570,806 | 552 | `String.format` |
+| formats tps | 89.2 | 210 | 11,211,726 | 552 | `String.format` |
+| formats clock | 148 | 351 | 6,744,066 | 624 | `String.format` |
+| theme render (MiniMessage) | 5,900 | 9,100 | 169,492 | 18,932 | regex substitute + tag parse |
+| presentation line (parse per tick) | 7,300 | 13,300 | 136,986 | 19,476 | the pre-cache path, kept for the before/after row |
+| presentation line (cached template) | 500 | 600 | 2,000,000 | 1,412 | template parsed once, values dropped in |
+| locale text (raw string) | 3,094 | 5,627 | 323,224 | 8,144 | |
 | **websocket / envelope codec** | | | | | |
 | encode SERVER_STATUS | 1,915 | 5,869 | 522,088 | 4,403 | payload + canonical + hmac |
 | decode SERVER_STATUS | 1,700 | 2,300 | 588,235 | 4,420 | size check + parse + hmac verify |
@@ -215,6 +216,39 @@ Three separate problems in the per-frame path:
 The wire format is byte-identical: the protocol suite compares the plugin's
 output against fixed backend-produced frames and signatures.
 
+### 6. Bar titles: parse the template once, not once per line
+
+`BarPresentation.line` rendered a bar by looking up the locale template, running
+the `{name}` placeholder regex over it and handing the result to Adventure's
+MiniMessage parser — every tick, for every player with a bar on screen. That was
+7.2 µs and 19.5 KB per line, against 70–130 ns for the formatting helpers.
+
+The template is now parsed once. Every `{name}` is swapped for a one-character
+marker from a private-use range before the parse, so the tree keeps the styling
+that spans a placeholder (`</secondary>` after `{used}` still closes a tag opened
+before it); a render then walks that tree and drops the value runs in as text. A
+node with no marker comes back as the same cached instance, so a render only
+allocates along the path to the numbers. Values go in as component text, never as
+markup — the guarantee the escaping substitute gave before.
+
+Invalidation: entries are keyed by the template text, so a `LOCALE_PUSH` that
+rewrites the copy (or a language switch) resolves a different key on its own, and
+the revision bump also clears the map so a busy channel does not retain one tree
+per push. Health colours, the mark and the surface stay outside the cache: a
+threshold change only moves the mark. A template whose placeholder sits inside a
+tag argument (`<click:open_url:'{link}'>`, which the locale really carries) cannot
+be marked safely, so the probe parse notices the marker is missing from the text
+and that template keeps the per-render path.
+
+| benchmark | before p50 | after p50 | before B/op | after B/op |
+|---|---:|---:|---:|---:|
+| presentation line | 7,300 ns | 500 ns | 19,476 | 1,412 |
+
+Run-to-run range on this runner: 6.9–7.3 µs before, 0.5–0.6 µs after. The output
+is pinned by tests on both axes: plain text and the flattened colour runs of every
+shipped bar title against the uncached pipeline, one parse per template across
+repeated renders, and a rebuild after a pushed revision.
+
 ## Measured and rejected
 
 **Packed chunk keys in `SpatialGrid`.** Replacing the `Cell` bucket key with a
@@ -230,7 +264,7 @@ over-allocates at low density. Reverted; the original is kept.
 | Area | Why it stays |
 |---|---|
 | `trace prep` chunk grouping (3.9 KB, 718 ns per ray) | `RegionSafeRaytracer` groups voxels by `SpatialGrid.Cell` and schedules per chunk. Flattening the filter+group into one pass and grouping by packed coords would cut the allocation roughly in half, but the class needs a live `World` and `RegionScheduler`, so there is no test that could prove behaviour unchanged. Worth a session with a server, not a blind edit. |
-| Bar title render (7.2 µs / 19.5 KB per line) | Almost all of it is Adventure MiniMessage tag parsing plus the locale regex substitution. A per-template component cache would be a design change (cache key = template + value set, invalidation on locale push), not a local optimisation. The formatting helpers themselves are 70–130 ns and not worth hand-rolling `String.format` rounding. |
+| Pre-splitting the literal runs of a bar title | A cached template still rebuilds its literal text nodes per render (`~1.4 KB`), because the split is driven by the parsed tree. Baking the literal components into the cache too would cut the line to a couple of hundred bytes, but per-op it is inside the measurement floor and the tree would have to be rebuilt anyway to attach the values. Not worth the extra state. |
 | `String.format` in `BarFormats` | 500 B and ~75 ns per call, and only once per bar per interval. Replacing `%.1f` by hand risks changing rounding at the edges for no measurable win. |
 | `decode`'s "envelope minus hmac" copy | ~200 ns of the remaining 1.7 µs; removing it needs a second canonicaliser that could drift from the wire contract. |
 | `SpatialGrid.nearby` allocations | See the numbers below — the cost is real but the fix is a caching redesign, not a local change. |
@@ -256,11 +290,11 @@ with.
   with a viewer at the 512-row cap, every genuinely new target paid a 2–5 µs
   scan. A busy 2000-player server can produce a few thousand new-target rows per
   second; at 5 µs that was 10–20 ms/s of packet-thread time, now 3–5 ms/s.
-- **Bars are opt-in and cheap per region.** A bar line costs 7.2 µs and 19.5 KB,
-  rendered on the player's own region thread once per interval. A region holding
-  20 players pays ~144 µs/s. The garbage is the number to watch: if all 2000
-  players enabled a bar at a 20-tick interval, that is ~39 MB/s of short-lived
-  components.
+- **Bars are opt-in and cheap per region.** A bar line costs 0.5 µs and 1.4 KB
+  after the template cache, rendered on the player's own region thread once per
+  interval. A region holding 20 players pays ~10 µs/s. The garbage is the number
+  to watch: if all 2000 players enabled a bar at a 20-tick interval, that used to
+  be ~39 MB/s of short-lived components and is now ~2.8 MB/s.
 - **The WebSocket codec is not a hot path anymore.** ~3.6 µs and ~9 KB for an
   encode+decode pair; at heartbeat/presence rates this is noise.
 

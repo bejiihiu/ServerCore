@@ -13,6 +13,7 @@ import kz.bejiihiu.servercore.bars.BarId
 import kz.bejiihiu.servercore.bars.BarPresentation
 import kz.bejiihiu.servercore.bars.BarReading
 import kz.bejiihiu.servercore.bars.BarSurface
+import kz.bejiihiu.servercore.bars.BarTitleCache
 import kz.bejiihiu.servercore.esp.DisguiseAssignment
 import kz.bejiihiu.servercore.esp.EspRules
 import kz.bejiihiu.servercore.esp.PairFacts
@@ -31,6 +32,7 @@ import kz.bejiihiu.servercore.packet.PacketStateRegistry
 import kz.bejiihiu.servercore.sync.InMemoryViewStateRegistry
 import kz.bejiihiu.servercore.sync.PacketResyncExecutor
 import kz.bejiihiu.servercore.ui.Theme
+import net.kyori.adventure.text.Component
 
 /**
  * benchmarks for the packet/esp/sync/bars hot paths. nothing here touches a
@@ -390,18 +392,44 @@ object HotPathBenchmarks {
             health = BarHealth.GOOD,
             values = values,
         )
+        // a second reading with a different number, so the cached path is measured
+        // doing real work instead of returning the same tree for one fixed value set
+        val shifted = reading.copy(
+            fraction = 0.51,
+            values = mapOf("used" to "4.1", "max" to "8.0", "pct" to "51"),
+        )
+        val readings = arrayOf(reading, shifted)
         val locale = LocaleService(Files.createTempDirectory("servercore-bench-locale"), Logger.getLogger("bench"))
+        val titles = BarTitleCache(locale)
 
         Harness.bench("formats gigabytes") { BarFormats.gigabytes(3_600_000_000L) }
         Harness.bench("formats percent") { BarFormats.percent(0.42) }
         Harness.bench("formats tps") { BarFormats.tps(19.98) }
         Harness.bench("formats clock") { BarFormats.clock(6_000L) }
         Harness.bench("theme render (minimessage)", note = "regex substitute + tag parse") { Theme.render(template, values) }
-        Harness.bench("presentation line", note = "locale lookup + minimessage + mark") {
-            BarPresentation.line(locale, BarId.RAM, reading, BarSurface.BOSSBAR)
+        var legacyIndex = 0
+        Harness.bench("presentation line (parse per tick)", note = "pre-cache path, kept for the before/after row") {
+            val r = readings[legacyIndex++ % readings.size]
+            uncachedLine(locale, BarId.RAM, r, BarSurface.BOSSBAR)
+        }
+        var cachedIndex = 0
+        Harness.bench("presentation line (cached template)", note = "template parsed once, values dropped in") {
+            val r = readings[cachedIndex++ % readings.size]
+            BarPresentation.line(titles, BarId.RAM, r, BarSurface.BOSSBAR)
         }
         Harness.bench("locale text (raw string)") { locale.text("bars.ram.title", values) }
     }
+
+    /**
+     * the line as it was built before the template cache: locale lookup, regex
+     * substitution and a minimessage parse for every render. kept here so the
+     * before/after row of `docs/performance.md` can be re-measured on one machine.
+     */
+    private fun uncachedLine(locale: LocaleService, bar: BarId, reading: BarReading, surface: BarSurface): Component =
+        Component.text(
+            "${Theme.MARK} ",
+            if (surface == BarSurface.BOSSBAR) Theme.GOLD else BarPresentation.markColor(reading.health),
+        ).append(locale.component(reading.titleKey ?: bar.titleKey, reading.values))
 
     // ---- helpers ----
 

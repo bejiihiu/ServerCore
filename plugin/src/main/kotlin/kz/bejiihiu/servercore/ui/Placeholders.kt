@@ -14,8 +14,9 @@ import java.util.regex.Pattern
 object Placeholders {
 
     // named tokens only: {code}, {player}, {time}. no positional args —
-    // locales ship over the wire and need readable keys
-    private val TOKEN = Pattern.compile("\\{([A-Za-z0-9_.]+)}")
+    // locales ship over the wire and need readable keys. shared with the
+    // cached renderer, so both read the same grammar
+    internal val TOKEN: Pattern = Pattern.compile("\\{([A-Za-z0-9_.]+)}")
 
     private val mini = MiniMessage.miniMessage()
 

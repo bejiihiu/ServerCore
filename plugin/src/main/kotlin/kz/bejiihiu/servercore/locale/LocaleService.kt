@@ -59,10 +59,15 @@ class LocaleService(
     }
 
     /** raw miniMessage template with placeholders substituted; missing key renders as the key itself */
-    fun text(key: String, values: Map<String, String> = emptyMap()): String {
-        val template = active().raw(key) ?: base().raw(key) ?: key
-        return Placeholders.substitute(template, values)
-    }
+    fun text(key: String, values: Map<String, String> = emptyMap()): String =
+        Placeholders.substitute(template(key) ?: key, values)
+
+    /**
+     * raw template for a key, before any substitution; null when neither the
+     * active language nor the base layer has it. this is the read a cached
+     * renderer keys on.
+     */
+    fun template(key: String): String? = active().raw(key) ?: base().raw(key)
 
     /** template rendered into a themed adventure component (substitution happens exactly once) */
     fun component(key: String, values: Map<String, String> = emptyMap()) =

@@ -197,6 +197,13 @@ current, unreleased state of the codebase.
 - Documentation synced with the implemented code: real environment keys, full plugin config
   reference, protocol types and commands.
 
+### Performance
+
+- Bar lines no longer re-parse their MiniMessage template on every tick: the template is parsed once
+  and only the values are dropped in, taking a rendered line from 7.2 µs and 19.5 KB to 0.5 µs and
+  1.4 KB. A `LOCALE_PUSH` revision rebuilds the cache, and a template with a placeholder inside a tag
+  argument keeps the per-render path (`docs/performance.md`).
+
 ### Fixed
 
 - Plugin: crash on disable after a partial boot; overlapping self-update cycles; in-flight frames
