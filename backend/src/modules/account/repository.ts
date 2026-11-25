@@ -47,6 +47,12 @@ export type AuthRequestRecord = {
 }
 
 export type AuditRecord = {
+  /**
+   * deterministic row identity, for events that can be replayed. a second
+   * append carrying the same id is a no-op instead of a twin row, which is
+   * what makes a retried handler safe. absent means a plain append.
+   */
+  id?: string
   actorType: "PLAYER" | "ADMIN" | "TELEGRAM" | "SYSTEM"
   actorId: string
   action: string

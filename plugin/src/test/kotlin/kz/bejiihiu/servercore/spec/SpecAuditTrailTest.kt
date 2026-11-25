@@ -42,6 +42,7 @@ class SpecAuditTrailTest {
         retentionDays: Long = 30,
         maxEntriesPerSession: Int = 64,
         queueCapacity: Int = 1024,
+        maxTrackedSessions: Int = 4096,
         clock: () -> Long = System::currentTimeMillis,
     ): SpecAuditTrail = SpecAuditTrail(
         directory = dir,
@@ -51,6 +52,7 @@ class SpecAuditTrailTest {
         retentionDays = retentionDays,
         maxEntriesPerSession = maxEntriesPerSession,
         queueCapacity = queueCapacity,
+        maxTrackedSessions = maxTrackedSessions,
     )
 
     private fun linesOf(file: Path): List<String> =
@@ -80,8 +82,8 @@ class SpecAuditTrailTest {
         val day1 = 1_795_552_200_000
         val day2 = day1 + 3_600_000
         val trail = newTrail()
-        trail.record(entry(day1))
-        trail.record(entry(day2))
+        trail.record(entry(day1, sessionId = "spec-1"))
+        trail.record(entry(day2, sessionId = "spec-2"))
         trail.flushNow()
 
         assertTrue(Files.exists(dir.resolve(SpecAuditFiles.fileNameFor(day1, zone))))
@@ -93,7 +95,7 @@ class SpecAuditTrailTest {
     @Test
     fun `a single append batch never tears a line`() {
         val trail = newTrail()
-        repeat(50) { trail.record(entry(1_795_537_800_000)) }
+        repeat(50) { trail.record(entry(1_795_537_800_000, sessionId = "spec-$it")) }
         trail.flushNow()
         val file = dir.resolve(SpecAuditFiles.fileNameFor(1_795_537_800_000, zone))
         val lines = linesOf(file)
@@ -102,6 +104,65 @@ class SpecAuditTrailTest {
             // every line parses as complete json, no partial writes
             Json.parseToJsonElement(line).jsonObject
         }
+    }
+
+    @Test
+    fun `a replayed start writes one row, not a twin`() {
+        val trail = newTrail()
+        val ts = 1_795_537_800_000
+        // reconnect reconcile re-announces a live session, and a retried ws
+        // frame re-runs the reporting bridge: same session, same event
+        repeat(3) { trail.record(entry(ts, sessionId = "spec-1")) }
+        trail.flushNow()
+
+        val file = dir.resolve(SpecAuditFiles.fileNameFor(ts, zone))
+        assertEquals(1, linesOf(file).size)
+        assertEquals(2, trail.droppedForDuplicate())
+    }
+
+    @Test
+    fun `a replayed end writes one row even after the session is terminal`() {
+        val trail = newTrail()
+        val ts = 1_795_537_800_000
+        trail.record(entry(ts, sessionId = "spec-1"))
+        trail.record(entry(ts, event = SpecAuditEvents.END, sessionId = "spec-1"))
+        trail.record(entry(ts, event = SpecAuditEvents.END, sessionId = "spec-1"))
+        trail.flushNow()
+
+        val file = dir.resolve(SpecAuditFiles.fileNameFor(ts, zone))
+        assertEquals(2, linesOf(file).size)
+        assertEquals(1, trail.droppedForDuplicate())
+    }
+
+    @Test
+    fun `the same event for another session is a different row`() {
+        val trail = newTrail()
+        val ts = 1_795_537_800_000
+        trail.record(entry(ts, sessionId = "spec-1"))
+        trail.record(entry(ts, sessionId = "spec-2"))
+        trail.flushNow()
+
+        val file = dir.resolve(SpecAuditFiles.fileNameFor(ts, zone))
+        assertEquals(2, linesOf(file).size)
+        assertEquals(0, trail.droppedForDuplicate())
+    }
+
+    @Test
+    fun `the dedupe window stays bounded by the coldest sessions`() {
+        val trail = newTrail(maxTrackedSessions = 2)
+        val ts = 1_795_537_800_000
+        for (sessionId in listOf("spec-1", "spec-2", "spec-3")) {
+            trail.record(entry(ts, sessionId = sessionId))
+        }
+        // spec-1 was evicted from the window, its memory is gone: a late replay
+        // is accepted again rather than the map growing forever
+        trail.record(entry(ts, sessionId = "spec-1"))
+        trail.record(entry(ts, sessionId = "spec-3"))
+        trail.flushNow()
+
+        val file = dir.resolve(SpecAuditFiles.fileNameFor(ts, zone))
+        assertEquals(4, linesOf(file).size)
+        assertEquals(1, trail.droppedForDuplicate())
     }
 
     @Test
@@ -130,7 +191,9 @@ class SpecAuditTrailTest {
     fun `per-session cap drops the overflow, not the session`() {
         val trail = newTrail(maxEntriesPerSession = 3)
         val ts = 1_795_537_800_000
-        repeat(3) { trail.record(entry(ts, sessionId = "spec-1")) }
+        // distinct events on purpose: the same event twice is a replay and dies
+        // before the cap even sees it
+        repeat(3) { trail.record(entry(ts, event = "SPEC_CUSTOM_$it", sessionId = "spec-1")) }
         trail.record(entry(ts, event = SpecAuditEvents.END, sessionId = "spec-1"))
         // another session is unaffected by the first one's cap
         trail.record(entry(ts, sessionId = "spec-2"))
@@ -145,11 +208,11 @@ class SpecAuditTrailTest {
     fun `the per-session counter is released when the session ends`() {
         val trail = newTrail(maxEntriesPerSession = 3)
         val ts = 1_795_537_800_000
-        repeat(3) { trail.record(entry(ts, sessionId = "spec-1")) }
+        repeat(3) { trail.record(entry(ts, event = "SPEC_CUSTOM_A$it", sessionId = "spec-1")) }
         // the end row is terminal: it gets dropped by the cap, and the counter
         // goes with it instead of lingering for the process lifetime
         trail.record(entry(ts, event = SpecAuditEvents.END, sessionId = "spec-1"))
-        repeat(3) { trail.record(entry(ts, sessionId = "spec-1")) }
+        repeat(3) { trail.record(entry(ts, event = "SPEC_CUSTOM_B$it", sessionId = "spec-1")) }
         trail.flushNow()
 
         val file = dir.resolve(SpecAuditFiles.fileNameFor(ts, zone))
@@ -170,9 +233,9 @@ class SpecAuditTrailTest {
             queueCapacity = 2,
         )
         val ts = 1_795_537_800_000
-        trail.record(entry(ts))
-        trail.record(entry(ts))
-        trail.record(entry(ts))
+        trail.record(entry(ts, sessionId = "spec-1"))
+        trail.record(entry(ts, sessionId = "spec-2"))
+        trail.record(entry(ts, sessionId = "spec-3"))
         // nothing threw, the third entry was dropped and counted
         assertEquals(1, trail.droppedForFullBuffer())
         trail.flushNow()

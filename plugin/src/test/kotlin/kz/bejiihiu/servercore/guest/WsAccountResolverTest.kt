@@ -257,6 +257,34 @@ class WsAccountResolverTest {
     }
 
     @Test
+    fun `a duplicate account deleted event is harmless`() {
+        val gateway = BackendGateway()
+        gateway.attach(RecordingLink())
+        val cache = newCache()
+        val resolver = WsAccountResolver(gateway, cache, config())
+        val uuid = UUID.randomUUID()
+        cache.put(uuid, AccountStateMapper.STATE_ACTIVE)
+        resolver.onMessage(linkToken(uuid))
+        val waiting = resolver.resolve(uuid, "player")
+
+        val deleted = messageEnvelope(
+            MessageTypes.ACCOUNT_DELETED,
+            kz.bejiihiu.servercore.ws.AccountDeletedPayload(
+                minecraftUuid = uuid.toString(),
+                reason = "SELF_REQUESTED",
+            ),
+        )
+        // the kick/revoke push is repeated: no state left to clear, no crash,
+        // and a waiter is released once instead of throwing on the second pass
+        resolver.onMessage(deleted)
+        resolver.onMessage(deleted)
+
+        assertEquals(AccountStatus.GuestPendingLogin(null), waiting.get(1, TimeUnit.SECONDS))
+        assertNull(cache.get(uuid))
+        assertNull(resolver.pendingLink(uuid))
+    }
+
+    @Test
     fun `approval clears the pending link`() {
         val gateway = BackendGateway()
         gateway.attach(RecordingLink())

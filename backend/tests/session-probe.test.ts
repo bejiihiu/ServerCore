@@ -64,6 +64,23 @@ describe("gateway ownership probe", () => {
     expect(verifier.pendingCount).toBe(0)
   })
 
+  test("a duplicate answer for a probe that already resolved is ignored", async () => {
+    const gateway = new FakeGateway()
+    const verifier = new GatewayOwnershipVerifier(gateway as unknown as Gateway, silentLogger())
+    const pending = verifier.verify(UUID)
+    await flush()
+    const correlationId = gateway.sent[0]?.correlationId as string
+
+    gateway.answer(correlationId, true, verifier, "session-77")
+    expect(await pending).toEqual({ ok: true, sessionId: "session-77" })
+    // the plugin answered twice (frame replay): the resolved probe is gone,
+    // so nothing is re-resolved and no counter is touched
+    verifier.onProbeAnswer(correlationId, true, "session-77")
+    verifier.onProbeAnswer(correlationId, false, null)
+
+    expect(verifier.pendingCount).toBe(0)
+  })
+
   test("a no from the only server -> NOT_ONLINE", async () => {
     const gateway = new FakeGateway()
     const verifier = new GatewayOwnershipVerifier(gateway as unknown as Gateway, silentLogger())

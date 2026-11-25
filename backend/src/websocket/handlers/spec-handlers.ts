@@ -10,6 +10,10 @@ import type { SpecAuditService } from "../../modules/audit/spec-audit-service.js
  *
  * every session the plugin runs must show up here — hidden observation from
  * the player's point of view still leaves a full administrative audit trail.
+ *
+ * both handlers are idempotent per (session, event): the plugin resends a
+ * frame the backend failed on under a fresh envelope id, and the second pass
+ * must land on the row the first one wrote, not next to it.
  */
 export function registerSpecHandlers(
   registry: HandlerRegistry,

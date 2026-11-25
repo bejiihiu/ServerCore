@@ -194,3 +194,20 @@ The same posture applies one layer down, when the backend is up but MongoDB is n
 - An `ACK` means *received*, not *processed*. If handling a frame needs the database and the write fails, the backend answers that ack with `ERROR { code: "HANDLER_FAILED", inReplyTo: <frame id> }` on the same connection. The socket stays open and later frames are processed normally — a database blip never costs the game server its link.
 - The failed frame is not retried by the backend; the retry decision belongs to the plugin (next point). The backend's own parked pushes (auth prompts and verdicts, link tokens) flush on the next sweep once the database is back.
 - The plugin owns the retry. A correlated `ERROR` means the frame was *not applied*, so a `QUEUE` or `DURABLE` frame goes back into its park and is resent after a short delay. The resend carries a fresh envelope id and timestamp — a recycled id would only be re-acked as a duplicate and the handler would never run again — so every handler has to tolerate processing the same event twice. Retries are bounded at three; after that the frame is logged at warn and dropped, and a dropped counter is incremented. Fire-and-forget frames (heartbeats, status) are only logged, and deterministic failures such as `BAD_PAYLOAD` are never retried. An `ERROR` without `inReplyTo` is logged and otherwise ignored.
+
+### Handler idempotency
+
+Envelope ids dedupe *redeliveries of one frame*, not *retries of one event*: a retry is a brand new frame by design. The invariant is therefore stated per event, not per frame — **a handler must reach the same state whether it runs once or three times for the same event identity**, where the identity is whatever the payload makes a settled state:
+
+| Event | Identity | How a repeat is absorbed |
+|---|---|---|
+| `SPEC_STARTED` / `SPEC_ENDED` | `sessionId` | the audit row carries a deterministic id (`spec:<sessionId>:STARTED` / `...:ENDED`) and is written with an insert-only upsert, so the second delivery lands on the row the first one created. Audit rows stay append-only: a retried end never rewrites the reason the first one recorded |
+| `GUEST_STARTED` | `sessionId` | the session row is insert-only per open session and the snapshot upsert is `$setOnInsert`, so a replay confirms the existing capture instead of moving it |
+| `GUEST_ENDED` | `sessionId` | closing an already-closed session and deleting an already-deleted snapshot are no-ops; `AUTHENTICATED` re-applies the same status |
+| `PLAYER_JOINED` / `PLAYER_LEFT` | open session per uuid | the account row is find-or-create, the link token is rate-limited to one per window, and the session bookkeeping is close-then-create; a settled join is only replayable through the parked-frame path, which keeps the envelope id |
+| `SERVER_STATUS` / `SERVER_HEARTBEAT` | connection + payload | the state derive is last-writer-wins on the same values, and the state-change hook fires only on a real flip |
+| `SESSION_CHECK_RESULT` | `correlationId` | the probe is removed from the pending map when it resolves, so a late or repeated answer is dropped; the frame is `DROP`-durability and is never retried |
+| `ACCOUNT_DELETED` (plugin side) | `minecraftUuid` | clearing the account cache, the pending link and the waiter are all idempotent; a repeated kick/revoke push cannot crash the plugin |
+
+The plugin's own spec journal follows the same rule: its audit trail dedupes on `(sessionId, event)` in memory, so a re-announced live session or a repeated report writes one jsonl row per event, never two.
+
