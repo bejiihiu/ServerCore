@@ -136,6 +136,98 @@ placeholders:
 countdown:
   tick: "<secondary>время на исходе</secondary>"
 
+# /servercore diag: самопроверка оператора. секции повторяют модель отчёта;
+# находки без тегов — цвет выдаёт карточка по важности
+diag:
+  header: "<gold>диагностика</gold> <muted>·</muted> <secondary>{version}</secondary>"
+  section:
+    build: "<gold>сборка</gold>"
+    modules: "<gold>модули</gold>"
+    link: "<gold>связь с бэкендом</gold>"
+    counts: "<gold>счётчики</gold>"
+    versions: "<gold>версии</gold>"
+    verdict: "<gold>вердикт</gold>"
+  label:
+    plugin: "плагин"
+    jar: "jar"
+    server: "сервер"
+    folia: "folia"
+    java: "java"
+    link: "связь"
+    heartbeat: "последний heartbeat"
+    outbox: "outbox"
+    last-disconnect: "последний разрыв"
+    reconnect-attempts: "попытки переподключения"
+    guests: "гости"
+    spec-sessions: "spec-сеансы"
+    bars: "бары"
+    players: "игроки"
+  module:
+    guest: "гостевой режим"
+    packet: "пакетный слой"
+    anti-esp: "anti-esp"
+    protection: "защита"
+    spec: "spec"
+    bars: "бары"
+    luckperms: "luckperms"
+    placeholderapi: "placeholderapi"
+    flectonepulse: "flectonepulse"
+  status:
+    enabled: "<ok>включён</ok>"
+    disabled: "<muted>выключен в конфиге</muted>"
+    absent: "<warn>нет зависимости</warn>"
+    failed: "<danger>сбой</danger>"
+  detail:
+    packet-idle: "пакетный слой простаивает"
+    all-bars-off: "все бары выключены"
+    static-fallback: "статический фолбэк из конфига"
+    fp-incompatible: "версия api не поддерживается"
+    fp-connecting: "ещё подключается"
+  value:
+    "yes": "<ok>да</ok>"
+    "no": "<warn>нет</warn>"
+    connected: "<ok>подключено</ok>"
+    disconnected: "<danger>нет связи</danger>"
+    absent: "<muted>отсутствует</muted>"
+    never: "<muted>никогда</muted>"
+    none: "<muted>нет</muted>"
+  version:
+    packetevents: "packetevents"
+    luckperms: "luckperms"
+    placeholderapi: "placeholderapi"
+    flectonepulse: "flectonepulse"
+  finding:
+    packet-offline: "пакетный слой не работает: anti-esp, маскировка и просмотр инвентаря выключены"
+    backend-down: "связь с бэкендом потеряна: авторизация и события модерации недоступны"
+    guest-failed: "гостевой режим включён в конфиге, но сессионная машина не поднялась"
+    protection-failed: "защита включена в конфиге, но её сторожа не поднялись"
+    spec-failed: "spec включён в конфиге, но сессионная машина не поднялась"
+    esp-failed: "anti-esp включён в конфиге, но движок не поднялся"
+    bars-failed: "бары включены в конфиге, но рендерер не поднялся"
+    heartbeat-stale: "нет трафика от бэкенда уже {seconds} с, хотя связь считается живой"
+    outbox-backlog: "в outbox лежит {count} кадр(ов): бэкенд не подтверждает доставку"
+    anti-esp-disabled: "anti-esp выключен в конфиге: клиенты видят всё"
+    protection-disabled: "защита выключена в конфиге: командные и gamemode-сторожа не работают"
+    luckperms-absent: "luckperms не установлен: права берутся из статической карты конфига"
+    flectonepulse-incompatible: "версия api flectonepulse не та: проверка наказаний выключена"
+    flectonepulse-absent: "flectonepulse не установлен: проверка наказаний выключена"
+    placeholderapi-absent: "placeholderapi не установлен: плейсхолдеры %servercore_*% недоступны"
+  hint:
+    install-packetevents: "<secondary>поставьте packetevents 2.14.x: anti-esp работает через пакетный слой</secondary>"
+    start-backend: "<secondary>запустите бэкенд и сверьте backend.url и общий секрет</secondary>"
+    check-config: "<secondary>смотрите лог загрузки: включённый модуль не поднялся</secondary>"
+    drain-outbox: "<secondary>outbox разберётся сам, когда бэкенд начнёт подтверждать кадры</secondary>"
+    check-network: "<secondary>проверьте сеть между сервером и бэкендом</secondary>"
+    install-luckperms: "<secondary>поставьте luckperms: без него нет прав и /servercore groups</secondary>"
+    install-flectonepulse: "<secondary>поставьте flectonepulse: без него нет проверки наказаний</secondary>"
+    update-flectonepulse: "<secondary>обновите flectonepulse до сборки 1.15.x</secondary>"
+    enable-anti-esp: "<secondary>включите anti-esp.enabled, чтобы игроки скрывались за укрытиями</secondary>"
+    enable-protection: "<secondary>включите protection.enabled, чтобы вернуть сторожей</secondary>"
+  verdict:
+    ok: "<ok>OK</ok> <muted>·</muted> <secondary>все включённые модули работают</secondary>"
+    warn: "<warn>WARN</warn> <muted>·</muted> <secondary>проблемы: {count}</secondary>"
+    fail: "<danger>FAIL</danger> <muted>·</muted> <secondary>блокеры: {count}</secondary>"
+
 # server info bars: /rambar, /tpsbar, /msptbar, /playersbar, /worldbar и
 # /netbar. заголовок бара — живая строка (цвет здоровья приходит из заливки
 # bossbar или ведущего маркера), остальное — ответ на переключение. числа
