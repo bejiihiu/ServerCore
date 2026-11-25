@@ -1,5 +1,7 @@
 # Installation
 
+**Languages:** English | [Русский](ru/installation.md)
+
 This guide walks through a full deployment: MongoDB, the backend, the Telegram bot, and the Folia server with the plugin. All commands are examples — adjust paths and names to your environment.
 
 > **Version note.** There is no semantic version and no `v1.0.0`-style release: every build is

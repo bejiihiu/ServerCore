@@ -1,5 +1,7 @@
 # First run
 
+**Languages:** English | [Русский](ru/first-run.md)
+
 A short operator checklist for bringing ServerCore up for the first time: one backend, one Folia server,
 one plugin. The long version with every option is [installation.md](installation.md); every key is in
 [configuration.md](configuration.md).

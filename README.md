@@ -1,5 +1,7 @@
 # ServerCore
 
+🇷🇺 [Русский](README.ru.md)
+
 > Closed-community Survival server infrastructure — Telegram-driven admission, passwordless login, and a hardened, Folia-native runtime.
 
 **Project status:** unstable API, no semantic versioning. Every build is identified as
@@ -108,6 +110,7 @@ A detailed, step-by-step walkthrough with real configuration examples lives in [
 | [Dependency audit](docs/dependency-audit.md) | Vulnerability, license and supply-chain status of every dependency |
 | [UI design system](docs/ui-design-system.md) | In-game theme tokens, typography, layout rules |
 | [FAQ](docs/faq.md) | Common questions |
+| [Russian docs](docs/ru/README.md) | Russian translations of the first-run, installation, configuration and FAQ pages |
 | [Changelog](CHANGELOG.md) | Unreleased change history and versioning scheme |
 
 ## License

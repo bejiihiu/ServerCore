@@ -1,5 +1,7 @@
 # FAQ
 
+**Languages:** English | [Русский](ru/faq.md)
+
 ### Who is ServerCore for?
 
 Closed-community Survival servers that want real admission control, identity tied to Telegram, and hardened runtime behaviour — without turning the server into a minigame hub or stuffing it with a hundred unrelated commands.
