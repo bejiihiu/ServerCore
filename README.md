@@ -102,6 +102,7 @@ A detailed, step-by-step walkthrough with real configuration examples lives in [
 | [First run](docs/first-run.md) | Short operator checklist: bring-up order, expected log lines, where state lives |
 | [Configuration](docs/configuration.md) | Every env var and config key |
 | [WebSocket protocol](docs/websocket-protocol.md) | Message envelope, types, auth, reconnect |
+| [Server info bars](docs/bars.md) | `/rambar`…`/netbar`: commands, config, Folia scope, `%servercore_bar_*%` |
 | [Admission](docs/admission.md) | Linking, applications, voting, quorum, invites |
 | [Authentication](docs/authentication.md) | Passwordless login flow |
 | [Security](docs/security.md) | Threat model, tokens, command protection |

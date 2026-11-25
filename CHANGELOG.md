@@ -108,6 +108,27 @@ current, unreleased state of the codebase.
 - FlectonePulse punishment lookups with event-driven cache invalidation and suppression of
   ServerCore's own Telegram announcements when FlectonePulse's Telegram module is active.
 
+#### Server info bars
+
+- Per-player toggle bars in the Purpur spirit — `/rambar`, `/tpsbar`, `/msptbar`, `/playersbar`, `/worldbar`,
+  `/netbar` — rendered as a bossbar or an actionbar line, with `all` and per-player target forms and
+  `.other` permission nodes.
+- Toggle state is persisted per player (`bars.json`), so a bar survives a relog; Purpur drops it.
+- Folia-native metrics: TPS and MSPT belong to the region the player stands in, read on that player's
+  own entity scheduler, with the chunk pair and the 1-minute window in the title; MSPT uses Folia's
+  region-scoped tick report with a tick-pacing fallback instead of a server-wide number that does not exist.
+- Heap sampling on the async scheduler with a volatile snapshot, actionbar-priority-safe rendering, and
+  a neutral surface for the player/world bars.
+- `NETWORK_SNAPSHOT`: the backend aggregates every game server's heartbeat into one frame and pushes it
+  to all servers after each heartbeat window, so `/netbar` shows the whole fleet (`3/3 servers · 7 online
+  · 1 offline`) with per-server staleness instead of polling.
+- Bar values exported to PlaceholderAPI: `%servercore_bar_ram%`, `%servercore_bar_tps%`,
+  `%servercore_bar_mspt%`, `%servercore_bar_players%`, `%servercore_bar_net%`, served from the same
+  snapshot layer (never computed on the asking thread), with an ambient sampler so they stay fresh with
+  no bar toggled.
+- `docs/bars.md`: command and config reference, permission model, the Folia scope of each number, and
+  scoreboard/tab examples for the placeholders.
+
 #### Telegram bot UX
 
 - Shared bot UI toolkit (screens, keyboards, sending, text rendering) used by every flow, including
@@ -126,6 +147,9 @@ current, unreleased state of the codebase.
 - Ack-expected frames with bounded retries and a durable on-disk outbox for guest lifecycle frames.
 - Inbound dedupe window, graceful gateway stop with in-flight frame drain, and per-frame size limits.
 - Backend handler registry with deduplicated registration and a single player-join handler.
+- `NETWORK_SNAPSHOT` broadcast on the heartbeat cycle (throttled to one push per second) carrying every
+  known server's load and heartbeat age; the protocol manifest, both contract suites and
+  `docs/websocket-protocol.md` cover the new type.
 
 #### Build, tests and docs
 
@@ -139,7 +163,7 @@ current, unreleased state of the codebase.
   tests on both sides, so schema drift fails the build instead of production.
 - Plugin tests for guest logic, protocol compatibility, permissions and packet-state behaviour.
 - Documentation set: architecture, installation, configuration, WebSocket protocol, admission,
-  authentication, security, FAQ and the in-game UI design system.
+  authentication, security, FAQ, server info bars and the in-game UI design system.
 
 ### Changed
 
