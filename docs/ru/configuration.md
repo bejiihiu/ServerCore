@@ -158,7 +158,8 @@ ServerCore настраивается в двух местах: в файле о
 Тексты для игроков живут в одном каноническом хранилище: `locales/ru.yml` и `locales/en.yml`. Оба файла
 поставляются внутри jar плагина и имеют одинаковый набор вложенных ключей — `tablist.*`, `guest.*`,
 `auth.*`, `account.*`, `spec.*`, `protection.*`, `luckperms.groups.*`, блок `placeholders.*`, который
-питает расширение PlaceholderAPI, и `countdown.*`. `guest.lang` выбирает активный язык; ключ, которого в
+питает расширение PlaceholderAPI, `bars.*` (заголовки баров и ответы на переключение), `diag.*`
+(карточка `/servercore diag`) и `countdown.*`. `guest.lang` выбирает активный язык; ключ, которого в
 нём нет, берётся из английского файла, а ключ, отсутствующий везде, отображается как сам ключ.
 
 Backend присылает канонический бандл `ru` целым файлом по WebSocket (`LOCALE_PUSH`); плагин сохраняет его
@@ -283,6 +284,40 @@ Pterodactyl. Секреты в этот файл не попадают — кл�
 | `%servercore_telegram_linked%` | Привязан ли аккаунт к личности Telegram |
 | `%servercore_last_seen%` | Относительное время последнего входа/выхода |
 | `%servercore_session_duration%` | Текущее время сессии онлайн-игрока |
+| `%servercore_bar_ram%` | Занятость heap в процентах из последнего замера бара RAM |
+| `%servercore_bar_tps%` | TPS из последнего замера бара: регион спрашивающего игрока, иначе агрегат сервера |
+| `%servercore_bar_mspt%` | Время тика региона из последнего замера бара |
+| `%servercore_bar_players%` | Число игроков онлайн из бара players |
+| `%servercore_bar_net%` | Отвечающие/известные серверы из бара сети, например `3/3` |
+
+Плейсхолдеры баров читают тот же слой снапшотов, из которого рисуются сами бары, и отдают
+`placeholders.unknown-value`, пока ни одного замера ещё не было. Подробности — в
+[информационных барах](bars.md#placeholderapi).
+
+### bars
+
+Живое здоровье сервера в виде переключаемого бара для каждого игрока. Полный справочник
+(команды, область Folia, примеры плейсхолдеров) — в [информационных барах](bars.md).
+
+| Ключ | По умолчанию | Описание |
+|---|---|---|
+| `bars.enabled` | `true` | Главный выключатель: `false` = нет отрисовки, нет сэмплирования, нет команд `/…bar` |
+| `bars.update-interval-ticks` | `20` | Частота обновления в тиках (`20` = 1 с), приводится к `1–200` |
+| `bars.display` | `bossbar` | Поверхность: `bossbar` или `actionbar`; неизвестное значение откатывается к `bossbar` |
+| `bars.ram.enabled` | `true` | `/rambar` включён |
+| `bars.ram.good` / `bars.ram.medium` | `60` / `80` | Границы занятости heap в процентах для «здорово» / «критично» |
+| `bars.tps.enabled` | `true` | `/tpsbar` включён |
+| `bars.tps.good` / `bars.tps.medium` | `18.0` / `15.0` | Границы TPS (больше — лучше) |
+| `bars.mspt.enabled` | `true` | `/msptbar` включён |
+| `bars.mspt.good` / `bars.mspt.medium` | `40.0` / `50.0` | Границы времени тика региона в мс (меньше — лучше) |
+| `bars.players.enabled` | `true` | `/playersbar` включён |
+| `bars.world.enabled` | `true` | `/worldbar` включён |
+| `bars.world.show-weather` | `true` | `false` скрывает слово о погоде, оставляя мир и часы |
+| `bars.net.enabled` | `true` | `/netbar` включён (для обзора всего парка нужна связь с backend) |
+| `bars.net.stale-after-ms` | три интервала heartbeat | Возраст heartbeat, после которого сервер считается offline; приводится к `5000–600000` |
+
+Перепутанные пары порогов выставляются в правильном порядке со строкой в логе; из-за порогов
+конфиг никогда не отклоняется.
 
 ### Валидация и приведение значений
 
@@ -296,9 +331,9 @@ Pterodactyl. Секреты в этот файл не попадают — кл�
 
 Всё остальное деградирует, а не ломает загрузку:
 
-- **Приводится** к безопасному диапазону: `anti-esp.max-distance` `8–128`, `check-interval-ticks` `1–200`, `cache.ttl-ticks` `1–2000`, `spec.hidden.trace-radius` `0.5–16`, `guest.resolve-timeout-milliseconds` `250–30000`, `session-limit` `1–100`, `reminder-interval-seconds` `10–3600`, `gamemode-sweep-seconds` `1–60`, `link-ttl-milliseconds` `5000–600000`, аудиторные `retention-days`/`max-entries-per-session`/`queue-capacity` (ниже 1 / 1 / 16), `flectonepulse.punishment-cache-ttl-seconds` `1–3600`, `ops.restart.grace-seconds` `0–600`, `ops.update.check-interval-minutes` не меньше `1`
+- **Приводится** к безопасному диапазону: `anti-esp.max-distance` `8–128`, `check-interval-ticks` `1–200`, `cache.ttl-ticks` `1–2000`, `spec.hidden.trace-radius` `0.5–16`, `guest.resolve-timeout-milliseconds` `250–30000`, `session-limit` `1–100`, `reminder-interval-seconds` `10–3600`, `gamemode-sweep-seconds` `1–60`, `link-ttl-milliseconds` `5000–600000`, `bars.update-interval-ticks` `1–200`, `bars.net.stale-after-ms` `5000–600000`, аудиторные `retention-days`/`max-entries-per-session`/`queue-capacity` (ниже 1 / 1 / 16), `flectonepulse.punishment-cache-ttl-seconds` `1–3600`, `ops.restart.grace-seconds` `0–600`, `ops.update.check-interval-minutes` не меньше `1`
 - **Отбрасывается со строкой в логе**: неизвестные имена в `anti-esp.disguise.mobs`, некорректные записи `ops.restart.daily-times`, не-UUID ключи в `guest.local-accounts` / `luckperms.fallback.groups` / `luckperms.fallback.permissions.players`, пустые имена групп
-- **Откатывается**: неизвестный `ops.restart.timezone` становится `Europe/Moscow`; `spec.permission.fallback-level` не из `spec.permission.levels` становится самым низким из перечисленных; пустой `guest.command-whitelist` становится `help, rules, link`; отсутствующий `ops.restart.daily-times` становится `["05:00"]` (явный `[]` по-прежнему означает «без плановых рестартов»)
+- **Откатывается**: неизвестный `ops.restart.timezone` становится `Europe/Moscow`; `spec.permission.fallback-level` не из `spec.permission.levels` становится самым низким из перечисленных; пустой `guest.command-whitelist` становится `help, rules, link`; отсутствующий `ops.restart.daily-times` становится `["05:00"]` (явный `[]` по-прежнему означает «без плановых рестартов»); неизвестный `bars.display` становится `bossbar`; отсутствующий `bars.net.stale-after-ms` становится тремя интервалами heartbeat
 - **Игнорируется без побочных эффектов**: любая опциональная секция плагина (`luckperms`, `placeholders`, `flectonepulse`) может отсутствовать целиком; `anti-esp.enabled: false` останавливает и движок видимости, и пакетный слой, а `spec.enabled: false` просто пропускает стек `/spec`. Плагин всё равно загружается.
 
 ## Команды плагина
@@ -310,6 +345,7 @@ Pterodactyl. Секреты в этот файл не попадают — кл�
 | `/servercore groups <player>` | `servercore.admin` (консоль всегда разрешена) | Отладочный вывод со списком групп игрока из активного источника прав |
 | `/servercore deop-all` | `servercore.admin` (консоль всегда разрешена) | Снять статус оператора со всех аккаунтов, у которых он есть |
 | `/servercore diag [--json]` | `servercore.admin` (консоль всегда разрешена) | Самопроверка оператора: сборка, матрица модулей, связь с бэкендом, живые счётчики, версии интеграций, вердикт и до трёх подсказок. `--json` выводит один машиночитаемый документ вместо карточки |
+| `/rambar`, `/tpsbar`, `/msptbar`, `/playersbar`, `/worldbar`, `/netbar` | `servercore.bars.<bar>` для себя, `….other` — для других игроков | Переключить информационный бар; см. [информационные бары](bars.md) |
 | `/link` | гости | Это не зарегистрированная команда — гость, набравший `/link`, получает в чате запрос регистрации вместо «unknown command» |
 
 Набор команд Telegram-бота отдельный и целиком живёт в backend: `/start`, `/status`, `/application`,

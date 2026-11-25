@@ -222,22 +222,49 @@ class ObserverHiderTest {
     }
 
     @Test
-    fun `closing a stale pair leaves the live registration alone`() {
+    fun `a late teardown keeps the live pair, its tracker and its client picture`() {
         val h = harness()
-        h.hider.begin(admin, target)
-        h.hider.begin(admin, secondTarget)
-        assertEquals(secondTarget, h.pairs.observedTarget(admin))
+        h.hider.begin(admin, target, "session-1")
+        h.wire.sinks.getValue(admin).invoke(TracePos(1.0, 64.0, 2.0))
 
-        // the old session's teardown lands late
-        h.hider.end(admin, target)
+        // the admin switches targets: the new session opens before the old
+        // teardown lands
+        h.hider.begin(admin, secondTarget, "session-2")
+        h.hider.end(admin, target, "session-1")
 
-        // the registry keeps the live pair: unregister only closes the exact
-        // pair it was given. known sharp edge, same shape as the journal race
-        // the review flagged: the stale teardown still drops the admin's pose
-        // tracker and re-sends a restore burst for the pair that no longer
-        // exists. pinned here so a future fix (ignore the burst when the pair
-        // is not live) shows up as a deliberate change
+        // the live pair is untouched
         assertEquals(secondTarget, h.pairs.observedTarget(admin), "the live pair survives")
+        assertTrue(h.pairs.owns(admin, secondTarget, "session-2"), "the live session still owns the pair")
+        // trace attribution belongs to the live session now
+        assertEquals(1, h.wire.poseTracked, "the tracker is opened once, not re-opened")
+        assertEquals(0, h.wire.closedHandles, "a stale teardown must not close the live tracker")
+        assertEquals(TracePos(1.0, 64.0, 2.0), h.hider.poseOf(admin), "pose data survives the stale teardown")
+        // and the old target gets its picture back: skipping that would leave
+        // the admin invisible to a player who is no longer being observed
         assertEquals(listOf(target to admin), h.wire.restored)
+        assertEquals(EntityViewState.VISIBLE, h.rows.registry.state(target, admin))
+        assertEquals(EntityViewState.HIDDEN, h.rows.registry.state(secondTarget, admin))
+    }
+
+    @Test
+    fun `a late teardown for the same target cannot close the newer session`() {
+        val h = harness()
+        h.hider.begin(admin, target, "session-1")
+
+        // the same admin re-specs the same player: a new session, same pair
+        h.hider.begin(admin, target, "session-2")
+        h.hider.end(admin, target, "session-1")
+
+        assertTrue(h.pairs.owns(admin, target, "session-2"), "pair identity alone would see no change here")
+        assertEquals(0, h.wire.closedHandles, "the live tracker stays open")
+        assertTrue(h.wire.restored.isEmpty(), "the live hide must not be undone by the old session")
+        assertEquals(EntityViewState.HIDDEN, h.rows.registry.state(target, admin))
+
+        // the session that actually owns the pair still tears it down
+        h.hider.end(admin, target, "session-2")
+
+        assertNull(h.pairs.observedTarget(admin))
+        assertEquals(listOf(target to admin), h.wire.restored)
+        assertEquals(1, h.wire.closedHandles)
     }
 }

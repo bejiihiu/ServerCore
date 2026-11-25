@@ -146,7 +146,7 @@ Per-guest interaction toggles. Each defaults to `true` (restricted):
 
 ### guest messages
 
-Player-facing text lives in one canonical store: `locales/ru.yml` and `locales/en.yml`. Both files ship inside the plugin jar and share the same nested key set — `tablist.*`, `guest.*`, `auth.*`, `account.*`, `spec.*`, `protection.*`, `luckperms.groups.*`, the `placeholders.*` block that feeds the PlaceholderAPI expansion, and `countdown.*`. `guest.lang` picks the active language; a key missing from it falls back to the English file, and a key missing everywhere renders as the key itself.
+Player-facing text lives in one canonical store: `locales/ru.yml` and `locales/en.yml`. Both files ship inside the plugin jar and share the same nested key set — `tablist.*`, `guest.*`, `auth.*`, `account.*`, `spec.*`, `protection.*`, `luckperms.groups.*`, the `placeholders.*` block that feeds the PlaceholderAPI expansion, `bars.*` (bar titles and toggle feedback), `diag.*` (the `/servercore diag` card) and `countdown.*`. `guest.lang` picks the active language; a key missing from it falls back to the English file, and a key missing everywhere renders as the key itself.
 
 The backend pushes the canonical `ru` bundle as a full file over the WebSocket (`LOCALE_PUSH`); the plugin persists it to `plugins/ServerCore/locales/ru.yml`, and that persisted copy wins over the jar seed on boot. The same channel accepts `en`, but the backend currently serves only `ru` — the English file travels in the plugin jar as the base layer.
 

@@ -40,19 +40,38 @@ class ObserverHider(
 
     // ---- session lifecycle ----
 
-    /** open the hiding for a pair; the session bridge calls this once the session settles */
-    fun begin(admin: UUID, target: UUID) {
+    /**
+     * open the hiding for a pair; the session bridge calls this once the
+     * session settles. [token] identifies the session instance, so a teardown
+     * from an older session can tell itself apart from the live one.
+     */
+    fun begin(admin: UUID, target: UUID, token: Any? = null) {
         if (admin == target) return
-        sessions.register(admin, target)
+        sessions.register(admin, target, token)
         rows.set(target, admin, EntityViewState.HIDDEN)
         trackPose(admin)
         hide(admin, target)
     }
 
-    /** close the hiding for a pair and restore the target's client. */
-    fun end(admin: UUID, target: UUID) {
-        sessions.unregister(admin, target)
-        stopPoseTracking(admin)
+    /**
+     * close the hiding for a pair and restore the target's client.
+     *
+     * a teardown can land after its pair was replaced (the coordinator
+     * releases the admin and the next join claims them before this runs).
+     * what a replaced teardown may touch is decided by what it owns:
+     * - a newer session on the same target owns that client's picture: the
+     *   hide, the row and the restore are all skipped, the tracker stays too
+     * - a newer session on a *different* target shares nothing with this pair
+     *   except the admin's pose tracker, so the tracker stays with the live
+     *   session while the old target still gets its picture back (skipping
+     *   the restore would leave the admin invisible to that player forever)
+     */
+    fun end(admin: UUID, target: UUID, token: Any? = null) {
+        val current = sessions.observedTarget(admin)
+        if (current == target && !sessions.owns(admin, target, token)) return
+        val otherPairLive = current != null && current != target
+        sessions.unregister(admin, target, token)
+        if (!otherPairLive) stopPoseTracking(admin)
         rows.set(target, admin, EntityViewState.VISIBLE)
         restore(admin, target)
     }

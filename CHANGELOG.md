@@ -121,10 +121,11 @@ current, unreleased state of the codebase.
   `.other` permission nodes.
 - Toggle state is persisted per player (`bars.json`), so a bar survives a relog; Purpur drops it.
 - Folia-native metrics: TPS and MSPT belong to the region the player stands in, read on that player's
-  own entity scheduler, with the chunk pair and the 1-minute window in the title; MSPT uses Folia's
-  region-scoped tick report with a tick-pacing fallback instead of a server-wide number that does not exist.
-- Heap sampling on the async scheduler with a volatile snapshot, actionbar-priority-safe rendering, and
-  a neutral surface for the player/world bars.
+  own entity scheduler, with the chunk pair in the title (the TPS value is the region's 1-minute window);
+  MSPT uses Folia's region-scoped tick report with a tick-pacing fallback instead of a server-wide number
+  that does not exist.
+- Heap sampling on the async scheduler with a volatile snapshot, actionbar rendering that re-sends
+  the line each refresh, and a neutral surface for the player/world bars.
 - `NETWORK_SNAPSHOT`: the backend aggregates every game server's heartbeat into one frame and pushes it
   to all servers after each heartbeat window, so `/netbar` shows the whole fleet (`3/3 servers · 7 online
   · 1 offline`) with per-server staleness instead of polling.
@@ -219,6 +220,11 @@ current, unreleased state of the codebase.
   override rows lost on destroy, entity identity not registered on join, already-online players
   missed by the ESP start pass, disguise capture when the scheduler refuses work, dead pins from
   stale engine settles.
+- Hidden observation: the restore journal entry was removed before the replay had a chance to run,
+  so an admin joining while their saved world was still unloading had nothing left to replay (it is
+  now dropped only after the restore lands), and a teardown landing after its session was replaced
+  could close the live session's pose tracker and undo its hiding (teardown is now scoped to the pair
+  and the session that owns it).
 - Protection and guest hardening: guests could damage players with projectiles.
 - Backend: MongoDB readiness checks always false at boot (missing indexes, null stats), process
   surviving a startup `uncaughtException`, immortal outbox frames and ack races in the client,
@@ -229,7 +235,8 @@ current, unreleased state of the codebase.
 - Ops bus sink registered on the gateway, ops fields carried on `SERVER_STATUS`, heartbeat cadence
   read from config.
 - Localization gaps: missing Russian strings for the spec section and the guest auth card, plus a
-  duplicate default language key in the env config.
+  duplicate default language key in the env config. The backend's Russian bundle also lagged behind
+  the plugin seed (`/servercore diag` had no strings); the two copies are byte-identical again.
 - FlectonePulse integration: the permanent listener outlived a plugin disable and kept calling into
   the dead bridge; it is now bound through a slot that goes empty on disable, so a surviving callback
   is a no-op, and the readiness retry no longer schedules work on a retired plugin.

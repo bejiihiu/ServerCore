@@ -160,6 +160,18 @@ class FoliaSpecEffects(
             }
     }
 
+    /**
+     * join path: replays whatever the journal holds for this admin and reports
+     * whether a replay was attempted. the entry is owned by [replayRestore] and
+     * only leaves the journal once the restore actually landed — a bail-out
+     * (world not loaded, actor not resolvable yet) keeps it for the next join.
+     */
+    fun replayPending(adminId: UUID): Boolean {
+        val record = journal.pending(adminId) ?: return false
+        replayRestore(adminId, record)
+        return true
+    }
+
     /** replay path for the restore journal: called on join with a fresh entity */
     fun replayRestore(adminId: UUID, record: PendingRestore) {
         val location = world.journalLocation(record)
@@ -167,6 +179,9 @@ class FoliaSpecEffects(
             logger.warning("spec restore: world ${record.world} is not loaded, keeping the journal entry")
             return
         }
+        // not resolvable *yet* (the join is still settling): keep the entry,
+        // the next join or the disable sweep retries it. removing it here is
+        // what used to strand the admin in spectator with nothing to replay
         val admin = world.actor(adminId) ?: return
         // the session's restore grant died with the session (short ttl), and
         // the guard cancels any non-survival mode change without a live one -
@@ -192,7 +207,7 @@ class FoliaSpecEffects(
                                 if (mode != null && mode != GameMode.SURVIVAL) {
                                     sanctions?.revoke(admin.id, REPLAY_SOURCE)
                                 }
-                                journal.remove(UUID.fromString(record.adminId))
+                                journal.remove(adminId)
                             },
                             null,
                         )

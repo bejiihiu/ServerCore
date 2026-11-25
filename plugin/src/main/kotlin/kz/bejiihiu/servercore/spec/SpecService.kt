@@ -128,11 +128,15 @@ class SpecService(
         coordinator.handleQuit(playerId)
     }
 
-    /** join hook: replays a pending restore for an admin who left mid-session */
+    /**
+     * join hook: replays a pending restore for an admin who left mid-session.
+     * the journal entry is removed by [FoliaSpecEffects.replayRestore] only once
+     * the restore actually ran, so a replay that bails out (world still
+     * unloading, actor not resolvable yet) is retried on the next join instead
+     * of leaving the admin stranded with no record.
+     */
     fun onJoin(player: Player) {
-        val record = journal.pending(player.uniqueId) ?: return
-        journal.remove(player.uniqueId)
-        effects.replayRestore(player.uniqueId, record)
+        effects.replayPending(player.uniqueId)
     }
 
     /** best-effort sweep on plugin disable; live restores, the rest goes to the journal */
