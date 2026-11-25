@@ -1,5 +1,7 @@
 # Extending ServerCore
 
+**Languages:** English | [Русский](ru/extending.md)
+
 This page is the map for changing the codebase: where a new piece belongs, which
 files move together, and what the build will refuse to accept. It assumes you
 have read [architecture](architecture.md) and the ground rules in

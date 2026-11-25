@@ -1,5 +1,7 @@
 # Authentication
 
+**Languages:** English | [Русский](ru/authentication.md)
+
 Logging in is passwordless and always goes through Telegram. There is no in-game password, no `/login`, no `/register`. Every session — including reconnects after a network blip — is confirmed by the account owner with one tap.
 
 ## Why passwordless

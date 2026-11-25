@@ -1,5 +1,7 @@
 # Server info bars
 
+**Languages:** English | [Русский](ru/bars.md)
+
 Live server health as a per-player toggle: a bossbar (or an actionbar line) that a player turns on for themselves. Every bar is opt-in — nobody is forced to watch metrics — and the choice is remembered across relogs.
 
 ```

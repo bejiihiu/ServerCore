@@ -114,7 +114,7 @@ A detailed, step-by-step walkthrough with real configuration examples lives in [
 | [Performance](docs/performance.md) | Hot-path benchmarks, how to run them, and what the numbers mean at scale |
 | [UI design system](docs/ui-design-system.md) | In-game theme tokens, typography, layout rules |
 | [FAQ](docs/faq.md) | Common questions |
-| [Russian docs](docs/ru/README.md) | Russian translations of the first-run, installation, configuration and FAQ pages |
+| [Russian docs](docs/ru/README.md) | Russian translations of every documentation page |
 | [Release checklist](docs/release-checklist.md) | Tag formula, what CI verifies, checking a published release, rollback |
 | [Changelog](CHANGELOG.md) | Unreleased change history and versioning scheme |
 

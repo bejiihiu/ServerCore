@@ -1,5 +1,7 @@
 # WebSocket protocol
 
+**Languages:** English | [Русский](ru/websocket-protocol.md)
+
 The WebSocket channel is the only transport between the backend and the Minecraft plugin. There is no HTTP fallback and none is planned. The plugin is always the initiating side; the backend is the gateway.
 
 ## Transport and security

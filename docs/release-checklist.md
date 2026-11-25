@@ -1,5 +1,7 @@
 # Release checklist
 
+**Languages:** English | [Русский](ru/release-checklist.md)
+
 How a release is cut, what CI proves about it, and how to check the published artifacts before anyone
 installs them. If a build turns out to be wrong, [the rollback section](#6-when-an-asset-is-wrong) is the
 only correct way out — read it before tagging anything.

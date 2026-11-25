@@ -1,5 +1,7 @@
 # Performance
 
+**Languages:** English | [Русский](ru/performance.md)
+
 Measured hot paths of the plugin: anti-ESP visibility (ray march, spatial grid,
 decision core), the packet view-state layer, the packet-state sync executor, the
 info bars and the WebSocket envelope codec. The goal of this page is not to

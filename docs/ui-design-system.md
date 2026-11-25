@@ -1,5 +1,7 @@
 # ServerCore in-game UI design system
 
+**Languages:** English | [Русский](ru/ui-design-system.md)
+
 Every player-facing surface the plugin renders — titles, actionbars, chat blocks, bossbars, tab list, world-anchored text — is built from one toolkit (`plugin/src/.../ui/`). This document is the source of truth for its tokens and rules. If code and this doc disagree, fix the code.
 
 ## Direction
