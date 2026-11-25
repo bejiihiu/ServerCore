@@ -1,60 +1,8 @@
 import { describe, expect, test } from "bun:test"
-import pino from "pino"
-import { ServerConnection, type ConnectionOptions, type GatewaySocketData } from "../src/websocket/connection.js"
-import { signEnvelope } from "../src/websocket/protocol/signing.js"
+import { ServerConnection } from "../src/websocket/connection.js"
+import { WS_NOW as NOW, connectionOptions as options, fakeSocket, signedFrame, silentPino } from "./helpers/ws-harness.js"
 
-const SECRET = "a".repeat(32)
-const NOW = 1_700_000_000_000
 const UUID = "069a79f4-44e9-4726-a5be-fca90e38aaf5"
-
-/** minimal stand-in for Bun's server socket: records writes, never throws */
-function fakeSocket() {
-  const sent: string[] = []
-  let closed = false
-  const socket = {
-    sendText: (text: string) => {
-      sent.push(text)
-    },
-    getBufferedAmount: () => 0,
-    ping: () => {},
-    close: () => {
-      closed = true
-    },
-    terminate: () => {
-      closed = true
-    },
-  }
-  return {
-    socket: socket as unknown as Bun.ServerWebSocket<GatewaySocketData>,
-    sent,
-    isClosed: () => closed,
-  }
-}
-
-function options(): ConnectionOptions {
-  return {
-    secret: SECRET,
-    heartbeatIntervalMs: 15_000,
-    heartbeatTimeoutMs: 10_000,
-    maxPacketBytes: 262_144,
-    replayWindowMs: 30_000,
-    replayGuardTtlMs: 150_000,
-  }
-}
-
-function signedFrame(
-  type: Parameters<typeof signEnvelope>[0]["type"],
-  payload: Record<string, unknown>,
-  id: string,
-  correlationId?: string,
-): string {
-  return JSON.stringify(
-    signEnvelope(
-      { id, type, timestamp: NOW, ...(correlationId !== undefined ? { correlationId } : {}), payload },
-      SECRET,
-    ),
-  )
-}
 
 function guestStartedPayload(sessionId = "guest-abc123"): Record<string, unknown> {
   return {
@@ -71,7 +19,7 @@ function guestStartedPayload(sessionId = "guest-abc123"): Record<string, unknown
 describe("connection-level dedupe of redelivered frames", () => {
   test("a redelivered frame is acked again but processed exactly once", () => {
     const fake = fakeSocket()
-    const connection = new ServerConnection("game-1", fake.socket, options(), pino({ level: "silent" }))
+    const connection = new ServerConnection("game-1", fake.socket, options(), silentPino())
     const routed: string[] = []
     const raw = signedFrame("GUEST_STARTED", guestStartedPayload(), "frame-0001")
 
@@ -95,7 +43,7 @@ describe("connection-level dedupe of redelivered frames", () => {
 
   test("distinct ids still route normally next to duplicates", () => {
     const fake = fakeSocket()
-    const connection = new ServerConnection("game-1", fake.socket, options(), pino({ level: "silent" }))
+    const connection = new ServerConnection("game-1", fake.socket, options(), silentPino())
     const routed: string[] = []
     const route = async (envelope: { id: string }) => {
       routed.push(envelope.id)
@@ -110,7 +58,7 @@ describe("connection-level dedupe of redelivered frames", () => {
 
   test("a duplicate of a fire-and-forget type gets no ack loop", () => {
     const fake = fakeSocket()
-    const connection = new ServerConnection("game-1", fake.socket, options(), pino({ level: "silent" }))
+    const connection = new ServerConnection("game-1", fake.socket, options(), silentPino())
     const raw = signedFrame("SERVER_HEARTBEAT", { onlinePlayers: 1, maxPlayers: 20 }, "hb-0000001")
     connection.handleFrame(raw, NOW, async () => {})
     connection.handleFrame(raw, NOW, async () => {})
@@ -123,7 +71,7 @@ describe("connection-level dedupe of redelivered frames", () => {
 describe("ack correlation", () => {
   test("awaitAck resolves when the peer's ack arrives", async () => {
     const fake = fakeSocket()
-    const connection = new ServerConnection("game-1", fake.socket, options(), pino({ level: "silent" }))
+    const connection = new ServerConnection("game-1", fake.socket, options(), silentPino())
     const pending = connection.send(
       "AUTH_REQUEST",
       { minecraftUuid: UUID, username: "bejiihiu", sessionId: "auth-abc123" },
@@ -137,7 +85,7 @@ describe("ack correlation", () => {
 
   test("connection close rejects a pending ack, the caller parks the push", async () => {
     const fake = fakeSocket()
-    const connection = new ServerConnection("game-1", fake.socket, options(), pino({ level: "silent" }))
+    const connection = new ServerConnection("game-1", fake.socket, options(), silentPino())
     const pending = connection.send(
       "AUTH_APPROVED",
       { minecraftUuid: UUID, sessionId: "auth-abc123" },
@@ -151,7 +99,7 @@ describe("ack correlation", () => {
 describe("graceful drain", () => {
   test("drain resolves as soon as in-flight handlers finish", async () => {
     const fake = fakeSocket()
-    const connection = new ServerConnection("game-1", fake.socket, options(), pino({ level: "silent" }))
+    const connection = new ServerConnection("game-1", fake.socket, options(), silentPino())
     let release!: () => void
     const gate = new Promise<void>((resolve) => {
       release = resolve
@@ -168,7 +116,7 @@ describe("graceful drain", () => {
 
   test("drain gives up after the timeout instead of hanging forever", async () => {
     const fake = fakeSocket()
-    const connection = new ServerConnection("game-1", fake.socket, options(), pino({ level: "silent" }))
+    const connection = new ServerConnection("game-1", fake.socket, options(), silentPino())
     connection.handleFrame(signedFrame("GUEST_STARTED", guestStartedPayload(), "frame-0004"), NOW, () => {
       return new Promise<void>(() => {}) // never resolves
     })
@@ -178,3 +126,4 @@ describe("graceful drain", () => {
     expect(connection.inFlightHandlers).toBe(1)
   })
 })
+

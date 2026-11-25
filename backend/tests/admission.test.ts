@@ -249,6 +249,24 @@ describe("application flow", () => {
     expect(view.ok).toBe(true)
     if (view.ok) expect(view.application.answers).toHaveLength(QUESTIONNAIRE_DEFAULTS_MUTABLE.ru.length)
   })
+
+  test("a database failure during submit does not strand the player in VOTING", async () => {
+    const deps = build()
+    deps.users.add(user({ uuid: "u1", status: "UNREGISTERED" }))
+    await fillDraft(deps, "tg-u1")
+
+    // mongo drops right between the status flip and the application insert
+    deps.applications.insert = async () => {
+      throw new Error("MongoServerSelectionError: connection refused")
+    }
+
+    await expect(deps.applications_.submit("tg-u1")).rejects.toThrow(/connection refused/)
+
+    // no half-written state: nothing to decide, and the status flip was undone
+    // so the user is re-eligible instead of stuck until an admin edits the row
+    expect(deps.applications.apps.size).toBe(0)
+    expect(deps.users.users[0]?.status).toBe("UNREGISTERED")
+  })
 })
 
 describe("voting", () => {
