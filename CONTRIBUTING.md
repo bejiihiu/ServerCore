@@ -47,6 +47,17 @@ both carry it), runs the backend checks, stages `ServerCore-<tag>.jar` and
 publishes the release. The in-plugin updater compares those tags by commit count, so never reuse or move a
 published tag — cut a new one.
 
+Once the release exists, check what was actually published before announcing it:
+
+```bash
+deploy/verify-release.sh build-<commitCount>-<shortSha>
+```
+
+It downloads the assets and verifies the checksums the way the updater parses them, the jar's identity
+(`version`, `folia-supported`, `packetevents`), the shaded kotlin classes and the backend bundle's shape,
+then exits non-zero on any problem. The full maintainer checklist — pre-flight, what CI verifies, and the
+rollback policy when an asset is wrong — is in [the release checklist](docs/release-checklist.md).
+
 ## Review
 
 Every PR is reviewed for correctness, Folia thread-safety, and security impact. Changes that weaken fail-closed behaviour or widen privileges will be asked to justify themselves — or be declined.
