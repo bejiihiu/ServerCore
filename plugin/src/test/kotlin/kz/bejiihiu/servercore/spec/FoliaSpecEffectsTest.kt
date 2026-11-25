@@ -1,5 +1,6 @@
 package kz.bejiihiu.servercore.spec
 
+import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
@@ -381,6 +382,63 @@ class FoliaSpecEffectsTest {
         assertEquals(GameMode.SPECTATOR, admin.gameMode)
         assertTrue(admin.teleports.isEmpty())
         assertEquals("CREATIVE", journal.pending(adminId)?.gamemode)
+    }
+
+    // ---- the join path (SpecService.onJoin delegates here) ----
+
+    @Test
+    fun `join retries a restore the world could not take yet`() {
+        val admin = FakeActor(adminId, "Admin").apply { gameMode = GameMode.SPECTATOR }
+        val journal = newJournal()
+        val world = FakeWorld().apply {
+            add(admin)
+            worldLoaded = false
+        }
+        journal.put(record())
+        val effects = newEffects(world, journal)
+
+        assertTrue(effects.replayPending(adminId), "a pending entry means a replay was attempted")
+        assertEquals(GameMode.SPECTATOR, admin.gameMode)
+        assertEquals("CREATIVE", journal.pending(adminId)?.gamemode, "a bail-out must not eat the record")
+
+        // the world is back: the same entry replays on the next join
+        world.worldLoaded = true
+
+        assertTrue(effects.replayPending(adminId))
+        assertEquals(GameMode.CREATIVE, admin.gameMode)
+        assertNull(journal.pending(adminId))
+        assertEquals(1, admin.teleports.size)
+    }
+
+    @Test
+    fun `join consumes the pending restore exactly once, on disk too`() {
+        val admin = FakeActor(adminId, "Admin").apply { gameMode = GameMode.SPECTATOR }
+        val journal = newJournal()
+        journal.put(record())
+        val effects = newEffects(FakeWorld().apply { add(admin) }, journal)
+
+        assertTrue(effects.replayPending(adminId))
+
+        assertNull(journal.pending(adminId))
+        assertEquals(GameMode.CREATIVE, admin.gameMode)
+        assertEquals(1, admin.teleports.size)
+        val stored = Files.readString(dir.resolve("journal.json"))
+        assertFalse(stored.contains(adminId.toString()), "the durable copy has to be cleared as well")
+
+        assertFalse(effects.replayPending(adminId), "a second join has nothing left to replay")
+        assertEquals(1, admin.teleports.size, "and must not teleport again")
+    }
+
+    @Test
+    fun `join without a pending entry touches nothing`() {
+        val admin = FakeActor(adminId, "Admin").apply { gameMode = GameMode.SPECTATOR }
+        val journal = newJournal()
+
+        val effects = newEffects(FakeWorld().apply { add(admin) }, journal)
+
+        assertFalse(effects.replayPending(adminId))
+        assertTrue(admin.teleports.isEmpty())
+        assertEquals(GameMode.SPECTATOR, admin.gameMode)
     }
 
     // ---- the coordinator on top of the real port ----
