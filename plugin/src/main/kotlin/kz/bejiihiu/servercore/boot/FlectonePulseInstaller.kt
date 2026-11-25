@@ -23,4 +23,14 @@ class FlectonePulseInstaller(private val ctx: PluginContext) {
             ctx.logger,
         )
     }
+
+    /**
+     * Disable path. The listener we handed FlectonePulse cannot be unregistered,
+     * so the bridge is switched off instead: after this every callback
+     * FlectonePulse still delivers is a no-op. Runs from onDisable before the
+     * rest of the graph unwinds, and must tolerate a partial install.
+     */
+    fun stop() {
+        if (this::bridge.isInitialized) bridge.stop()
+    }
 }

@@ -40,6 +40,7 @@ class ServerCorePlugin : JavaPlugin() {
     val jarFile: File get() = file
 
     private var ctx: PluginContext? = null
+    private var flectonePulse: FlectonePulseInstaller? = null
     private var ops: OpsInstaller? = null
     private var gateway: GatewayInstaller? = null
     private var specReporting: SpecReportingInstaller? = null
@@ -75,6 +76,7 @@ class ServerCorePlugin : JavaPlugin() {
 
         val flectonePulse = FlectonePulseInstaller(ctx)
         flectonePulse.install()
+        this.flectonePulse = flectonePulse
 
         val ops = OpsInstaller(ctx, flectonePulse)
         ops.install()
@@ -195,7 +197,10 @@ class ServerCorePlugin : JavaPlugin() {
         // dependency order, not the reverse of boot: every modified client view
         // goes back to vanilla truth before anything else shuts down, sessions
         // unwind while the packet events pipeline is still attached, and the io
-        // pool outlives every store that flushes through it
+        // pool outlives every store that flushes through it. the flectonepulse
+        // listener goes first though: it cannot be unregistered, so it must be
+        // inert before the graph it feeds on starts dying
+        flectonePulse?.stop()
         papi?.stop()
         // bars first among the surfaces: cancel the refresh tasks, clear the
         // bossbars while players are still connected, and flush the toggle

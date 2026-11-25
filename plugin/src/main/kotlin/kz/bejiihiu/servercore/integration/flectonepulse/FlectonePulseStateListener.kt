@@ -20,43 +20,45 @@ import net.flectone.pulse.model.event.player.PlayerQuitEvent
  * on the next query. handlers never touch the bukkit api — fp may call them
  * from its own threads.
  *
- * registered through ListenerRegistry.registerPermanent so it survives
- * /flectonepulse reload.
+ * registered once through ListenerRegistry.registerPermanent, which is the only
+ * registration fp keeps across its reloads. it also cannot be taken back: fp
+ * has no unregister-one api, so this object outlives a servercore disable and
+ * keeps receiving events. that is what the slot is for — every handler starts
+ * by asking it for a live target and returns immediately when there is none,
+ * so a callback after our shutdown is a pure no-op instead of a call into a
+ * dead bridge (and never a `runDelayed` on a retired plugin).
  */
 class FlectonePulseStateListener(
-    private val cache: PunishmentCache,
-    private val onReloadFinished: () -> Unit,
+    private val slot: FlectonePulseListenerSlot,
 ) : PulseListener {
 
     @Pulse(priority = Event.Priority.MONITOR)
     fun onPlayerLoad(event: PlayerLoadEvent) {
-        cache.invalidate(event.player().uuid())
+        slot.current()?.invalidatePlayer(event.player().uuid())
     }
 
     @Pulse(priority = Event.Priority.MONITOR)
     fun onPlayerQuit(event: PlayerQuitEvent) {
-        cache.invalidate(event.player().uuid())
+        slot.current()?.invalidatePlayer(event.player().uuid())
     }
 
     @Pulse(priority = Event.Priority.MONITOR)
     fun onPlayerPersist(event: PlayerPersistAndDisposeEvent) {
-        cache.invalidate(event.player().uuid())
+        slot.current()?.invalidatePlayer(event.player().uuid())
     }
 
     @Pulse(priority = Event.Priority.MONITOR)
     fun onReload(event: ReloadEvent) {
-        // end of a reload: the injector was rebuilt, cached punishment answers
-        // and the telegram probe may both be stale
+        // end of a reload: cached punishment answers and the telegram probe may
+        // both be stale. start is skipped — nothing has changed yet
         if (event.type() != ReloadEvent.Type.END) return
-        cache.invalidateAll()
-        onReloadFinished()
+        slot.current()?.afterFpRestarted()
     }
 
     @Pulse(priority = Event.Priority.MONITOR)
     fun onEnable(event: EnableEvent) {
         // fp came up after us (late enable race): same refresh as a reload end
         if (event.type() != EnableEvent.Type.READY) return
-        cache.invalidateAll()
-        onReloadFinished()
+        slot.current()?.afterFpRestarted()
     }
 }

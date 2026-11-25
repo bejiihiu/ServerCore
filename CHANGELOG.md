@@ -218,6 +218,9 @@ current, unreleased state of the codebase.
   read from config.
 - Localization gaps: missing Russian strings for the spec section and the guest auth card, plus a
   duplicate default language key in the env config.
+- FlectonePulse integration: the permanent listener outlived a plugin disable and kept calling into
+  the dead bridge; it is now bound through a slot that goes empty on disable, so a surviving callback
+  is a no-op, and the readiness retry no longer schedules work on a retired plugin.
 
 ### Security
 

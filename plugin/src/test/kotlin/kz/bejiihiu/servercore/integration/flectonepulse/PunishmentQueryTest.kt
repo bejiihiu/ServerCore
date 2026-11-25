@@ -198,6 +198,10 @@ class PunishmentQueryTest {
 /** the fp-side listener keeping servercore's local state in sync */
 class FlectonePulseStateListenerTest {
 
+    /** a slot bound to a target that does exactly what the live bridge does */
+    private fun boundSlot(target: FlectonePulseListenerTarget): FlectonePulseListenerSlot =
+        FlectonePulseListenerSlot().apply { bind(target) }
+
     @Test
     fun `player load invalidates the cached punishment`() {
         val now = System.currentTimeMillis()
@@ -205,7 +209,7 @@ class FlectonePulseStateListenerTest {
         cache.put(UUID.randomUUID(), PunishmentKind.BAN, PunishmentInfo(PunishmentKind.BAN, "r", true, 0, now))
 
         val player = testFPlayer(UUID.randomUUID())
-        FlectonePulseStateListener(cache) {}.onPlayerLoad(PlayerLoadEvent(player))
+        FlectonePulseStateListener(boundSlot(RecordingPunishmentTarget(cache))).onPlayerLoad(PlayerLoadEvent(player))
 
         assertTrue(cache.get(player.uuid(), PunishmentKind.BAN) is PunishmentCache.Result.Miss)
     }
@@ -224,28 +228,28 @@ class FlectonePulseStateListenerTest {
     @Test
     fun `reload end refreshes everything, reload start does not`() {
         val cache = PunishmentCache(30_000)
-        var refreshed = 0
-        val listener = FlectonePulseStateListener(cache) { refreshed++ }
+        val target = RecordingPunishmentTarget(cache)
+        val listener = FlectonePulseStateListener(boundSlot(target))
 
         listener.onReload(ReloadEvent(null, ReloadEvent.Type.START))
-        assertEquals(0, refreshed)
+        assertEquals(0, target.restarts)
 
         listener.onReload(ReloadEvent(null, ReloadEvent.Type.END))
-        assertEquals(1, refreshed)
+        assertEquals(1, target.restarts)
         assertEquals(0, cache.size())
     }
 
     @Test
     fun `late fp enable triggers the same refresh`() {
         val cache = PunishmentCache(30_000)
-        var refreshed = 0
-        val listener = FlectonePulseStateListener(cache) { refreshed++ }
+        val target = RecordingPunishmentTarget(cache)
+        val listener = FlectonePulseStateListener(boundSlot(target))
 
         listener.onEnable(EnableEvent(EnableEvent.Type.INIT, null))
-        assertEquals(0, refreshed)
+        assertEquals(0, target.restarts)
 
         listener.onEnable(EnableEvent(EnableEvent.Type.READY, null))
-        assertEquals(1, refreshed)
+        assertEquals(1, target.restarts)
     }
 }
 
