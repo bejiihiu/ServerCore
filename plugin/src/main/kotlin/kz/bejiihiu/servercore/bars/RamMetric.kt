@@ -38,7 +38,10 @@ class RamMetric(private val thresholds: HealthThresholds) : BarMetric {
         sampler = null
     }
 
-    override fun read(player: Player): BarReading = readingOf(snapshot)
+    override fun read(player: Player): BarReading = readGlobal()
+
+    /** the snapshot is process-wide, so the ambient sampler can publish it too */
+    override fun readGlobal(): BarReading = readingOf(snapshot)
 
     /** one jmx read; called from the async sampler only */
     private fun sample() {

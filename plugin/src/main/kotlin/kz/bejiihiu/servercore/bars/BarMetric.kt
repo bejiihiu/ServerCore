@@ -75,6 +75,15 @@ interface BarMetric {
 
     fun read(player: Player): BarReading
 
+    /**
+     * a reading that needs no player: heap, online count, the network view.
+     * null means the metric only answers for a specific player (region tps,
+     * mspt, the world bar). the ambient sampler publishes these every
+     * interval, so consumers outside the bar loop — placeholderapi — have
+     * fresh values even when nobody has a bar toggled.
+     */
+    fun readGlobal(): BarReading? = null
+
     fun start(plugin: Plugin, periodTicks: Long) {}
 
     fun stop() {}

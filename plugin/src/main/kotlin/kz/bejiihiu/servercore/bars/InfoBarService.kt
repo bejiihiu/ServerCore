@@ -27,6 +27,7 @@ class InfoBarService(
     private val store: BarsStore,
     metrics: List<BarMetric>,
     private val renderer: BarRenderer,
+    private val snapshots: BarSnapshots = BarSnapshots(),
 ) {
 
     private val metrics: Map<BarId, BarMetric> = metrics.associateBy { it.bar }
@@ -35,9 +36,13 @@ class InfoBarService(
     private val dirty = AtomicBoolean(false)
     private val running = AtomicBoolean(false)
 
+    @Volatile
+    private var ambientTask: ScheduledTask? = null
+
     fun start() {
         if (!running.compareAndSet(false, true)) return
         metrics.values.forEach { it.start(plugin, config.updateIntervalTicks) }
+        startAmbientSampler()
         // players already online (a reload, or a late enable) get their persisted bars back
         plugin.server.onlinePlayers.forEach { player -> player.uiNow(plugin) { reconcile(player) } }
     }
@@ -49,6 +54,8 @@ class InfoBarService(
      */
     fun stop() {
         if (!running.compareAndSet(true, false)) return
+        ambientTask?.cancel()
+        ambientTask = null
         val live = synchronized(lock) { active.values.flatMap { it.values } }
         live.forEach { it.task?.cancel() }
         synchronized(lock) { active.clear() }
@@ -65,6 +72,7 @@ class InfoBarService(
         cancelAll(player.uniqueId)
         // no player access here: by quit the entity scheduler is going away
         renderer.forget(player.uniqueId)
+        snapshots.forget(player.uniqueId)
         metrics.values.forEach { it.forget(player.uniqueId) }
     }
 
@@ -141,10 +149,40 @@ class InfoBarService(
 
     private fun render(player: Player, bar: BarId, metric: BarMetric) {
         try {
-            renderer.render(player, bar, metric.read(player), config.surface)
+            val reading = metric.read(player)
+            renderer.render(player, bar, reading, config.surface)
+            // the same reading feeds placeholderapi; player-scoped, because a
+            // region tps belongs to where this player stands
+            snapshots.publish(bar, reading, player.uniqueId)
         } catch (e: Exception) {
             // one bad tick must not kill the whole bar loop
             plugin.logger.warning("info bar ${bar.key} failed for ${player.name}: ${e.message}")
+        }
+    }
+
+    /**
+     * player-independent readings on a fixed cadence, on the global region
+     * scheduler. these metrics read no player and no world, so this is legal
+     * from that thread, and it keeps placeholderapi honest with zero bars
+     * toggled — an admin's scoreboard should not depend on somebody wearing
+     * the bar.
+     */
+    private fun startAmbientSampler() {
+        sampleAmbient()
+        ambientTask = plugin.server.globalRegionScheduler.runAtFixedRate(
+            plugin,
+            { sampleAmbient() },
+            1L,
+            config.updateIntervalTicks,
+        )
+    }
+
+    private fun sampleAmbient() {
+        for ((bar, metric) in metrics) {
+            val reading = runCatching { metric.readGlobal() }
+                .onFailure { plugin.logger.warning("info bar ${bar.key} global sample failed: ${it.message}") }
+                .getOrNull() ?: continue
+            snapshots.publish(bar, reading)
         }
     }
 

@@ -5,6 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kz.bejiihiu.servercore.bars.BarValueSource
 
 /**
  * expansion value logic against a fake snapshot provider: all six
@@ -218,6 +219,49 @@ class PlaceholderResolverTest {
         val r = resolver()
         provider.state = state(authApproved = true)
         assertEquals(r.resolve("authenticated", uuid), r.resolve("AUTHENTICATED", uuid))
+    }
+
+    @Test
+    fun `bar placeholders read the rendered snapshot layer`() {
+        val values = mapOf(
+            "ram" to "42",
+            "tps" to "19.8",
+            "mspt" to "38.4",
+            "players" to "7",
+            "net" to "3/3",
+        )
+        val barSource = BarValueSource { bar, _ ->
+            values[bar.key]
+        }
+        val r = PlaceholderResolver(
+            provider = provider,
+            config = PlaceholderConfig("unknown", 10 * 60_000, " (stale)", 0),
+            strings = text,
+            bars = barSource,
+        )
+
+        assertEquals("42", r.resolve("bar_ram", uuid))
+        assertEquals("19.8", r.resolve("bar_tps", uuid))
+        assertEquals("38.4", r.resolve("bar_mspt", uuid))
+        assertEquals("7", r.resolve("bar_players", uuid))
+        assertEquals("3/3", r.resolve("bar_net", uuid))
+    }
+
+    @Test
+    fun `a missing bar reading falls back to the unknown value`() {
+        val emptySource = BarValueSource { _, _ -> null }
+        val r = PlaceholderResolver(
+            provider = provider,
+            config = PlaceholderConfig("unknown", 10 * 60_000, " (stale)", 0),
+            strings = text,
+            bars = emptySource,
+        )
+        provider.state = null
+
+        assertEquals("unknown", r.resolve("bar_tps", uuid))
+        // the expansion is off entirely: same answer, no crash
+        val off = resolver()
+        assertEquals("unknown", off.resolve("bar_net", uuid))
     }
 
     private companion object {

@@ -25,8 +25,10 @@ class BarsConfigTest {
         assertEquals(HealthThresholds(18.0, 15.0, lowerIsBetter = false), config.tps.thresholds)
         assertEquals(HealthThresholds(40.0, 50.0, lowerIsBetter = true), config.mspt.thresholds)
         assertTrue(config.world.showWeather)
+        assertTrue(config.net.enabled)
+        assertEquals(BarsConfig.DEFAULT_HEARTBEAT_SECONDS * 1000L * BarsConfig.STALE_HEARTBEATS, config.net.staleAfterMs)
         assertEquals(
-            listOf(BarId.RAM, BarId.TPS, BarId.MSPT, BarId.PLAYERS, BarId.WORLD),
+            listOf(BarId.RAM, BarId.TPS, BarId.MSPT, BarId.PLAYERS, BarId.WORLD, BarId.NET),
             config.enabledBars(),
         )
     }
@@ -68,7 +70,7 @@ class BarsConfigTest {
         assertFalse(onlyTps.isEnabled(BarId.RAM))
         assertTrue(onlyTps.isEnabled(BarId.TPS))
         assertEquals(
-            listOf(BarId.TPS, BarId.MSPT, BarId.PLAYERS, BarId.WORLD),
+            listOf(BarId.TPS, BarId.MSPT, BarId.PLAYERS, BarId.WORLD, BarId.NET),
             onlyTps.enabledBars(),
         )
 
@@ -111,5 +113,31 @@ class BarsConfigTest {
         assertFalse(config.isEnabled(BarId.PLAYERS))
         assertFalse(config.isEnabled(BarId.WORLD))
         assertTrue(config.isEnabled(BarId.MSPT))
+    }
+
+    @Test
+    fun `the network bar can be switched off without touching the rest`() {
+        val config = load("bars:\n  net:\n    enabled: false\n")
+
+        assertFalse(config.isEnabled(BarId.NET))
+        assertTrue(config.isEnabled(BarId.RAM))
+        assertFalse(BarId.NET in config.enabledBars())
+    }
+
+    @Test
+    fun `the stale window follows the heartbeat cadence unless it is set`() {
+        // three heartbeats: a server is offline after three missed frames
+        val fastHeartbeat = load("backend:\n  heartbeat-interval-seconds: 5\n")
+        assertEquals(15_000L, fastHeartbeat.net.staleAfterMs)
+
+        val explicit = load("bars:\n  net:\n    stale-after-ms: 90000\n")
+        assertEquals(90_000L, explicit.net.staleAfterMs)
+    }
+
+    @Test
+    fun `the stale window is clamped into something usable`() {
+        // below one heartbeat every server would flicker offline
+        assertEquals(BarsConfig.MIN_STALE_AFTER_MS, load("bars:\n  net:\n    stale-after-ms: 100\n").net.staleAfterMs)
+        assertEquals(BarsConfig.MAX_STALE_AFTER_MS, load("bars:\n  net:\n    stale-after-ms: 99999999\n").net.staleAfterMs)
     }
 }

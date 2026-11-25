@@ -136,10 +136,10 @@ placeholders:
 countdown:
   tick: "<secondary>время на исходе</secondary>"
 
-# server info bars: /rambar, /tpsbar, /msptbar, /playersbar and /worldbar. the
-# bar title is the live line (health coloring comes from the bossbar fill or
-# the leading mark), the rest is toggle feedback. numbers are formatted by the
-# plugin, units live here
+# server info bars: /rambar, /tpsbar, /msptbar, /playersbar, /worldbar и
+# /netbar. заголовок бара — живая строка (цвет здоровья приходит из заливки
+# bossbar или ведущего маркера), остальное — ответ на переключение. числа
+# форматирует плагин, единицы живут здесь
 bars:
   ram:
     title: "<primary>RAM</primary> <secondary>{used} ГБ / {max} ГБ</secondary> <muted>({pct}%)</muted>"
@@ -155,6 +155,9 @@ bars:
     weather-clear: "ясно"
     weather-rain: "дождь"
     weather-thunder: "гроза"
+  net:
+    title: "<primary>Сеть</primary> <secondary>{servers} серверов</secondary> <muted>· {players} в сети</muted>"
+    title-stale: "<primary>Сеть</primary> <secondary>{servers} серверов</secondary> <muted>· {players} в сети</muted> <danger>· {stale} не в сети</danger>"
   toggled-on: "<secondary>{bar}</secondary> <ok>включён</ok> <muted>· {player}</muted>"
   toggled-off: "<secondary>{bar}</secondary> <danger>выключен</danger> <muted>· {player}</muted>"
   no-permission-other: "<danger>нет прав включать бары другим игрокам</danger>"

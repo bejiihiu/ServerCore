@@ -259,6 +259,8 @@ class ConfigLoaderTest {
             "bars.players.enabled",
             "bars.world.enabled",
             "bars.world.show-weather",
+            "bars.net.enabled",
+            "bars.net.stale-after-ms",
             "spec.enabled",
             "spec.live-inventory",
             "spec.live-inventory-push-milliseconds",

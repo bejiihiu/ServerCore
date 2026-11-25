@@ -12,10 +12,15 @@ import kz.bejiihiu.servercore.placeholderapi.StateWsListener
  * PlaceholderAPI integration. Papi is a soft dependency: not installed means
  * the whole state cache stays cold and the plugin runs exactly as before, so
  * this is a plain presence check, not a hard requirement.
+ *
+ * Bar values ride the same expansion through [BarsInstaller.placeholderValues]:
+ * the metrics already render into a snapshot layer, and placeholders read that
+ * layer instead of asking a metric for a number on somebody else's thread.
  */
 class PapiInstaller(
     private val ctx: PluginContext,
     private val guest: GuestInstaller,
+    private val bars: BarsInstaller,
 ) {
 
     private var expansion: ServerCoreExpansion? = null
@@ -39,6 +44,7 @@ class PapiInstaller(
                 provider = stateCache,
                 config = PlaceholderConfig.load(ctx.plugin.config),
                 strings = PlaceholderText.fromI18n(ctx.i18n),
+                bars = bars.placeholderValues(),
             ),
         )
         val registered = runCatching { expansion.register() }
@@ -48,7 +54,8 @@ class PapiInstaller(
             this.expansion = expansion
             ctx.logger.info(
                 "placeholderapi expansion registered: " +
-                    "%servercore_<status|authenticated|application_status|telegram_linked|last_seen|session_duration>%",
+                    "%servercore_<status|authenticated|application_status|telegram_linked|last_seen|session_duration" +
+                    "|bar_ram|bar_tps|bar_mspt|bar_players|bar_net>%",
             )
         } else {
             ctx.logger.warning("placeholderapi expansion registration failed, placeholders stay off")
