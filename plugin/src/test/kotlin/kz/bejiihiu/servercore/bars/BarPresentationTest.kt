@@ -23,6 +23,8 @@ class BarPresentationTest {
 
     private val locale: LocaleService by lazy { LocaleService(temp, Logger.getLogger("bars-presentation-test")) }
 
+    private val titles: BarTitleCache by lazy { BarTitleCache(locale) }
+
     private fun plain(component: net.kyori.adventure.text.Component): String =
         PlainTextComponentSerializer.plainText().serialize(component)
 
@@ -51,7 +53,7 @@ class BarPresentationTest {
             values = mapOf("used" to "2.0", "max" to "4.0", "pct" to "50"),
         )
 
-        val line = plain(BarPresentation.line(locale, BarId.RAM, reading, BarSurface.BOSSBAR))
+        val line = plain(BarPresentation.line(titles, BarId.RAM, reading, BarSurface.BOSSBAR))
 
         assertTrue(line.startsWith("◆ "))
         assertTrue(line.contains("RAM"))
@@ -69,7 +71,7 @@ class BarPresentationTest {
             values = mapOf("tps" to "19.9", "region" to "6,-1", "global" to "20.0"),
         )
 
-        val line = plain(BarPresentation.line(locale, BarId.TPS, reading, BarSurface.BOSSBAR))
+        val line = plain(BarPresentation.line(titles, BarId.TPS, reading, BarSurface.BOSSBAR))
 
         assertTrue(line.contains("TPS"))
         assertTrue(line.contains("19.9"))
@@ -82,7 +84,7 @@ class BarPresentationTest {
     fun `the actionbar mark carries health, the bossbar keeps the brand brass`() {
         fun mark(health: BarHealth, surface: BarSurface) =
             BarPresentation.line(
-                locale,
+                titles,
                 BarId.RAM,
                 BarReading(0.5, health, mapOf("used" to "1.0", "max" to "2.0", "pct" to "50")),
                 surface,
@@ -102,7 +104,7 @@ class BarPresentationTest {
             values = mapOf("used" to "—", "max" to "—", "pct" to "—"),
         )
 
-        val line = plain(BarPresentation.line(locale, BarId.RAM, reading, BarSurface.ACTIONBAR))
+        val line = plain(BarPresentation.line(titles, BarId.RAM, reading, BarSurface.ACTIONBAR))
 
         assertTrue(line.contains("RAM"))
         assertTrue(line.contains("—"))
@@ -116,7 +118,7 @@ class BarPresentationTest {
             values = mapOf("mspt" to "12.5", "p95" to "18.0"),
         )
 
-        val line = plain(BarPresentation.line(locale, BarId.MSPT, reading, BarSurface.BOSSBAR))
+        val line = plain(BarPresentation.line(titles, BarId.MSPT, reading, BarSurface.BOSSBAR))
 
         assertTrue(line.contains("MSPT"))
         assertTrue(line.contains("12.5"))
@@ -132,7 +134,7 @@ class BarPresentationTest {
             values = mapOf("online" to "12", "max" to "100", "pct" to "12"),
         )
 
-        val line = plain(BarPresentation.line(locale, BarId.PLAYERS, reading, BarSurface.ACTIONBAR))
+        val line = plain(BarPresentation.line(titles, BarId.PLAYERS, reading, BarSurface.ACTIONBAR))
 
         assertTrue(line.contains("12"))
         assertTrue(line.contains("100"))
@@ -148,7 +150,7 @@ class BarPresentationTest {
             values = mapOf("world" to "world", "time" to "12:00", "cycle" to "25", "weather" to "rain"),
         )
 
-        val withWeather = plain(BarPresentation.line(locale, BarId.WORLD, reading, BarSurface.BOSSBAR))
+        val withWeather = plain(BarPresentation.line(titles, BarId.WORLD, reading, BarSurface.BOSSBAR))
         assertTrue(withWeather.contains("world"))
         assertTrue(withWeather.contains("12:00"))
         assertTrue(withWeather.contains("25%"))
@@ -156,7 +158,7 @@ class BarPresentationTest {
         assertFalse(withWeather.contains("{"))
 
         val plainLine = plain(
-            BarPresentation.line(locale, BarId.WORLD, reading.copy(titleKey = "bars.world.title-plain"), BarSurface.BOSSBAR),
+            BarPresentation.line(titles, BarId.WORLD, reading.copy(titleKey = "bars.world.title-plain"), BarSurface.BOSSBAR),
         )
         assertTrue(plainLine.contains("world"))
         assertTrue(plainLine.contains("12:00"))

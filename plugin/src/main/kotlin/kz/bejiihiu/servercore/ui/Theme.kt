@@ -79,7 +79,10 @@ object Theme {
      * dynamic values can never inject markup.
      */
     fun render(template: String, values: Map<String, String> = emptyMap()): Component =
-        mini.deserialize(Placeholders.substitute(template, values), tags)
+        parse(Placeholders.substitute(template, values))
+
+    /** a template parsed with the theme tags, placeholders left alone (the cached renderer's entry point) */
+    fun parse(template: String): Component = mini.deserialize(template, tags)
 
     /** template rendered then stripped back to plain text, for width math */
     fun plain(template: String, values: Map<String, String> = emptyMap()): String =
