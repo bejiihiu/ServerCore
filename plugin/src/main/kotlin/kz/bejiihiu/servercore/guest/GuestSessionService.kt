@@ -41,9 +41,11 @@ fun PlayerSnapshot.toPayload(): SnapshotPayload = SnapshotPayload(
  * restore, the player keeps exploring from wherever they authenticated.
  *
  * races this service is built around:
- *   - duplicate login (same uuid, two clients): last join wins, the session
- *     continues for the new client, the stale instance's quit is recognised
- *     and ignored, the budget burns exactly once
+ *   - duplicate login (same uuid, two clients): the second client joins as a
+ *     normal join and the verdict decides — an allowed guest keeps the running
+ *     session (last join wins, the stale instance's quit is recognised and
+ *     ignored, the budget burns exactly once), an authorized account ungates
+ *     onto the new client, a denied one is kicked instead of inheriting it
  *   - telegram approval landing while a guest session is still starting:
  *     the approval latch makes the ungate win and no budget is burned
  *   - a late stale resolution arriving after approval: ungated, never re-guested
@@ -96,12 +98,10 @@ class GuestSessionService(
         val uuid = player.uniqueId
         if (config.enabled) provisional.add(uuid)
 
-        // duplicate login: a session already runs for this uuid, the new client
-        // takes it over (last join wins), the stale instance is on its way out
-        val continuing = registry.contains(uuid)
-        onPlayerThread(player, retire = { provisional.remove(uuid) }) {
-            if (player.isOnline && continuing && registry.contains(uuid)) rebindSession(player)
-        }
+        // no duplicate-login shortcut here: a second client joins exactly like
+        // a first one and the resolution decides. the provisional hold already
+        // restricts it, and the verdict is what says whether the takeover may
+        // happen at all (a denied account must not inherit a live session)
         requestResolution(player)
     }
 
@@ -117,6 +117,9 @@ class GuestSessionService(
         provisional.remove(uuid)
         modeTransitions.remove(uuid)
         registry.clearAuthorization(uuid)
+        // the personal link was handed out for the session that just ended; the
+        // backend mints a fresh one on the next join, so nothing is lost here
+        linkSource.forget(uuid)
         cancelLoops(uuid)
         lastSweepFix.remove(uuid)
         shownLinks.remove(uuid)
@@ -224,7 +227,7 @@ class GuestSessionService(
             guestEnabled = config.enabled,
         )) {
             is JoinAction.Ungate -> ungateAuthenticated(player)
-            is JoinAction.KeepExisting -> showPrompt(player, link)
+            is JoinAction.KeepExisting -> rebindSession(player, link)
             is JoinAction.KickOverLimit -> kickOverLimit(player)
             is JoinAction.KickDisabled -> {
                 // guest mode off: unauthenticated players simply do not get in
@@ -289,14 +292,18 @@ class GuestSessionService(
         return GuestSession(sessionId, player.name, snapshot)
     }
 
-    /** duplicate login: same session continues for the new client, no new burn */
-    private fun rebindSession(player: Player) {
+    /**
+     * duplicate login: same session continues for the new client, no new burn
+     * and no second registry entry. only runs on `KeepExisting`, i.e. after the
+     * verdict said the account is still an allowed guest.
+     */
+    private fun rebindSession(player: Player, link: String?) {
         val uuid = player.uniqueId
         if (!registry.contains(uuid)) return
         enterSpectator(player)
         // the new client has not seen any prompt yet, it gets exactly one
         shownLinks.remove(uuid)
-        beginRichFlow(player, uuid, restored = true, overLimit = counter.count(uuid) >= config.sessionLimit, link = null)
+        beginRichFlow(player, uuid, restored = true, overLimit = counter.count(uuid) >= config.sessionLimit, link = link)
     }
 
     /** welcome title + chat prompt + the periodic reminder and gamemode sweep loops */

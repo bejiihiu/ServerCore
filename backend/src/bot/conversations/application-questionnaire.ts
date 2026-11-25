@@ -14,6 +14,8 @@ import { replyScreen } from "../ui/sending.js"
 export type QuestionnaireDeps = {
   applications: ApplicationService
   voting: VotingService
+  /** a step left unanswered for this long ends the flow, the draft survives */
+  idleTimeoutMs: number
 }
 
 type BotContext = Context & ConversationFlavor<Context>
@@ -49,7 +51,12 @@ export function classifyQuestionInput(update: RawUpdate): QuestionInput | null {
   return { kind: "ANSWER", text }
 }
 
-/** same for the summary screen: submit/cancel buttons or a /cancel command */
+/**
+ * the summary wait only accepts a real decision. plain text must NOT satisfy
+ * it, otherwise the conversation swallows the message and walks away without
+ * telling the user anything: classified as OTHER_TEXT here, it falls into the
+ * nudge branch and the wait keeps going.
+ */
 export type SummaryInput =
   | { kind: "SUBMIT_BUTTON" }
   | { kind: "CANCEL_BUTTON" }
@@ -62,17 +69,6 @@ export function classifySummaryInput(update: RawUpdate): SummaryInput | null {
   if (typeof update.message?.text !== "string") return null
   if (update.message.text.trim() === "/cancel") return { kind: "CANCEL_COMMAND" }
   return { kind: "OTHER_TEXT" }
-}
-
-/**
- * the summary wait only accepts a real decision. plain text must NOT satisfy
- * it, otherwise the conversation swallows the message and walks away without
- * telling the user anything: filtered here, it falls into the otherwise nudge
- * and the wait keeps going.
- */
-export function isSummaryAction(update: RawUpdate): boolean {
-  const input = classifySummaryInput(update)
-  return input !== null && input.kind !== "OTHER_TEXT"
 }
 
 function submitButton(label: string): ActionButton {
@@ -132,12 +128,47 @@ function submittedScreen(lang: Lang): ScreenMessage {
   })
 }
 
+/**
+ * closed because the user walked away. the draft is deliberately untouched:
+ * the answers already saved stay in mongo and /application picks the flow up
+ * at the same step.
+ */
+function idleScreen(lang: Lang): ScreenMessage {
+  const t = tr(lang)
+  return noticeScreen({
+    t,
+    e: emoji,
+    tone: "neutral",
+    title: t.t("app.idleTitle"),
+    body: t.t("app.idleBody"),
+  })
+}
+
 /** validation failure: same question again, only the reason changes */
 function answerErrorScreen(lang: Lang, reason: "EMPTY" | "TOO_LONG"): ScreenMessage {
   const t = tr(lang)
   return reason === "EMPTY"
     ? hintScreen(t.t("app.answerEmpty"))
     : hintScreen(t.t("app.answerTooLong", { max: ANSWER_MAX_LENGTH }))
+}
+
+/**
+ * one wait with an idle check around it. returns null when the update arrived
+ * later than the window, so the caller closes the flow instead of treating a
+ * two-hour-old answer as fresh.
+ *
+ * the timestamps come from `conversation.now()`, which is replayed from the
+ * conversation log — a restart in the middle of the form keeps the same
+ * elapsed-time verdict it would have had without one.
+ */
+async function waitForInput(
+  conversation: Convo,
+  idleTimeoutMs: number,
+): Promise<BotContext | null> {
+  const askedAt = await conversation.now()
+  const update = await conversation.wait()
+  const answeredAt = await conversation.now()
+  return answeredAt - askedAt >= idleTimeoutMs ? null : update
 }
 
 /**
@@ -170,37 +201,47 @@ export function createApplicationConversation(deps: QuestionnaireDeps) {
       await replyScreen(ctx, questionScreen(lang, index, total, question))
 
       // commands must never be swallowed as an answer text: /cancel cancels,
-      // every other command gets a hint and drops through to its handler
-      const update = await conversation.waitUntil(
-        (c) => classifyQuestionInput(c) !== null,
-        { otherwise: (nonAnswer) => void replyScreen(nonAnswer, hintScreen(tr(lang).t("app.answerNonText"))) },
-      )
-      const input = classifyQuestionInput(update)
-      if (input === null) continue
+      // every other command gets a hint and drops through to its handler.
+      // anything that is not an answer re-enters the wait, and each pass
+      // checks how long the user was away
+      let answered = false
+      while (!answered) {
+        const update = await waitForInput(conversation, deps.idleTimeoutMs)
+        if (update === null) {
+          await replyScreen(ctx, idleScreen(lang))
+          return
+        }
+        const input = classifyQuestionInput(update)
+        if (input === null) {
+          await replyScreen(update, hintScreen(tr(lang).t("app.answerNonText")))
+          continue
+        }
 
-      if (input.kind === "CANCEL_BUTTON") {
-        await ctx.answerCallbackQuery()
-        await conversation.external(() => deps.applications.cancelDraft(telegramId))
-        await replyScreen(ctx, cancelledScreen(lang))
-        return
-      }
-      if (input.kind === "CANCEL_COMMAND") {
-        await conversation.external(() => deps.applications.cancelDraft(telegramId))
-        await replyScreen(ctx, cancelledScreen(lang))
-        return
-      }
-      if (input.kind === "OTHER_COMMAND") {
-        await replyScreen(ctx, hintScreen(tr(lang).t("app.commandHint")))
-        continue
-      }
+        if (input.kind === "CANCEL_BUTTON") {
+          await update.answerCallbackQuery()
+          await conversation.external(() => deps.applications.cancelDraft(telegramId))
+          await replyScreen(ctx, cancelledScreen(lang))
+          return
+        }
+        if (input.kind === "CANCEL_COMMAND") {
+          await conversation.external(() => deps.applications.cancelDraft(telegramId))
+          await replyScreen(ctx, cancelledScreen(lang))
+          return
+        }
+        if (input.kind === "OTHER_COMMAND") {
+          await replyScreen(update, hintScreen(tr(lang).t("app.commandHint")))
+          continue
+        }
 
-      const saved = await conversation.external(() => deps.applications.saveDraftStep(telegramId, index, input.text))
-      if (!saved.ok) {
-        if (saved.reason === "NO_DRAFT") return // draft vanished mid-flow
-        await replyScreen(ctx, answerErrorScreen(lang, saved.reason))
-        continue // same question again, step not advanced
+        const saved = await conversation.external(() => deps.applications.saveDraftStep(telegramId, index, input.text))
+        if (!saved.ok) {
+          if (saved.reason === "NO_DRAFT") return // draft vanished mid-flow
+          await replyScreen(ctx, answerErrorScreen(lang, saved.reason))
+          continue // same question again, step not advanced
+        }
+        draft.step = index + 1
+        answered = true
       }
-      draft.step = index + 1
     }
 
     // summary + submit/cancel, straight from the spec layout
@@ -211,13 +252,21 @@ export function createApplicationConversation(deps: QuestionnaireDeps) {
     // summary wait: buttons or /cancel; anything else (free text, stickers,
     // stale keyboards) gets a nudge and the wait continues instead of the
     // conversation silently eating the update
-    const choiceUpdate = await conversation.waitUntil(isSummaryAction, {
-      otherwise: (nonAnswer) => void replyScreen(nonAnswer, hintScreen(tr(lang).t("app.buttonHint"))),
-    })
-    const choice = classifySummaryInput(choiceUpdate)
-    if (choice === null) return
-    if (choice.kind === "SUBMIT_BUTTON" || choice.kind === "CANCEL_BUTTON") {
-      await ctx.answerCallbackQuery()
+    let choice: SummaryInput | null = null
+    while (choice === null) {
+      const update = await waitForInput(conversation, deps.idleTimeoutMs)
+      if (update === null) {
+        await replyScreen(ctx, idleScreen(lang))
+        return
+      }
+      const input = classifySummaryInput(update)
+      if (input === null || input.kind === "OTHER_TEXT") {
+        await replyScreen(update, hintScreen(tr(lang).t("app.buttonHint")))
+        continue
+      }
+      // a decision is a button (stop its spinner) or the /cancel command
+      if (input.kind !== "CANCEL_COMMAND") await update.answerCallbackQuery()
+      choice = input
     }
     if (choice.kind === "CANCEL_BUTTON" || choice.kind === "CANCEL_COMMAND") {
       await conversation.external(() => deps.applications.cancelDraft(telegramId))

@@ -202,7 +202,12 @@ current, unreleased state of the codebase.
 - Plugin: crash on disable after a partial boot; overlapping self-update cycles; in-flight frames
   dropped on gateway stop; stale spec journal replay after restart.
 - Guest: latch leak on repeated joins, quit-versus-rejoin race, ordering of durable snapshot writes,
-  dead item-use path, snapshot restore after restart.
+  dead item-use path, snapshot restore after restart, and a duplicate login that bypassed the join
+  policy (an authorized second client now ungates, a denied one cannot inherit a live session); a
+  quit also evicts the cached personal deep link.
+- Admission: a questionnaire step left unanswered past `APPLY_IDLE_TIMEOUT_MINUTES` (30 by default)
+  closes the flow on the next update instead of swallowing it, and the draft stays resumable through
+  `/application`.
 - Packet layer: applied view state expiring on a timer, viewer state leaking past disconnect,
   override rows lost on destroy, entity identity not registered on join, already-online players
   missed by the ESP start pass, disguise capture when the scheduler refuses work, dead pins from

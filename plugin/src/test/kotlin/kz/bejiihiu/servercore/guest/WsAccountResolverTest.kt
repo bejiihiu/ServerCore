@@ -295,4 +295,24 @@ class WsAccountResolverTest {
 
         assertNull(resolver.pendingLink(uuid), "the one-time link was consumed by the decision")
     }
+
+    @Test
+    fun `a quit forgets the link of the session that ended`() {
+        val gateway = BackendGateway()
+        gateway.attach(RecordingLink())
+        val resolver = WsAccountResolver(gateway, newCache(), config())
+        val uuid = UUID.randomUUID()
+        val other = UUID.randomUUID()
+        resolver.onMessage(linkToken(uuid))
+        resolver.onMessage(linkToken(other))
+
+        resolver.forget(uuid)
+
+        assertNull(resolver.pendingLink(uuid), "the ended session's link is evicted")
+        assertEquals(
+            "https://t.me/ServerCoreBot?start=abcd1234abcd1234",
+            resolver.pendingLink(other)?.url,
+            "another player's link is untouched",
+        )
+    }
 }

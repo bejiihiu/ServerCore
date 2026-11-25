@@ -46,6 +46,7 @@ All variables come from `.env` (copy `.env.example` as the starting point). Ever
 |---|---|---|---|
 | `APPLICATION_QUESTIONS_RU` | no | 4 default questions | Questionnaire questions (Russian), json array of 1–10 strings |
 | `APPLICATION_QUESTIONS_EN` | no | 4 default questions | Questionnaire questions (English), must match the RU list length |
+| `APPLY_IDLE_TIMEOUT_MINUTES` | no | `30` | A questionnaire step left unanswered this long closes the flow; the draft stays and `/application` resumes it |
 | `VOTING_DURATION_MINUTES` | no | `180` | Voting window duration |
 | `VOTING_SCAN_INTERVAL_MS` | no | `60000` | How often the scheduler sweeps for expired votings |
 | `GROUP_INVITE_TTL_HOURS` | no | `48` | Lifetime of a one-time group invite |

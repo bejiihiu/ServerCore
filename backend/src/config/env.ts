@@ -102,6 +102,11 @@ const envSchema = z.object({
   APPLICATION_START_LIMIT: z.coerce.number().int().min(1).default(3),
   APPLICATION_START_WINDOW_MS: z.coerce.number().int().min(1000).default(60_000),
 
+  // a questionnaire step left unanswered for this long closes the flow on the
+  // next update instead of swallowing it. the draft row survives, so
+  // /application resumes exactly where the user stopped
+  APPLY_IDLE_TIMEOUT_MINUTES: z.coerce.number().int().min(1).max(1440).default(30),
+
   // json object mapping server id -> per-server secret
   SERVERCORE_SERVER_CREDENTIALS: z.string().min(1).default("{}"),
 
@@ -184,6 +189,8 @@ export type AppConfig = {
   groupInviteTtlMs: number
   applicationStartLimit: number
   applicationStartWindowMs: number
+  /** how long a questionnaire step may sit unanswered before the flow closes */
+  applyIdleTimeoutMs: number
   voteButtonIcons: { enabled: boolean; acceptId: string | null; rejectId: string | null }
   approvalEffectId: string | null
   adminTelegramIds: number[]
@@ -296,6 +303,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     groupInviteTtlMs: result.data.GROUP_INVITE_TTL_HOURS * MS_PER_HOUR,
     applicationStartLimit: result.data.APPLICATION_START_LIMIT,
     applicationStartWindowMs: result.data.APPLICATION_START_WINDOW_MS,
+    applyIdleTimeoutMs: result.data.APPLY_IDLE_TIMEOUT_MINUTES * MS_PER_MINUTE,
     voteButtonIcons: {
       enabled: result.data.VOTE_BUTTON_ICONS_ENABLED,
       acceptId: result.data.VOTE_BUTTON_ICON_ACCEPT_ID || null,
