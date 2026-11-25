@@ -44,7 +44,7 @@ class LuckPermsApiSource(private val api: LuckPerms) : LpUserSource {
             user.getInheritedGroups(user.queryOptions).mapTo(mutableSetOf()) { it.name }
 
         override fun primaryGroup(): String? =
-            user.primaryGroup?.trim()?.takeIf { it.isNotEmpty() }
+            user.primaryGroup.trim().takeIf { it.isNotEmpty() }
 
         override fun addGroupNode(group: String): Boolean =
             user.data().add(Node.builder(groupNode(group)).build()) == DataMutateResult.SUCCESS

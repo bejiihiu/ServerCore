@@ -43,7 +43,7 @@ interface ViewStateApplier {
 
 /** fallback applier, does exactly nothing */
 object NoopViewStateApplier : ViewStateApplier {
-    override fun apply(viewer: UUID, target: UUID, state: ViewState, disguise: DisguiseAssignment?) {
+    override fun apply(viewer: UUID, target: UUID, state: ViewState, assignment: DisguiseAssignment?) {
         // deliberate no-op: the engine stays correct with no packets flowing at all
     }
 }

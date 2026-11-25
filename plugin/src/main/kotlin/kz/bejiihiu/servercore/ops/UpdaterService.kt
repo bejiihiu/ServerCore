@@ -70,7 +70,7 @@ class UpdaterService(
             })) {
                 is UpdateDecision.NoRelease -> {
                     if (lookup is ReleaseLookup.Error) {
-                        logger.warning("[ops] release check failed: ${(lookup as ReleaseLookup.Error).reason}")
+                        logger.warning("[ops] release check failed: ${lookup.reason}")
                     }
                 }
 

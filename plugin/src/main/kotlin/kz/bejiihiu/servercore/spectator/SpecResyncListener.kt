@@ -51,7 +51,7 @@ class SpecResyncListener(
     fun onTeleport(event: PlayerTeleportEvent) {
         // same-world teleports leave both clients' pictures intact, the
         // cross-world ones rebuild the target's world server-side
-        if (event.from.world != event.to?.world) resync(event.player.uniqueId)
+        if (event.from.world != event.to.world) resync(event.player.uniqueId)
     }
 
     private fun resync(uuid: UUID) = hider.resync(uuid)

@@ -40,7 +40,7 @@ class PacketEventsDisguiseListener(
         // pe hands the player over as the platform object; on spigot that is the bukkit player.
         // explicit getter call: the private field shadows property syntax here
         val viewer = (event.getPlayer() as? Player)?.uniqueId ?: return
-        when (event.packetType ?: return) {
+        when (event.packetType) {
             PacketType.Play.Server.ENTITY_METADATA -> suppressMetadata(viewer, event)
             PacketType.Play.Server.ENTITY_EQUIPMENT -> suppressEquipment(viewer, event)
             PacketType.Play.Server.SPAWN_ENTITY -> suppressRealSpawn(viewer, event)
@@ -50,7 +50,7 @@ class PacketEventsDisguiseListener(
     }
 
     override fun onUserDisconnect(event: UserDisconnectEvent) {
-        val uuid = event.user?.uuid ?: return
+        val uuid = event.user.uuid ?: return
         onPlayerGone(uuid)
         captured.clearFor(uuid)
     }

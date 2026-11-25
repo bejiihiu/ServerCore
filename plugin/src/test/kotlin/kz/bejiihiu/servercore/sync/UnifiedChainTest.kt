@@ -28,7 +28,7 @@ class UnifiedChainTest {
 
     private class RecordingDisguise : kz.bejiihiu.servercore.esp.ViewStateApplier {
         val calls = mutableListOf<String>()
-        override fun apply(viewer: UUID, target: UUID, state: kz.bejiihiu.servercore.esp.ViewState, disguise: kz.bejiihiu.servercore.esp.DisguiseAssignment?) {
+        override fun apply(viewer: UUID, target: UUID, state: kz.bejiihiu.servercore.esp.ViewState, assignment: kz.bejiihiu.servercore.esp.DisguiseAssignment?) {
             calls += "$state($viewer,$target)"
         }
     }

@@ -27,7 +27,7 @@ class WorldMetric(
         val world = player.world
         return readingOf(
             worldName = world.name,
-            time = world.time.toLong(),
+            time = world.time,
             storm = world.hasStorm(),
             thundering = world.isThundering(),
         )
