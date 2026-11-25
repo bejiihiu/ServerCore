@@ -25,6 +25,42 @@ const RETRY_BASE_MS = 1_000
 const RETRY_MAX_MS = 30_000
 
 /**
+ * exponential backoff with a hard cap. one attempt that throws is one failed
+ * attempt; the loop never rejects, so a boot with an unreachable database
+ * keeps retrying in the background instead of taking the process down.
+ *
+ * `shouldRetry` is re-evaluated before every attempt: a shutdown flips it and
+ * the loop then returns quietly instead of holding the process open.
+ */
+export async function connectWithBackoff(deps: {
+  attempt: () => Promise<void>
+  shouldRetry: () => boolean
+  logger: Logger
+  /** injected in tests so the schedule is asserted without real waiting */
+  sleep?: (ms: number) => Promise<void>
+  baseDelayMs?: number
+  maxDelayMs?: number
+}): Promise<{ attempts: number; connected: boolean }> {
+  const sleep = deps.sleep ?? delay
+  const baseDelayMs = deps.baseDelayMs ?? RETRY_BASE_MS
+  const maxDelayMs = deps.maxDelayMs ?? RETRY_MAX_MS
+  let attempts = 0
+
+  while (deps.shouldRetry()) {
+    attempts += 1
+    try {
+      await deps.attempt()
+      return { attempts, connected: true }
+    } catch (err) {
+      const delayMs = Math.min(baseDelayMs * 2 ** (attempts - 1), maxDelayMs)
+      deps.logger.warn({ err, attempt: attempts, nextRetryMs: delayMs }, "mongo connect failed, retrying")
+      await sleep(delayMs)
+    }
+  }
+  return { attempts, connected: false }
+}
+
+/**
  * connects mongoose with production-sane pool settings. idempotent. boot
  * proceeds even if mongo is unreachable: health flips to 503 degraded and
  * the connect keeps retrying in the background — crash-looping on a transient
@@ -52,10 +88,12 @@ export async function connectDatabase(config: AppConfig, logger: Logger): Promis
 }
 
 async function connectWithRetry(config: AppConfig, logger: Logger): Promise<void> {
-  let attempt = 0
-  while (retrying && mongoose.connection.readyState !== 1) {
-    attempt += 1
-    try {
+  await connectWithBackoff({
+    logger,
+    // stopped either by a shutdown (retrying=false) or by the connection
+    // finally coming up (readyState 1)
+    shouldRetry: () => retrying && mongoose.connection.readyState !== 1,
+    attempt: async () => {
       await mongoose.connect(config.mongoUri, {
         maxPoolSize: 10,
         minPoolSize: 2,
@@ -67,17 +105,12 @@ async function connectWithRetry(config: AppConfig, logger: Logger): Promise<void
         appName: "servercore-backend",
       })
       logger.info(
-        { host: mongoose.connection.host, name: mongoose.connection.name, attempt },
+        { host: mongoose.connection.host, name: mongoose.connection.name },
         "mongodb connected",
       )
       await syncIndexesWithTolerance(logger)
-      return
-    } catch (err) {
-      const delayMs = Math.min(RETRY_BASE_MS * 2 ** (attempt - 1), RETRY_MAX_MS)
-      logger.warn({ err, attempt, nextRetryMs: delayMs }, "mongo connect failed, retrying")
-      await delay(delayMs)
-    }
-  }
+    },
+  })
 }
 
 /**

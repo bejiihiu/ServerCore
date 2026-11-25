@@ -131,6 +131,10 @@ export class RetentionService {
     warn(obj: unknown, msg: string): void
   }
   private timer: ReturnType<typeof setInterval> | null = null
+  // a pass over completed collections can outrun the interval when mongo is
+  // slow (more so on a busy m0); a tick that lands mid-pass is skipped instead
+  // of stacking a second cleanup on the same database
+  private running = false
 
   constructor(deps: {
     audit: AuditLogPurgePort
@@ -214,9 +218,9 @@ export class RetentionService {
     const interval = this.options.intervalMs ?? MS_PER_DAY
     const initialDelay = this.options.initialDelayMs ?? MS_PER_MINUTE
     const initial = setTimeout(() => {
-      void this.runOnce().catch((err: unknown) => this.logger.warn({ err }, "retention run failed"))
+      void this.tick()
       this.timer = setInterval(() => {
-        void this.runOnce().catch((err: unknown) => this.logger.warn({ err }, "retention run failed"))
+        void this.tick()
       }, interval)
     }, initialDelay)
     // keep the timeout ref alive through the timer field dance: initial fires
@@ -228,6 +232,26 @@ export class RetentionService {
         clearInterval(this.timer)
         this.timer = null
       }
+    }
+  }
+
+  /**
+   * one scheduled pass with the reentrancy guard and its own error boundary.
+   * a failing or hanging pass must neither overlap the next tick nor stop the
+   * cadence — the guard is always released in `finally`.
+   */
+  private async tick(): Promise<void> {
+    if (this.running) {
+      this.logger.warn({}, "retention pass still running, skipping this tick")
+      return
+    }
+    this.running = true
+    try {
+      await this.runOnce()
+    } catch (err: unknown) {
+      this.logger.warn({ err }, "retention run failed")
+    } finally {
+      this.running = false
     }
   }
 }

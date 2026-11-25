@@ -164,6 +164,16 @@ export class ServerConnection {
     void route(result.envelope, this)
       .catch((error: unknown) => {
         this.logger.error({ err: error, serverId: this.serverId, type: envelope.type }, "message handler failed")
+        // the frame was already acked above, so a dead handler would otherwise
+        // look like a successful write to the peer (mongo blip mid-request:
+        // audit row, session write, admission step). answer the ack with a
+        // correlated failure instead of silence — no close, the socket stays
+        // usable and the next frame is processed normally
+        void this.send("ERROR", {
+          code: "HANDLER_FAILED",
+          message: "backend could not process this frame",
+          inReplyTo: envelope.id,
+        })
       })
       .finally(() => {
         this.activeRoutes -= 1

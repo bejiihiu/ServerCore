@@ -215,19 +215,32 @@ export class ApplicationService {
     // change freely afterwards without affecting this voting. questions are
     // stored in the default language for audit, rendering is per-viewer
     const questions = this.deps.questions[this.deps.defaultLanguage]
-    const inserted = await this.deps.applications.insert({
-      minecraftUuid: check.user.uuid,
-      telegramId,
-      answers: draft.answers.map((answer, i) => ({
-        question: questions[i] ?? "",
-        answer,
-      })),
-      voting: {
-        startedAt: now,
-        expiresAt: new Date(now.getTime() + this.deps.votingDurationMs),
-        eligibleVoters: voters.length,
-      },
-    })
+    let inserted: { id: string } | "duplicate-live"
+    try {
+      inserted = await this.deps.applications.insert({
+        minecraftUuid: check.user.uuid,
+        telegramId,
+        answers: draft.answers.map((answer, i) => ({
+          question: questions[i] ?? "",
+          answer,
+        })),
+        voting: {
+          startedAt: now,
+          expiresAt: new Date(now.getTime() + this.deps.votingDurationMs),
+          eligibleVoters: voters.length,
+        },
+      })
+    } catch (error) {
+      // a database blip right here would otherwise leave the player in VOTING
+      // with no application row — and nothing ever moves them out of VOTING,
+      // so they stay ineligible until an admin fixes the row by hand. put the
+      // status back and let the submit fail loudly; the draft is gone, so they
+      // refill the questionnaire and try again
+      await this.deps.users
+        .setStatus(check.user.uuid, ["VOTING"], "UNREGISTERED")
+        .catch(() => undefined)
+      throw error
+    }
 
     if (inserted === "duplicate-live") {
       // lost a race against another live application, put the status back

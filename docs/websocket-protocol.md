@@ -188,3 +188,8 @@ The backend being down must never silently grant access:
 - **Brief blips do not evict players.** Already-authenticated players keep playing through short outages.
 - **Guest mode keeps working.** Guest sessions and restrictions are enforced locally and continue during an outage.
 - **Nothing is lost.** Events generated offline wait in the outbox; critical state lives in MongoDB, not in memory.
+
+The same posture applies one layer down, when the backend is up but MongoDB is not:
+
+- An `ACK` means *received*, not *processed*. If handling a frame needs the database and the write fails, the backend answers that ack with `ERROR { code: "HANDLER_FAILED", inReplyTo: <frame id> }` on the same connection. The socket stays open and later frames are processed normally — a database blip never costs the game server its link.
+- The failed frame is not retried by the backend. Durable plugin state (guest lifecycle frames, spec journal) reconciles on the next join or reconnect, and the backend's own parked pushes (auth prompts and verdicts, link tokens) flush on the next sweep once the database is back.

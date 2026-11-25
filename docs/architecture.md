@@ -199,6 +199,16 @@ Transient data (auth requests, expired artifacts) uses TTL indexes. Accounts, vo
 
 Dead rows also get a daily retention sweep on top of TTL: closed sessions (60 days), orphaned guest snapshots, vote cards and votes of applications decided more than 90 days ago, revoked or expired-unused group invites (30 days, used ones after a year) and rejected/expired applications older than a year. Accounts, approved applications and audit records stay.
 
+### When MongoDB is unavailable
+
+Atlas M0 blips are expected, so the backend is built to stay up without the database:
+
+- **Boot is not gated on the database.** The listeners (Fastify `/health`, the WS gateway) come up while the driver retries in the background with exponential backoff — 1 s doubling to a 30 s cap. `/health` answers `503 {"status":"degraded","mongoConnected":false}` until a connection lands, then `200`. A SIGTERM during the retry loop stops it immediately instead of holding the process open.
+- **Logins stay fail-closed.** A join that cannot read or write the store is rejected at the module boundary, logged, and never approved — the player just stays a guest. Backend→plugin pushes (auth prompt/verdict, link token) park in the service outbox and flush on the next sweep once the link and the database are both back; pushes parked longer than 10 minutes are dropped, and the next join re-syncs the state.
+- **A frame never costs the socket.** A plugin frame is acked on receipt (`ACK`), then processed. If processing needs the database and the write fails, the backend logs it and answers that ack with `ERROR { code: "HANDLER_FAILED", inReplyTo: <frame id> }` on the same connection: no close, no hang, later frames keep flowing. There is no backend-side retry of the failed frame — the plugin's durable state reconciles on the next join/reconnect. Bookkeeping writes that are best-effort by design (the spec audit trail) are logged and swallowed instead of failing the frame.
+- **Writes that would strand a player are compensated.** An admission submit that fails between the status transition (`UNREGISTERED → VOTING`) and the application insert rolls the status back, so a blip costs the draft (refill) instead of leaving the account in a state nothing moves out of.
+- **Housekeeping never stacks.** The auth sweeper and the daily retention pass carry a reentrancy guard: a tick that lands mid-pass is skipped, and a failing pass releases the guard and keeps the schedule. A failing purge target counts as zero and never blocks the other targets.
+
 The plugin keeps its own small durable files next to its config: guest snapshots (`guest.snapshot-storage-path`), the durable outbox for guest lifecycle frames, and the local spec audit trail (`spec.audit.*`). These exist so the plugin survives its own restarts and backend outages without turning the game server into a second database.
 
 ## Performance posture
