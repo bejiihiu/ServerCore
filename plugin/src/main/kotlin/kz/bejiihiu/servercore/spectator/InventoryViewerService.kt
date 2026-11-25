@@ -191,47 +191,50 @@ class InventoryViewerService(
     private fun tick() {
         tickCount++
         val now = System.currentTimeMillis()
+        val keepAliveDue = tickCount % KEEP_ALIVE_EVERY == 0L
         for (state in states.values.toList()) {
-            if (state.closed) {
-                states.remove(state.adminId)
-                continue
-            }
             val admin = plugin.server.getPlayer(state.adminId)
             val target = plugin.server.getPlayer(state.targetId)
-            if (admin == null || target == null) {
-                close(state.adminId, "player left")
-                continue
-            }
-
-            // session keep-alive: the spec session owns the truth about who is
-            // being watched; when it stops pointing at our target, we stop too
-            if (tickCount % KEEP_ALIVE_EVERY == 0L) {
-                val sessionTarget = runCatching { state.session.currentTarget() }.getOrNull()
-                val matches = sessionTarget != null && sessionTarget.isPresent &&
-                    sessionTarget.get() == state.targetId
-                if (!matches) {
-                    close(state.adminId, "spec session no longer targets this player")
-                    continue
+            val step = ViewerFlush.decide(
+                ViewerFlushProbe(
+                    closed = state.closed,
+                    adminPresent = admin != null,
+                    targetPresent = target != null,
+                    keepAliveDue = keepAliveDue,
+                    // only probed when the keep-alive is actually due
+                    sessionAlive = !keepAliveDue || sessionAlive(state),
+                    backstopDue = now - state.lastFullAtMs >= config.liveInventoryFullResyncMs,
+                    needsFull = state.needsFull.get(),
+                    dirty = state.dirty.get(),
+                    throttleReady = state.throttle.timeUntilNextMs() == 0L,
+                ),
+            )
+            when (step) {
+                ViewerFlushStep.Drop -> states.remove(state.adminId)
+                is ViewerFlushStep.Close -> close(state.adminId, step.reason)
+                // the planner only picks these two when both parties are present
+                ViewerFlushStep.FullPush -> {
+                    state.needsFull.set(false)
+                    admin?.let { scheduleFullPush(state, it) }
                 }
+                ViewerFlushStep.DiffPush -> {
+                    state.dirty.set(false)
+                    if (!state.throttle.tryAcquire()) {
+                        // too soon: keep the change pending for the next flush
+                        state.dirty.set(true)
+                    } else {
+                        target?.let { scheduleDiffPush(state, it) }
+                    }
+                }
+                ViewerFlushStep.Idle -> Unit
             }
-
-            // slow safety backstop: events can't cover every way a plugin may
-            // change an inventory, so re-read everything once in a while
-            if (now - state.lastFullAtMs >= config.liveInventoryFullResyncMs) state.needsFull.set(true)
-
-            if (state.needsFull.compareAndSet(true, false)) {
-                scheduleFullPush(state, admin)
-                continue
-            }
-            if (!state.dirty.get()) continue
-            if (!state.dirty.compareAndSet(true, false)) continue
-            if (!state.throttle.tryAcquire()) {
-                // too soon: keep the change pending for the next flush
-                state.dirty.set(true)
-                continue
-            }
-            scheduleDiffPush(state, target)
         }
+    }
+
+    /** the session keep-alive probe, once per [KEEP_ALIVE_EVERY] cycles */
+    private fun sessionAlive(state: ViewerState): Boolean {
+        val sessionTarget = runCatching { state.session.currentTarget() }.getOrNull() ?: return false
+        return sessionTarget.isPresent && sessionTarget.get() == state.targetId
     }
 
     /** diff push: re-read the target on its own thread, send only changed slots */
@@ -242,21 +245,22 @@ class InventoryViewerService(
                 val snapshot = captureTargetDisplay(target)
                 val old = state.display
                 state.display = snapshot
-                if (SlotDiff.needsFullResync(old, snapshot)) {
+                val push = ViewerPushPlan.forSnapshot(
+                    old,
+                    snapshot,
+                    windowKnown = state.windowId != ViewerState.UNKNOWN_WINDOW,
+                    stateKnown = state.stateId.get() != ViewerState.UNKNOWN_STATE,
+                )
+                if (push is ViewerPush.NeedsFull) {
+                    // window identity not on the wire yet, or the layout moved:
+                    // the full push sorts either out on the next cycle
                     state.needsFull.set(true)
                     return@run
                 }
-                val changed = SlotDiff.changedSlots(old, snapshot)
-                if (changed.isEmpty()) return@run
-
+                if (push !is ViewerPush.Slots) return@run
                 val windowId = state.windowId
                 val stateId = state.stateId.get()
-                if (windowId == ViewerState.UNKNOWN_WINDOW || stateId == ViewerState.UNKNOWN_STATE) {
-                    // window identity not on the wire yet; the full push sorts it out
-                    state.needsFull.set(true)
-                    return@run
-                }
-                for (slot in changed) {
+                for (slot in push.indexes) {
                     sendPacket(
                         state.adminId,
                         WrapperPlayServerSetSlot(windowId, stateId, slot, snapshot[slot]),

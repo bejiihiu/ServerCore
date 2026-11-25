@@ -132,7 +132,7 @@ class SpecService(
     fun onJoin(player: Player) {
         val record = journal.pending(player.uniqueId) ?: return
         journal.remove(player.uniqueId)
-        effects.replayRestore(player, record)
+        effects.replayRestore(player.uniqueId, record)
     }
 
     /** best-effort sweep on plugin disable; live restores, the rest goes to the journal */
