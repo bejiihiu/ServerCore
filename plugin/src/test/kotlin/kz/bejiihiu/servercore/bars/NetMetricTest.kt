@@ -141,22 +141,4 @@ class NetMetricTest {
         assertEquals(0L, snapshot.servers.single().lastSeenAgeMs)
         assertEquals(0, snapshot.servers.single().onlinePlayers)
     }
-
-    @Test
-    fun `clearing the cache puts the bar back on the self view`() {
-        val cache = NetworkStateCache { 0L }
-        cache.accept(
-            NetworkSnapshotPayload(
-                generatedAt = 0L,
-                playersOnline = 12,
-                servers = listOf(
-                    NetworkServerSnapshot(serverId = "game-1", onlinePlayers = 12, maxPlayers = 60, lastSeenAgeMs = 0L),
-                ),
-            ),
-        )
-        assertEquals(12, cache.latest()!!.playersOnline)
-
-        cache.clear()
-        assertNull(cache.latest())
-    }
 }

@@ -81,11 +81,6 @@ class NetworkStateCache(
             ),
         )
     }
-
-    /** the link went away and the bar should stop trusting the old picture */
-    fun clear() {
-        current.set(null)
-    }
 }
 
 /**
