@@ -59,7 +59,11 @@ class AtomicJsonFile<T>(
     /** replaces the file content asynchronously with retry, failures are logged not thrown */
     fun write(value: T) {
         val seq = sequence.incrementAndGet()
-        io.execute { writeVersioned(value, seq) }
+        val task = Runnable { writeVersioned(value, seq) }
+        // an executor that is already shut down (the disable path shuts the io
+        // pool down last) must not turn a save into an exception on the
+        // caller's thread: persist inline instead, the write still lands
+        runCatching { io.execute(task) }.onFailure { task.run() }
     }
 
     /** blocking variant for shutdown, serializes against in-flight async writes */

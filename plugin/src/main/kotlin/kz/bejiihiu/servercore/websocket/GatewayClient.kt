@@ -269,11 +269,16 @@ class GatewayClient(
                 ParkedFrame(id = frame.id, key = frame.key, type = frame.type.wire, wire = frame.wire, enqueuedAt = frame.enqueuedAt),
             )
             Durability.QUEUE -> synchronized(pendingLock) {
-                if (pendingQueue.size >= MAX_PENDING) {
-                    // bounded: the oldest events are the least useful, drop them
-                    pendingQueue.poll()
+                // the same frame can be parked twice (the send-failure callback
+                // and the disconnect sweep both see it); replaying both copies
+                // re-sends a frame the peer already got. one copy per envelope id
+                if (pendingQueue.none { it.id == frame.id }) {
+                    if (pendingQueue.size >= MAX_PENDING) {
+                        // bounded: the oldest events are the least useful, drop them
+                        pendingQueue.poll()
+                    }
+                    pendingQueue.add(frame)
                 }
-                pendingQueue.add(frame)
             }
             Durability.DROP -> Unit
         }

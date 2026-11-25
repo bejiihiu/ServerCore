@@ -15,10 +15,15 @@ class ReconnectPolicy(
     /** full-jitter band around the exponential base: 0.8x .. 1.2x */
     fun delayFor(attempt: Long): Long {
         val exp = (attempt - 1).coerceIn(0, 60)
-        var base = initialMs.coerceAtLeast(1)
+        // a hand-edited config can put the cap below the initial delay, or at
+        // zero: without this the first delay is longer than the "cap" and the
+        // ladder then collapses to 1ms, i.e. a reconnect storm in both
+        // directions. the ceiling is at least the initial delay, always > 0
+        val ceiling = maxMs.coerceAtLeast(initialMs).coerceAtLeast(1)
+        var base = initialMs.coerceIn(1, ceiling)
         repeat(exp.toInt()) {
-            // clamp while doubling, 2^62 * initial would overflow a long
-            base = minOf(base * 2, maxMs)
+            // clamp before doubling, base * 2 would overflow a long
+            base = if (base > ceiling / 2) ceiling else base * 2
         }
         val factor = 0.8 + jitterSource() * 0.4
         return (base * factor).toLong().coerceAtLeast(1)
