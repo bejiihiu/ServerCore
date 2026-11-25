@@ -43,7 +43,7 @@ object BarPresentation {
      * actionbar colors the mark by health because it has no fill.
      */
     fun line(locale: LocaleService, bar: BarId, reading: BarReading, surface: BarSurface): Component {
-        val body = locale.component(bar.titleKey, reading.values)
+        val body = locale.component(reading.titleKey ?: bar.titleKey, reading.values)
         val mark = if (surface == BarSurface.BOSSBAR) Theme.GOLD else markColor(reading.health)
         return Component.text("${Theme.MARK} ", mark).append(body)
     }

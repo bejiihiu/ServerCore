@@ -12,6 +12,7 @@ class BarMetricsTest {
 
     private val ramThresholds = HealthThresholds(60.0, 80.0, lowerIsBetter = true)
     private val tpsThresholds = HealthThresholds(18.0, 15.0, lowerIsBetter = false)
+    private val msptMetric = MsptMetric(HealthThresholds(40.0, 50.0, lowerIsBetter = true), intervalTicks = 20)
 
     private val gib = 1024L * 1024L * 1024L
 
@@ -113,5 +114,106 @@ class BarMetricsTest {
         // clamped, so a nonsensical fraction can never paint beyond the bar
         assertEquals("100", BarFormats.percent(4.0))
         assertEquals("0", BarFormats.percent(-1.0))
+    }
+
+    @Test
+    fun `mspt carries the average, the p95 and a fill toward the tick budget`() {
+        val reading = msptMetric.readingOf(12.5, 18.0)
+
+        assertEquals(0.25, reading.fraction!!, absoluteTolerance = 0.0001)
+        assertEquals(BarHealth.GOOD, reading.health)
+        assertEquals("12.5", reading.values["mspt"])
+        assertEquals("18.0", reading.values["p95"])
+    }
+
+    @Test
+    fun `mspt health bands sit on the configured edges`() {
+        fun healthAt(value: Double): BarHealth = msptMetric.readingOf(value, value).health
+
+        assertEquals(BarHealth.GOOD, healthAt(40.0))
+        assertEquals(BarHealth.MEDIUM, healthAt(40.1))
+        assertEquals(BarHealth.MEDIUM, healthAt(50.0))
+        assertEquals(BarHealth.LOW, healthAt(50.1))
+    }
+
+    @Test
+    fun `mspt without a p95 still renders the average`() {
+        val reading = msptMetric.readingOf(52.0, null)
+
+        assertEquals("52.0", reading.values["mspt"])
+        assertEquals(BarFormats.UNKNOWN, reading.values["p95"])
+        assertEquals(BarHealth.LOW, reading.health)
+        // a mspt past the budget paints the bar full instead of overflowing it
+        assertEquals(1.0, reading.fraction!!)
+    }
+
+    @Test
+    fun `the mspt pacing fallback treats the 50ms budget as kept-up`() {
+        assertEquals(BarHealth.GOOD, msptMetric.pacedReadingOf(50.0).health)
+        assertEquals(BarHealth.GOOD, msptMetric.pacedReadingOf(50.4).health)
+        assertEquals(BarHealth.MEDIUM, msptMetric.pacedReadingOf(55.0).health)
+        assertEquals(BarHealth.LOW, msptMetric.pacedReadingOf(70.0).health)
+        assertEquals(1.0, msptMetric.pacedReadingOf(70.0).fraction!!)
+        assertEquals(BarFormats.UNKNOWN, msptMetric.pacedReadingOf(55.0).values["p95"])
+    }
+
+    @Test
+    fun `mspt with neither a report nor a pacing sample is unknown, not zero`() {
+        val reading = msptMetric.unknownReading()
+
+        assertNull(reading.fraction)
+        assertEquals(BarHealth.UNKNOWN, reading.health)
+        assertEquals(BarFormats.UNKNOWN, reading.values["mspt"])
+        assertEquals(BarFormats.UNKNOWN, reading.values["p95"])
+    }
+
+    @Test
+    fun `p95 is nearest rank over the sampled window`() {
+        val window = DoubleArray(20) { it + 1.0 }
+
+        assertEquals(19.0, percentile95(window))
+        assertNull(percentile95(DoubleArray(0)))
+        assertEquals(7.0, percentile95(doubleArrayOf(7.0)))
+    }
+
+    @Test
+    fun `players shows occupancy and keeps health neutral`() {
+        val reading = PlayersMetric().readingOf(online = 12, max = 100)
+
+        assertEquals(0.12, reading.fraction!!, absoluteTolerance = 0.0001)
+        assertEquals(BarHealth.UNKNOWN, reading.health)
+        assertEquals("12", reading.values["online"])
+        assertEquals("100", reading.values["max"])
+        assertEquals("12", reading.values["pct"])
+    }
+
+    @Test
+    fun `players above a lowered slot limit still shows the real count`() {
+        val reading = PlayersMetric().readingOf(online = 110, max = 100)
+
+        assertEquals("110", reading.values["online"])
+        assertEquals(1.0, reading.fraction!!)
+    }
+
+    @Test
+    fun `players without a slot limit renders empty instead of dividing by zero`() {
+        val reading = PlayersMetric().readingOf(online = 0, max = 0)
+
+        assertNull(reading.fraction)
+        assertEquals(BarFormats.UNKNOWN, reading.values["pct"])
+        assertEquals("0", reading.values["online"])
+    }
+
+    @Test
+    fun `the world clock and day cycle are minecraft time`() {
+        assertEquals("06:00", BarFormats.clock(0))
+        assertEquals("12:00", BarFormats.clock(6_000))
+        assertEquals("18:00", BarFormats.clock(12_000))
+        assertEquals("00:00", BarFormats.clock(18_000))
+        // wrapped times read the same as their in-day equivalent
+        assertEquals("12:00", BarFormats.clock(30_000))
+        assertEquals("18:00", BarFormats.clock(-12_000))
+        assertEquals("25", BarFormats.dayCyclePercent(6_000))
+        assertEquals("12.3", BarFormats.millis(12.34))
     }
 }

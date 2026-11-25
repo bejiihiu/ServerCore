@@ -107,4 +107,59 @@ class BarPresentationTest {
         assertTrue(line.contains("RAM"))
         assertTrue(line.contains("—"))
     }
+
+    @Test
+    fun `the mspt title renders the average and the p95`() {
+        val reading = BarReading(
+            fraction = 0.25,
+            health = BarHealth.GOOD,
+            values = mapOf("mspt" to "12.5", "p95" to "18.0"),
+        )
+
+        val line = plain(BarPresentation.line(locale, BarId.MSPT, reading, BarSurface.BOSSBAR))
+
+        assertTrue(line.contains("MSPT"))
+        assertTrue(line.contains("12.5"))
+        assertTrue(line.contains("18.0"))
+        assertFalse(line.contains("{"))
+    }
+
+    @Test
+    fun `the players title renders the occupancy`() {
+        val reading = BarReading(
+            fraction = 0.12,
+            health = BarHealth.UNKNOWN,
+            values = mapOf("online" to "12", "max" to "100", "pct" to "12"),
+        )
+
+        val line = plain(BarPresentation.line(locale, BarId.PLAYERS, reading, BarSurface.ACTIONBAR))
+
+        assertTrue(line.contains("12"))
+        assertTrue(line.contains("100"))
+        assertTrue(line.contains("12%"))
+        assertFalse(line.contains("{"))
+    }
+
+    @Test
+    fun `the world title renders the weather, and the plain variant drops it`() {
+        val reading = BarReading(
+            fraction = 0.25,
+            health = BarHealth.UNKNOWN,
+            values = mapOf("world" to "world", "time" to "12:00", "cycle" to "25", "weather" to "rain"),
+        )
+
+        val withWeather = plain(BarPresentation.line(locale, BarId.WORLD, reading, BarSurface.BOSSBAR))
+        assertTrue(withWeather.contains("world"))
+        assertTrue(withWeather.contains("12:00"))
+        assertTrue(withWeather.contains("25%"))
+        assertTrue(withWeather.contains("rain"))
+        assertFalse(withWeather.contains("{"))
+
+        val plainLine = plain(
+            BarPresentation.line(locale, BarId.WORLD, reading.copy(titleKey = "bars.world.title-plain"), BarSurface.BOSSBAR),
+        )
+        assertTrue(plainLine.contains("world"))
+        assertTrue(plainLine.contains("12:00"))
+        assertFalse(plainLine.contains("rain"))
+    }
 }

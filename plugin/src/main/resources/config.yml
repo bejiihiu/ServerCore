@@ -116,14 +116,15 @@ anti-esp:
     ttl-ticks: 40
 
 # server info bars: live server health as a per-player toggle. purpur-style
-# commands (/rambar, /tpsbar), but the toggle is remembered across relogs and
-# the tps bar shows the player's own region, not an invented server-wide tps.
+# commands (/rambar, /tpsbar, /msptbar, /playersbar, /worldbar), but the toggle
+# is remembered across relogs and the tps/mspt bars show the player's own
+# region, not an invented server-wide number.
 bars:
   # master switch. off = nothing renders and no bar command is registered
   enabled: true
-  # how often an open bar refreshes, game ticks (20 = once a second).
-  # the ram sample is taken off-thread on this cadence; tps is read at refresh
-  # time on the player's own region thread
+  # how often every open bar refreshes, game ticks (20 = once a second). the
+  # ram sample is taken off-thread on this cadence; tps is read at refresh time
+  # on the player's own region thread
   update-interval-ticks: 20
   # where a bar renders: bossbar (progress bar over the hotbar) or actionbar
   display: bossbar
@@ -137,6 +138,19 @@ bars:
     # region tps: at or above good = healthy, below medium = critical
     good: 18.0
     medium: 15.0
+  mspt:
+    enabled: true
+    # region tick time in ms (folia's 5s region report): at or below good =
+    # healthy, above medium = the region is missing its 50ms budget
+    good: 40.0
+    medium: 50.0
+  players:
+    enabled: true
+  world:
+    enabled: true
+    # true = world, clock and weather; false hides the weather word and keeps
+    # the world name plus the clock
+    show-weather: true
 
 spec:
   enabled: true

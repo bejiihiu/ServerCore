@@ -65,6 +65,7 @@ class InfoBarService(
         cancelAll(player.uniqueId)
         // no player access here: by quit the entity scheduler is going away
         renderer.forget(player.uniqueId)
+        metrics.values.forEach { it.forget(player.uniqueId) }
     }
 
     /** the bar this player currently has on the configured surface */

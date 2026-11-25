@@ -7,8 +7,11 @@ import kz.bejiihiu.servercore.bars.BarsConfig
 import kz.bejiihiu.servercore.bars.BarsState
 import kz.bejiihiu.servercore.bars.BarsStore
 import kz.bejiihiu.servercore.bars.InfoBarService
+import kz.bejiihiu.servercore.bars.MsptMetric
+import kz.bejiihiu.servercore.bars.PlayersMetric
 import kz.bejiihiu.servercore.bars.RamMetric
 import kz.bejiihiu.servercore.bars.TpsMetric
+import kz.bejiihiu.servercore.bars.WorldMetric
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
@@ -17,7 +20,8 @@ import org.bukkit.event.player.PlayerQuitEvent
 
 /**
  * Server info bars: the per-player toggle store, the metric providers, the
- * renderer and the /rambar + /tpsbar commands.
+ * renderer and the /rambar, /tpsbar, /msptbar, /playersbar and /worldbar
+ * commands.
  *
  * Sits with the other player-facing surfaces (after the ui kit and the guest
  * stack, before the transport goes live): it needs the locale layer for its
@@ -36,6 +40,9 @@ class BarsInstaller(private val ctx: PluginContext) {
         val metrics = buildList<BarMetric> {
             if (config.ram.enabled) add(RamMetric(config.ram.thresholds))
             if (config.tps.enabled) add(TpsMetric(config.tps.thresholds))
+            if (config.mspt.enabled) add(MsptMetric(config.mspt.thresholds, config.updateIntervalTicks))
+            if (config.players.enabled) add(PlayersMetric())
+            if (config.world.enabled) add(WorldMetric(ctx.locale, config.world.showWeather))
         }
         if (metrics.isEmpty()) {
             ctx.logger.info("bars: enabled but every bar is switched off")

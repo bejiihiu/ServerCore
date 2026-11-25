@@ -15,6 +15,9 @@ class BarCommandsTest {
     fun `bar command names match the purpur muscle memory`() {
         assertEquals("rambar", BarId.RAM.commandName)
         assertEquals("tpsbar", BarId.TPS.commandName)
+        assertEquals("msptbar", BarId.MSPT.commandName)
+        assertEquals("playersbar", BarId.PLAYERS.commandName)
+        assertEquals("worldbar", BarId.WORLD.commandName)
     }
 
     @Test
@@ -25,6 +28,12 @@ class BarCommandsTest {
         assertEquals("servercore.bars.ram.other", BarId.RAM.otherPermission)
         assertEquals("servercore.bars.tps", BarId.TPS.permission)
         assertEquals("servercore.bars.tps.other", BarId.TPS.otherPermission)
+        assertEquals("servercore.bars.mspt", BarId.MSPT.permission)
+        assertEquals("servercore.bars.mspt.other", BarId.MSPT.otherPermission)
+        assertEquals("servercore.bars.players", BarId.PLAYERS.permission)
+        assertEquals("servercore.bars.players.other", BarId.PLAYERS.otherPermission)
+        assertEquals("servercore.bars.world", BarId.WORLD.permission)
+        assertEquals("servercore.bars.world.other", BarId.WORLD.otherPermission)
     }
 
     @Test

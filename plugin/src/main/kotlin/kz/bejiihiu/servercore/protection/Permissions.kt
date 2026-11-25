@@ -32,4 +32,22 @@ object Permissions {
 
     /** toggle the region tps info bar for other players */
     const val BARS_TPS_OTHER = "servercore.bars.tps.other"
+
+    /** toggle the region mspt info bar on yourself */
+    const val BARS_MSPT = "servercore.bars.mspt"
+
+    /** toggle the region mspt info bar for other players */
+    const val BARS_MSPT_OTHER = "servercore.bars.mspt.other"
+
+    /** toggle the online players info bar on yourself */
+    const val BARS_PLAYERS = "servercore.bars.players"
+
+    /** toggle the online players info bar for other players */
+    const val BARS_PLAYERS_OTHER = "servercore.bars.players.other"
+
+    /** toggle the world clock info bar on yourself */
+    const val BARS_WORLD = "servercore.bars.world"
+
+    /** toggle the world clock info bar for other players */
+    const val BARS_WORLD_OTHER = "servercore.bars.world.other"
 }
