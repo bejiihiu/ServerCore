@@ -1,5 +1,7 @@
 # Architecture
 
+**Languages:** English | [Русский](ru/architecture.md)
+
 ServerCore is split into two independent applications that share nothing at the code level:
 
 1. **Backend** — Bun + TypeScript. Owns the Telegram bot, all business logic that does not need Minecraft API access, and MongoDB.

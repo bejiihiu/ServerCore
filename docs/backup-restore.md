@@ -1,5 +1,7 @@
 # Backup and restore
 
+**Languages:** English | [Русский](ru/backup-restore.md)
+
 ServerCore keeps its state in two places: MongoDB on the backend host and a handful of durable JSON files
 next to the plugin. Losing either half is recoverable only if you have a copy - and on the free MongoDB
 Atlas tier there is no backup you can rely on. This page explains what to copy, how often, and how to put

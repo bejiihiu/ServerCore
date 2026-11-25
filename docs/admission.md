@@ -1,5 +1,7 @@
 # Admission
 
+**Languages:** English | [Русский](ru/admission.md)
+
 Admission is how a stranger becomes a member. Everything happens in Telegram; the game server only gates the result. The pipeline has five stages: linking, application, voting, decision, and group membership.
 
 ## Stage 1 — First contact and linking

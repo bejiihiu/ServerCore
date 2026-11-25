@@ -1,5 +1,7 @@
 # Dependency and supply-chain audit
 
+**Languages:** English | [Русский](ru/dependency-audit.md)
+
 Record of the recurring dependency, license and supply-chain pass over this repository. It is a
 snapshot: re-run the commands below after any dependency change and update the findings.
 

@@ -1,5 +1,7 @@
 # Security
 
+**Languages:** English | [Русский](ru/security.md)
+
 Security is a design constraint, not a retrofit. This page documents the threat model, the token handling rules, and the approach to command protection.
 
 ## Threat model
