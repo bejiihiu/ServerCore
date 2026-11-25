@@ -1,14 +1,19 @@
 package kz.bejiihiu.servercore.integration.flectonepulse
 
 import java.net.InetAddress
+import java.util.EnumMap
 import java.util.Optional
 import java.util.UUID
+import java.util.function.UnaryOperator
 import net.flectone.pulse.config.setting.ViolationSetting
+import net.flectone.pulse.listener.PulseListener
 import net.flectone.pulse.model.entity.FEntity
 import net.flectone.pulse.model.entity.FPlayer
 import net.flectone.pulse.model.entity.FPlayerImpl
+import net.flectone.pulse.model.event.Event
 import net.flectone.pulse.model.value.Moderation
 import net.flectone.pulse.module.ModuleSimple
+import net.flectone.pulse.platform.registry.ListenerRegistry
 import net.flectone.pulse.service.ModerationService
 import net.flectone.pulse.service.SocialService
 
@@ -192,3 +197,74 @@ fun permanentModeration(type: Moderation.Type, nowMillis: Long, reason: String? 
 /** expired on arrival: ran out 5 seconds ago */
 fun expiredModeration(type: Moderation.Type, nowMillis: Long): Moderation =
     Moderation(1, 1, nowMillis - 10_000, nowMillis - 5_000, "old", 0, type, true, "*")
+
+/**
+ * fake listener registry. fp registers each permanent listener by calling
+ * registerPermanent once and re-registering the permanent set on every reload;
+ * the list keeps one entry per call so a duplicate registration shows up as a
+ * second element instead of being deduped away.
+ */
+class FakeListenerRegistry : ListenerRegistry {
+
+    val permanentListeners = mutableListOf<PulseListener>()
+
+    var unregisterAllCalls = 0
+        private set
+
+    override fun getPulseListeners(): Map<Class<out Event>, EnumMap<Event.Priority, MutableList<UnaryOperator<Event>>>> =
+        emptyMap()
+
+    override fun getPulseListeners(event: Class<out Event>): Map<Event.Priority, MutableList<UnaryOperator<Event>>> =
+        emptyMap()
+
+    override fun registerPermanent(pulseListener: PulseListener) {
+        permanentListeners += pulseListener
+    }
+
+    override fun register(clazz: Class<*>) = Unit
+    override fun register(clazz: Class<*>, priority: Event.Priority) = Unit
+
+    override fun register(pulseListener: PulseListener) {
+        permanentListeners += pulseListener
+    }
+
+    override fun register(
+        eventClass: Class<out Event>,
+        priority: Event.Priority,
+        handler: UnaryOperator<Event>,
+    ) = Unit
+
+    // fp's own teardown call. servercore must never reach for it: it would drop
+    // fp's default listeners along with ours, which is why the slot exists
+    override fun unregisterAll() {
+        unregisterAllCalls++
+    }
+
+    override fun registerDefaultListeners() = Unit
+}
+
+/**
+ * the bridge's half of the listener contract without a bukkit plugin: a live
+ * target invalidates cache rows and refreshes on an fp restart. every call is
+ * recorded, so a test can prove a callback did nothing at all; the optional
+ * cache lets the older listener tests assert on the cache instead.
+ */
+class RecordingPunishmentTarget(
+    private val cache: PunishmentCache? = null,
+) : FlectonePulseListenerTarget {
+
+    val invalidated = mutableListOf<UUID>()
+
+    var restarts = 0
+        private set
+
+    override fun invalidatePlayer(uuid: UUID) {
+        invalidated += uuid
+        cache?.invalidate(uuid)
+    }
+
+    override fun afterFpRestarted() {
+        restarts++
+        cache?.invalidateAll()
+    }
+}
