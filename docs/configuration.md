@@ -309,6 +309,7 @@ Everything else degrades instead of failing the boot:
 | `/spec <player>` | same | Start a hidden observation session on a player; tab completion suggests online names |
 | `/servercore groups <player>` | `servercore.admin` (console always allowed) | Debug output listing a player's groups from the active permission source |
 | `/servercore deop-all` | `servercore.admin` (console always allowed) | Remove operator status from every account holding it |
+| `/servercore diag [--json]` | `servercore.admin` (console always allowed) | Operator self-check: build, module matrix, backend link, live counts, integration versions, verdict and up to three hints. `--json` prints one machine-readable document instead of the card |
 | `/rambar`, `/tpsbar`, `/msptbar`, `/playersbar`, `/worldbar`, `/netbar` | `servercore.bars.<bar>` for yourself, `…​.other` to target others | Toggle a server info bar; see [server info bars](bars.md) |
 | `/link` | guests | Not a registered command — a guest typing `/link` gets the registration prompt in chat instead of "unknown command" |
 

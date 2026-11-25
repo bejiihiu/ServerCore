@@ -120,6 +120,23 @@ being rejected before the socket exists. The backend log has the reason right ne
 | `timestamp outside replay window` | the two hosts' clocks are more than 30 s apart (NTP) |
 | `missing handshake fields` | `backend.url` does not point at the gateway path, or a proxy stripped the query string |
 
+### Ask the plugin before the log
+
+`/servercore diag` answers "why isn't it working?" in one card:
+
+- **build** — plugin version, the jar it was loaded from, server version, Folia yes/no, Java version;
+- **modules** — every subsystem as *enabled*, *disabled by config*, *absent dependency* or *failed*:
+  guest, packet layer, anti-ESP, protection, spec, bars, LuckPerms, PlaceholderAPI, FlectonePulse;
+- **backend link** — connected or not, age of the last heartbeat, outbox depth, the last disconnect
+  reason and the reconnect attempt count;
+- **counts** — active guests, live spec sessions, enabled bars, online players;
+- **versions** — PacketEvents, LuckPerms, PlaceholderAPI and FlectonePulse;
+- **verdict** — `OK`, `WARN` or `FAIL`, the findings behind it and the top three things to do next.
+
+Console gets plain lines, a player gets the framed card. `/servercore diag --json` prints the same report
+as one machine-readable document (stable keys, module statuses and finding codes as constant names) — paste
+it into a ticket instead of screenshots.
+
 ## 5. Verify end to end
 
 1. Join with a fresh account → spectator guest mode, plus a personal Telegram deep link in chat.
@@ -145,6 +162,9 @@ being rejected before the socket exists. The backend log has the reason right ne
 
 ## 7. Known first-run traps
 
+- **Something is wrong and the log is long.** Run `/servercore diag` first: it names the module that is off
+  (`disabled by config`, `absent dependency` or `failed`), the link state with its outbox depth, and the top
+  three hints. `/servercore diag --json` is the same report for a ticket.
 - **No OP anywhere.** Operator status is not an administration mechanism here; permissions come from
   LuckPerms (`servercore.admin`, `servercore.spec`, …). `/servercore deop-all` and `/servercore groups` are
   console-allowed.

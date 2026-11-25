@@ -84,7 +84,7 @@ installer:
 flectonepulse -> ops -> config (boot blocker) -> gateway -> spec reporting
 -> i18n -> integrations -> guest -> packet -> sync -> viewer -> observer
 -> protection -> spec -> esp -> admin commands
--> guest.start -> ui -> bars -> gateway.start -> papi -> announce
+-> guest.start -> ui -> bars -> gateway.start -> papi -> diagnostics -> announce
 ```
 
 The ordering rules that matter when inserting a module:

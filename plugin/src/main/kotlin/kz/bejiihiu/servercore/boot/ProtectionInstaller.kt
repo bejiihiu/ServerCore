@@ -37,8 +37,16 @@ class ProtectionInstaller(
     private var gamemodeGuard: GamemodeGuardListener? = null
     private var commandBlockAuditor: CommandBlockAuditor? = null
 
+    /** config flag, kept so the self-check can tell "off" from "failed" */
+    var enabledByConfig: Boolean = false
+        private set
+
+    /** true when the command guards and the gamemode guard are registered */
+    val active: Boolean get() = gamemodeGuard != null
+
     fun install() {
         val config = ProtectionConfig.load(ctx.plugin.config, ctx.logger)
+        enabledByConfig = config.enabled
         val registry = AllowedGamemodeOverrideRegistry()
         overrideRegistry = registry
         val lockdown = OpLockdown(ctx.plugin, ctx.logger)

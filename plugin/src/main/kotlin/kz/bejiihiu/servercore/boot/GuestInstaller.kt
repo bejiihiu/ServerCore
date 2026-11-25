@@ -47,6 +47,9 @@ class GuestInstaller(
     lateinit var messages: GuestMessageService
         private set
 
+    /** true once the session machine exists; onDisable tolerates a partial boot */
+    val active: Boolean get() = this::sessions.isInitialized
+
     fun install() {
         val plugin = ctx.plugin
         val guestConfig = ctx.guestConfig
