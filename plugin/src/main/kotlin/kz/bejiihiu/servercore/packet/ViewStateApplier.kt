@@ -6,6 +6,10 @@ import java.util.UUID
  * the seam every packet-behaviour module hangs off: the raw packet listener
  * parses and routes, the applier decides. visibility engine, disguise layer
  * and the state-sync matrix all plug in here without touching packet code.
+ *
+ * threading: called from packet-listener callbacks on netty threads, never a
+ * region thread. implementations must be thread-safe and must not touch
+ * players directly — hop to the owning scheduler (see [PacketThreads]).
  */
 interface ViewStateApplier {
     /**

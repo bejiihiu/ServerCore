@@ -9,6 +9,12 @@ import { registerSpecHandlers } from "./spec-handlers.js"
 import { registerLocaleHandlers } from "./locale-handlers.js"
 import type { LocaleService } from "../../services/locale-service.js"
 
+/**
+ * what the handler wiring needs from the composition root: constructed ports
+ * and services, plus the lifecycle hooks. this file owns only the mapping
+ * "wire type -> module", never service construction, and it is the single
+ * place a new handler is added.
+ */
 export type HandlerWiringDeps = {
   directory: ServerDirectory
   logger: Logger

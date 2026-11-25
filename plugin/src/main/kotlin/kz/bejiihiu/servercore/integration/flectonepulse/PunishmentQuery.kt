@@ -27,6 +27,10 @@ data class PunishmentInfo(
  * when a decision needs to know about an active ban/mute (guest and admission
  * flows), it never calls anything that creates or removes a punishment —
  * that boundary is flectonepulse's alone.
+ *
+ * threading: safe from any thread, the cache in front is concurrent. a failed
+ * lookup degrades to null ("no info") and is not cached, so a transient
+ * flectonepulse error cannot poison the ttl.
  */
 interface PunishmentQuery {
 

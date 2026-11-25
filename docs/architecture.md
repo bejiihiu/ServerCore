@@ -7,6 +7,8 @@ ServerCore is split into two independent applications that share nothing at the 
 
 They communicate over exactly one channel: a secured outbound WebSocket connection initiated by the plugin. There is no HTTP API between the two halves — the backend's Fastify instance serves the `/health` endpoint only, never plugin traffic.
 
+For step-by-step recipes that add to this design, see [extending](extending.md).
+
 ## System overview
 
 ```text
