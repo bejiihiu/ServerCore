@@ -98,6 +98,9 @@ current, unreleased state of the codebase.
 - Server status and heartbeat tracking, offline detection with admin alerts (optionally DM-ed to all
   linked users), and `/stats` with real player, TPS, version and observation-session counts.
 - Retention sweeps for audit records, server events and closed sessions.
+- Deployment kit (`deploy/`): a docker-compose stack with Caddy TLS in front of the backend, a systemd
+  unit, a Pterodactyl egg and a commented backend environment template, each with the same set of
+  environment keys the code reads.
 - Backup and restore tooling (`deploy/backup/`): a verified MongoDB dump plus the plugin's durable
   state files in one archive, with retention, dry runs, a checksum-verified restore and a disaster
   runbook.
@@ -165,8 +168,15 @@ current, unreleased state of the codebase.
   type, its direction and payload fields, checked against the zod schemas and the plugin codec/DTOs by
   tests on both sides, so schema drift fails the build instead of production.
 - Plugin tests for guest logic, protocol compatibility, permissions and packet-state behaviour.
-- Documentation set: architecture, installation, configuration, WebSocket protocol, admission,
-  authentication, security, FAQ, server info bars and the in-game UI design system.
+- Hot-path benchmark harness (`./gradlew :plugin:benchmark`) covering the view-state store, the
+  spatial grid, the ray march, the visibility decider, the packet resync executor, the WebSocket codec
+  and bar rendering, with the measurements and the rejected experiments written down in
+  `docs/performance.md`.
+- Documentation set: architecture, installation, a first-run walkthrough, configuration, WebSocket
+  protocol, admission, authentication, security, FAQ, server info bars, the in-game UI design system,
+  the performance guide and the backup and restore runbook.
+- Russian documentation: a translated README and a `docs/ru/` set covering installation, first run,
+  configuration and FAQ, linked from the English pages.
 
 ### Changed
 
