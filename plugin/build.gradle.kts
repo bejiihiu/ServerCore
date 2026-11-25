@@ -23,6 +23,12 @@ sourceSets {
         compileClasspath += sourceSets["main"].output + configurations["compileClasspath"]
         runtimeClasspath += sourceSets["main"].output + configurations["runtimeClasspath"]
     }
+
+    // the example presets live in the repo root; put them on the test classpath
+    // so the parity test reads the shipped files instead of a copy
+    test {
+        resources.srcDir(rootProject.file("examples/plugin"))
+    }
 }
 
 configurations["benchmarkImplementation"].extendsFrom(configurations["implementation"])

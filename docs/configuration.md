@@ -4,6 +4,8 @@
 
 ServerCore is configured in two places: the backend's environment file and the plugin's `config.yml`. This page documents every option.
 
+> **Presets.** [`examples/`](../examples/README.md) ships ready-to-copy starting points: complete plugin `config.yml` files for a small (10-30 players) and a large (100+) server, plus development and production backend env files. They use only the keys documented on this page.
+
 ## Backend — environment variables
 
 All variables come from `.env` (copy `.env.example` as the starting point). Every key below is read and validated by the backend's Zod config at boot; an invalid value aborts the start with a summary of what is wrong.

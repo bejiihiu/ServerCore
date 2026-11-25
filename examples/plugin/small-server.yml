@@ -1,0 +1,213 @@
+# servercore plugin preset: small server (10-30 concurrent players)
+#
+# this is a starting point, not a supported configuration. copy it over
+# plugins/ServerCore/config.yml on a fresh install and replace every value
+# marked CHANGE_ME. every key here exists in the shipped config.yml, so
+# anything you delete falls back to the documented loader default.
+#
+# shape: modest hardware, a closed or hand-moderated world. anti-esp runs at a
+# calm cadence, protection sweeps are aggressive, /spec is available to staff.
+
+backend:
+  # CHANGE_ME: full websocket url of the backend gateway (wss:// behind tls)
+  url: "wss://mc-api.example.com:8081/ws"
+  # CHANGE_ME: must match a key in SERVERCORE_SERVER_CREDENTIALS on the backend
+  server-id: "game-1"
+  # CHANGE_ME: openssl rand -hex 32; the backend holds the same value for this id
+  secret: "replace-with-openssl-rand-hex-32"
+  reconnect:
+    initial-delay-seconds: 2
+    max-delay-seconds: 120
+  heartbeat-interval-seconds: 15
+  ack-timeout-milliseconds: 10000
+  ack-max-retries: 2
+  liveness-timeout-milliseconds: 45000
+  dedupe-ttl-milliseconds: 600000
+  # small population: no need to park a long guest backlog on disk
+  outbox-max-entries: 500
+
+guest:
+  enabled: true
+  restore-on-restart: true
+  resolve-timeout-milliseconds: 4000
+  # three guest sessions, then the player has to register (product default)
+  session-limit: 3
+  kick-after-limit: true
+  # slightly calmer reminder than the default 60s: this server answers in chat
+  reminder-interval-seconds: 90
+  gamemode-sweep-seconds: 2
+  # bundled locales: en, ru - set to ru for a russian-speaking community
+  lang: "en"
+  bot-username: ServerCoreBot
+  link-ttl-milliseconds: 90000
+  snapshot-storage-path: guest-snapshots.json
+  command-whitelist:
+    - help
+    - rules
+    - link
+  # true = blocked. free flight and world observation stay allowed
+  restrictions:
+    block-interaction: true
+    block-break: true
+    block-place: true
+    item-pickup: true
+    item-use: true
+    container-interaction: true
+    entity-damage: true
+    commands: true
+    gamemode-change: true
+    portals: true
+    inventory-edit: true
+    chat: true
+  # optional backend-down overrides, uuid -> authorized | banned
+  # local-accounts:
+  #   "069a79f4-44e9-4726-a5be-fca90e38aaf5": authorized
+
+anti-esp:
+  enabled: true
+  # a small world: nobody is visible past this anyway
+  max-distance: 40
+  # one evaluation per second (20 ticks). a small server does not need the
+  # default half-second cadence, and a calmer cadence means fewer visibility
+  # flaps for players who are just walking around
+  check-interval-ticks: 20
+  sneak-hides: true
+  disguise:
+    enabled: true
+    # comma-separated bukkit entity type names, picked at random per pair
+    mobs: zombie, skeleton, spider, cow, pig, sheep
+  cache:
+    ttl-ticks: 40
+
+bars:
+  enabled: true
+  update-interval-ticks: 20
+  display: bossbar
+  ram:
+    enabled: true
+    good: 60
+    medium: 80
+  tps:
+    enabled: true
+    good: 18.0
+    medium: 15.0
+  mspt:
+    enabled: true
+    good: 40.0
+    medium: 50.0
+  players:
+    enabled: true
+  world:
+    enabled: true
+    show-weather: true
+  net:
+    enabled: true
+    # three heartbeat intervals; lower values make servers flicker offline
+    stale-after-ms: 45000
+
+spec:
+  enabled: true
+  live-inventory: true
+  live-inventory-push-milliseconds: 500
+  live-inventory-full-resync-seconds: 5
+  log-to-audit: true
+  permission:
+    use-luckperms: true
+    levels: [owner, admin, moderator, helper]
+    spec-permission: servercore.spec
+    fallback-level: helper
+  audit:
+    directory: audit
+    retention-days: 30
+    max-entries-per-session: 64
+    queue-capacity: 1024
+  hidden:
+    # keep small: a bigger radius starts eating the target's own effects
+    trace-radius: 1.5
+    suppress-action-bar: true
+
+protection:
+  enabled: true
+  # the full baseline. aliases resolve against the live command tree, so one
+  # name covers its whole alias group (tp covers teleport)
+  blocked-commands:
+    - op
+    - deop
+    - fill
+    - clone
+    - setblock
+    - summon
+    - gamemode
+    - tp
+    - teleport
+    - give
+    - item
+    - execute
+    - effect
+    - attribute
+    - kill
+    - difficulty
+    - time
+    - weather
+    - gamerule
+    - worldborder
+    - stop
+    - reload
+  blocked-datapack-commands:
+    - function
+    - schedule
+    - datapack
+  enforce-gamemode: true
+  # tight sweep: a small server can afford to re-check every 30s -> 15s
+  gamemode-sweep-interval-seconds: 15
+  # scan loaded chunks for command blocks carrying denied commands every 5 min
+  command-block-audit-interval-seconds: 300
+  # small world, hand-moderated: clear the command from the block, not just log
+  command-block-neutralize: true
+  hide-from-tab-complete: true
+
+# only read while luckperms is absent; a boot-time stand-in, not a group manager
+luckperms:
+  fallback:
+    default-group: default
+    # uuid -> group name (rank ordering only)
+    groups:
+      # "069a79f4-44e9-4726-a5be-fca90e38aaf5": admin
+    permissions:
+      everyone: []
+      players:
+        # "069a79f4-44e9-4726-a5be-fca90e38aaf5":
+        #   - servercore.admin
+        #   - servercore.spec
+
+placeholders:
+  cache-ttl-milliseconds: 2000
+  unknown-value: "unknown"
+  stale-after-minutes: 10
+  stale-suffix: " (stale)"
+
+flectonepulse:
+  # keep servercore's telegram announcements out while flectonepulse's
+  # telegram module is the one announcing
+  disable-tg: true
+  punishment-cache-ttl-seconds: 30
+
+ops:
+  update:
+    enabled: true
+    repo: "bejiihiu/ServerCore"
+    check-interval-minutes: 30
+    auto-restart: true
+    github-token-env: "GITHUB_TOKEN"
+  restart:
+    pterodactyl:
+      # all three empty = feature off, restarts fall back to a console stop
+      panel-url: ""
+      server-id: ""
+      api-key-env: "PTERO_API_KEY"
+    # wall clock hh:mm in ops.restart.timezone
+    daily-times: ["05:00"]
+    grace-seconds: 60
+    # player-facing restart texts: ru | en
+    locale: "en"
+    timezone: "Europe/Moscow"

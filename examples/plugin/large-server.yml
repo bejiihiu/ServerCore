@@ -1,0 +1,226 @@
+# servercore plugin preset: large server (100+ concurrent players)
+#
+# this is a starting point, not a supported configuration. copy it over
+# plugins/ServerCore/config.yml on a fresh install and replace every value
+# marked CHANGE_ME. every key here exists in the shipped config.yml, so
+# anything you delete falls back to the documented loader default.
+#
+# shape: a busy public world. the knobs below trade freshness of the visual
+# layers for cpu and allocation churn; the security posture (protection, guest
+# limits, /spec auditing) is exactly the same as on a small server. do not
+# relax those to win ticks.
+
+backend:
+  # CHANGE_ME: full websocket url of the backend gateway (wss:// behind tls)
+  url: "wss://mc-api.example.com:8081/ws"
+  # CHANGE_ME: must match a key in SERVERCORE_SERVER_CREDENTIALS on the backend
+  server-id: "game-1"
+  # CHANGE_ME: openssl rand -hex 32; the backend holds the same value for this id
+  secret: "replace-with-openssl-rand-hex-32"
+  reconnect:
+    initial-delay-seconds: 2
+    max-delay-seconds: 120
+  heartbeat-interval-seconds: 15
+  ack-timeout-milliseconds: 10000
+  ack-max-retries: 2
+  liveness-timeout-milliseconds: 45000
+  dedupe-ttl-milliseconds: 600000
+  # more players means more guest lifecycle frames to park during an outage
+  outbox-max-entries: 1000
+
+guest:
+  enabled: true
+  restore-on-restart: true
+  resolve-timeout-milliseconds: 4000
+  # three guest sessions, then the player has to register (product default)
+  session-limit: 3
+  kick-after-limit: true
+  # half as many reminder frames per waiting guest as the default
+  reminder-interval-seconds: 120
+  # at a few hundred guests the per-guest sweep is worth slowing down
+  gamemode-sweep-seconds: 5
+  # bundled locales: en, ru - set to ru for a russian-speaking community
+  lang: "en"
+  bot-username: ServerCoreBot
+  link-ttl-milliseconds: 90000
+  snapshot-storage-path: guest-snapshots.json
+  command-whitelist:
+    - help
+    - rules
+    - link
+  # true = blocked. free flight and world observation stay allowed
+  restrictions:
+    block-interaction: true
+    block-break: true
+    block-place: true
+    item-pickup: true
+    item-use: true
+    container-interaction: true
+    entity-damage: true
+    commands: true
+    gamemode-change: true
+    portals: true
+    inventory-edit: true
+    chat: true
+  # optional backend-down overrides, uuid -> authorized | banned
+  # local-accounts:
+  #   "069a79f4-44e9-4726-a5be-fca90e38aaf5": authorized
+
+anti-esp:
+  enabled: true
+  # keep the full radius: shrinking it would hide more players than intended
+  max-distance: 48
+  # never below 10 with four-figure player counts - a per-tick cadence at this
+  # population is tens of milliseconds of ray work per second and megabytes of
+  # garbage. 12 ticks (~1.7 evaluations/s) is a safe middle
+  check-interval-ticks: 12
+  sneak-hides: true
+  disguise:
+    enabled: true
+    # comma-separated bukkit entity type names, picked at random per pair.
+    # a shorter list keeps the synthetic profile set small
+    mobs: zombie, skeleton, spider, cow, pig, sheep
+  cache:
+    # reuse a line-of-sight answer for ~3s instead of ~2s; ray work is the
+    # single most expensive thing this layer does
+    ttl-ticks: 60
+
+bars:
+  enabled: true
+  # every 2s instead of every 1s: halving the refresh cadence halves both the
+  # formatted-component garbage and the per-region thread time the bars cost
+  update-interval-ticks: 40
+  display: bossbar
+  ram:
+    enabled: true
+    good: 60
+    medium: 80
+  tps:
+    enabled: true
+    good: 18.0
+    medium: 15.0
+  mspt:
+    enabled: true
+    good: 40.0
+    medium: 50.0
+  players:
+    enabled: true
+  world:
+    enabled: true
+    show-weather: true
+  net:
+    enabled: true
+    # three heartbeat intervals; lower values make servers flicker offline
+    stale-after-ms: 45000
+
+spec:
+  enabled: true
+  live-inventory: true
+  # one live view push per second is plenty for a human reading an inventory
+  live-inventory-push-milliseconds: 1000
+  # full re-sync less often: each one rebuilds the whole inventory picture
+  live-inventory-full-resync-seconds: 10
+  log-to-audit: true
+  permission:
+    use-luckperms: true
+    levels: [owner, admin, moderator, helper]
+    spec-permission: servercore.spec
+    fallback-level: helper
+  audit:
+    directory: audit
+    retention-days: 30
+    max-entries-per-session: 64
+    # more staff sessions run at once; a bigger buffer drops less on bursts
+    queue-capacity: 2048
+  hidden:
+    # keep small: a bigger radius starts eating the target's own effects
+    trace-radius: 1.5
+    suppress-action-bar: true
+
+protection:
+  enabled: true
+  # unchanged baseline: this is the layer that must never be trimmed for
+  # performance. aliases resolve against the live command tree
+  blocked-commands:
+    - op
+    - deop
+    - fill
+    - clone
+    - setblock
+    - summon
+    - gamemode
+    - tp
+    - teleport
+    - give
+    - item
+    - execute
+    - effect
+    - attribute
+    - kill
+    - difficulty
+    - time
+    - weather
+    - gamerule
+    - worldborder
+    - stop
+    - reload
+  blocked-datapack-commands:
+    - function
+    - schedule
+    - datapack
+  enforce-gamemode: true
+  # the drift sweep iterates online players; 30s -> 60s is invisible in play
+  gamemode-sweep-interval-seconds: 60
+  # a big loaded world: scan command blocks every 20 min instead of 10
+  command-block-audit-interval-seconds: 1200
+  # still neutralizing, not just logging
+  command-block-neutralize: true
+  hide-from-tab-complete: true
+
+# only read while luckperms is absent; a boot-time stand-in, not a group manager
+luckperms:
+  fallback:
+    default-group: default
+    # uuid -> group name (rank ordering only)
+    groups:
+      # "069a79f4-44e9-4726-a5be-fca90e38aaf5": admin
+    permissions:
+      everyone: []
+      players:
+        # "069a79f4-44e9-4726-a5be-fca90e38aaf5":
+        #   - servercore.admin
+        #   - servercore.spec
+
+placeholders:
+  # placeholder renders are read by scoreboards and tab plugins per player;
+  # a longer memo saves work when dozens of plugins poll the same node
+  cache-ttl-milliseconds: 5000
+  unknown-value: "unknown"
+  stale-after-minutes: 10
+  stale-suffix: " (stale)"
+
+flectonepulse:
+  disable-tg: true
+  # punishment lookups are consulted on join; cache them twice as long
+  punishment-cache-ttl-seconds: 60
+
+ops:
+  update:
+    enabled: true
+    repo: "bejiihiu/ServerCore"
+    # hourly release polling is enough for a server that restarts on schedule
+    check-interval-minutes: 60
+    auto-restart: true
+    github-token-env: "GITHUB_TOKEN"
+  restart:
+    pterodactyl:
+      # all three empty = feature off, restarts fall back to a console stop
+      panel-url: ""
+      server-id: ""
+      api-key-env: "PTERO_API_KEY"
+    # wall clock hh:mm in ops.restart.timezone. two windows for a 24/7 world
+    daily-times: ["05:00", "17:00"]
+    grace-seconds: 60
+    # player-facing restart texts: ru | en
+    locale: "en"
+    timezone: "Europe/Moscow"

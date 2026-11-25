@@ -97,7 +97,10 @@ bun run start
 
 ### Environment file
 
-Every variable is documented in [configuration.md](configuration.md). A minimal production `.env` looks like this (values are placeholders — generate your own):
+Every variable is documented in [configuration.md](configuration.md). A ready-to-fill production
+preset lives in [`examples/backend/production.env`](../examples/backend/production.env) — copy it and
+replace the `CHANGE_ME` values; [`examples/backend/dev.env`](../examples/backend/dev.env) is the
+local-development counterpart. A minimal production `.env` looks like this (values are placeholders — generate your own):
 
 ```env
 MONGODB_URI=mongodb://servercore:CHANGE_ME_STRONG_PASSWORD@127.0.0.1:27017/servercore
@@ -150,7 +153,10 @@ anti-esp:
   check-interval-ticks: 10
 ```
 
-Full key reference: [configuration.md](configuration.md).
+Full key reference: [configuration.md](configuration.md). Starting points for a
+small (10-30 players) or large (100+) server are in
+[`examples/plugin/`](../examples/plugin/) — complete `config.yml` replacements with the
+`CHANGE_ME` values marked.
 
 5. Restart the server. On startup the plugin opens an outbound connection to the backend gateway
    (`<scheme>://<host>:<backend WS_PORT>/ws` — the gateway answers `404` on any other path). The plugin log
