@@ -78,7 +78,7 @@ class PunishmentQueryTest {
 
         val info = query.activeMute(uuid)
         assertTrue(info != null)
-        assertEquals(PunishmentKind.MUTE, info!!.kind)
+        assertEquals(PunishmentKind.MUTE, info.kind)
         assertEquals("spam", info.reason)
         assertFalse(info.permanent)
         // issued 10s ago, runs 100s: ~90s left, minus whatever the jvm spent
@@ -94,7 +94,7 @@ class PunishmentQueryTest {
 
         val info = query.activeBan(uuid)
         assertTrue(info != null)
-        assertTrue(info!!.permanent)
+        assertTrue(info.permanent)
         assertEquals(0L, info.remainingMillis)
         assertEquals(PunishmentKind.BAN, info.kind)
     }

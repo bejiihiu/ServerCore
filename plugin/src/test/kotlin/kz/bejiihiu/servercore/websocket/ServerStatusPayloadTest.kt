@@ -3,7 +3,6 @@ package kz.bejiihiu.servercore.websocket
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
@@ -49,7 +48,7 @@ class ServerStatusPayloadTest {
         assertNull(payload.detail)
         assertNull(payload.telegramSuppressed)
 
-        val raw = decoded.rawPayload as JsonObject
+        val raw = decoded.rawPayload
         assertNull(raw["state"])
         assertNull(raw["detail"])
         assertNull(raw["telegramSuppressed"])

@@ -27,7 +27,7 @@ class PacketResyncExecutorTest {
     private class RecordingDisguise : ViewStateApplier {
         val calls = mutableListOf<String>()
 
-        override fun apply(viewer: UUID, target: UUID, state: ViewState, disguise: DisguiseAssignment?) {
+        override fun apply(viewer: UUID, target: UUID, state: ViewState, assignment: DisguiseAssignment?) {
             calls += "$state($viewer,$target)"
         }
     }
