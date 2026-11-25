@@ -19,7 +19,7 @@ jobs:
       # asset names and the paper-plugin.yml check all still line up
       RELEASE_VERSION: "${{ github.event_name == 'push' && github.ref_name || 'build-dryrun' }}"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           # full history: the tag's commit count is verified against it below
           fetch-depth: 0
