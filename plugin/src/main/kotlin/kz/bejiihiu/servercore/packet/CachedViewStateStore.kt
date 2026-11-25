@@ -14,6 +14,11 @@ import java.util.concurrent.ConcurrentHashMap
  * visible - fail-open. rows live until an explicit removal (viewer disconnect,
  * world change, target removal, destroy bookkeeping); the two capacity caps
  * are the only eviction pressure. the clock is injectable so tests don't sleep.
+ *
+ * reads happen for every entity packet of every viewer, so the hot path is
+ * two map reads and two plain long stores - no boxing, no second map. both
+ * capacity scans compare primitive longs, which keeps an eviction on a full
+ * viewer in the low microseconds instead of a boxed comparator walk.
  */
 class CachedViewStateStore(
     private val maxViewers: Int,
@@ -26,66 +31,101 @@ class CachedViewStateStore(
         @Volatile var lastAccess: Long,
     )
 
-    private val viewers = ConcurrentHashMap<UUID, ConcurrentHashMap<UUID, Entry>>()
-    private val viewerAccess = ConcurrentHashMap<UUID, Long>()
+    /** one viewer's rows plus its own recency stamp, so reads never touch a second map */
+    private class ViewerState {
+        val targets = ConcurrentHashMap<UUID, Entry>()
+
+        @Volatile
+        var lastAccess: Long = 0
+    }
+
+    private val viewers = ConcurrentHashMap<UUID, ViewerState>()
 
     override fun get(viewer: UUID, target: UUID): EntityViewState? {
-        val map = viewers[viewer] ?: return null
-        touchViewer(viewer)
-        val entry = map[target] ?: return null
-        entry.lastAccess = now()
+        val holder = viewers[viewer] ?: return null
+        // one clock read for both stamps: a miss still keeps the viewer warm
+        // (it was touched by a packet), exactly like the pair row used to
+        val stamp = now()
+        holder.lastAccess = stamp
+        val entry = holder.targets[target] ?: return null
+        entry.lastAccess = stamp
         return entry.state
     }
 
     override fun set(viewer: UUID, target: UUID, state: EntityViewState) {
-        val map = viewers.computeIfAbsent(viewer) { ConcurrentHashMap() }
-        touchViewer(viewer)
-        map[target] = Entry(state, now())
-        evictTargets(map)
+        val stamp = now()
+        val holder = viewers.computeIfAbsent(viewer) { ViewerState() }
+        holder.lastAccess = stamp
+        val existing = holder.targets[target]
+        if (existing != null) {
+            // re-applying a state is the common packet case; mutating the row
+            // keeps it out of the allocator without changing what readers see
+            existing.state = state
+            existing.lastAccess = stamp
+        } else {
+            holder.targets[target] = Entry(state, stamp)
+        }
+        evictTargets(holder)
         evictViewers()
     }
 
     override fun remove(viewer: UUID, target: UUID): EntityViewState? {
-        val map = viewers[viewer] ?: return null
-        return map.remove(target)?.state
+        val holder = viewers[viewer] ?: return null
+        return holder.targets.remove(target)?.state
     }
 
     override fun removeTarget(target: UUID) {
-        viewers.forEachValue(1L) { map -> map.remove(target) }
+        viewers.forEachValue(1L) { holder -> holder.targets.remove(target) }
     }
 
     override fun removeViewer(viewer: UUID) {
         viewers.remove(viewer)
-        viewerAccess.remove(viewer)
     }
 
     override fun clear() {
         viewers.clear()
-        viewerAccess.clear()
     }
 
-    override fun size(): Int = viewers.values.sumOf { it.size }
+    override fun size(): Int = viewers.values.sumOf { it.targets.size }
 
-    private fun touchViewer(viewer: UUID) {
-        viewerAccess[viewer] = now()
-    }
-
-    private fun evictTargets(map: ConcurrentHashMap<UUID, Entry>) {
-        var overflow = map.size - maxTargetsPerViewer
+    private fun evictTargets(holder: ViewerState) {
+        var overflow = holder.targets.size - maxTargetsPerViewer
         while (overflow > 0) {
-            val stalest = map.entries.minByOrNull { it.value.lastAccess } ?: break
-            map.remove(stalest.key)
+            if (!evictStalestTarget(holder.targets)) break
             overflow--
         }
     }
 
+    private fun evictStalestTarget(targets: ConcurrentHashMap<UUID, Entry>): Boolean {
+        var stalestKey: UUID? = null
+        var stalestAt = Long.MAX_VALUE
+        for ((key, entry) in targets) {
+            val accessed = entry.lastAccess
+            // strict compare keeps the first entry in iteration order on ties,
+            // the same pick the previous minBy scan made
+            if (accessed < stalestAt) {
+                stalestAt = accessed
+                stalestKey = key
+            }
+        }
+        val key = stalestKey ?: return false
+        return targets.remove(key) != null
+    }
+
     private fun evictViewers() {
         var overflow = viewers.size - maxViewers
-        if (overflow <= 0) return
         while (overflow > 0) {
-            val stalest = viewerAccess.entries.minByOrNull { it.value } ?: break
-            viewers.remove(stalest.key)
-            viewerAccess.remove(stalest.key)
+            var stalestKey: UUID? = null
+            var stalestAt = Long.MAX_VALUE
+            for ((key, holder) in viewers) {
+                val accessed = holder.lastAccess
+                if (accessed < stalestAt) {
+                    stalestAt = accessed
+                    stalestKey = key
+                }
+            }
+            val key = stalestKey ?: return
+            viewers.remove(key)
             overflow--
         }
     }

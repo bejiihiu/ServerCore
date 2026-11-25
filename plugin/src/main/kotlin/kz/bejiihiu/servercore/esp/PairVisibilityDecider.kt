@@ -36,7 +36,15 @@ data class EspRules(
 }
 
 /** verdict of the decision core: what a viewer should see of a target */
-data class PairVerdict(val state: ViewState, val disguise: DisguiseAssignment? = null)
+data class PairVerdict(val state: ViewState, val disguise: DisguiseAssignment? = null) {
+    companion object {
+        // the engine judges hundreds of pairs per cycle and most verdicts are
+        // one of these two; data-class equality makes sharing them invisible
+        // to every consumer
+        val VISIBLE = PairVerdict(ViewState.VISIBLE)
+        val HIDDEN = PairVerdict(ViewState.HIDDEN)
+    }
+}
 
 /**
  * pure, bukkit-free decision core. every rule about who sees whom as what
@@ -73,25 +81,25 @@ class PairVisibilityDecider(private val rules: EspRules) {
         if (!facts.sameWorld || facts.viewerSpectator || facts.viewerDead ||
             facts.targetDead || facts.targetSpectator || facts.bothGuests
         ) {
-            return PairVerdict(ViewState.VISIBLE)
+            return PairVerdict.VISIBLE
         }
 
         // an admin under /spec is hidden from the observed player outright,
         // the spec module consumes this state
-        if (facts.targetSpecObserving) return PairVerdict(ViewState.HIDDEN)
+        if (facts.targetSpecObserving) return PairVerdict.HIDDEN
 
         // outside the managed radius we stop pretending: vanilla already
         // stops tracking far entities on its own
-        if (facts.distanceSquared > rules.maxDistanceSquared) return PairVerdict(ViewState.VISIBLE)
+        if (facts.distanceSquared > rules.maxDistanceSquared) return PairVerdict.VISIBLE
 
         // sneaking targets vanish for every viewer, no geometry needed and
         // no raytrace billed for it. yes this hides them from viewers standing
         // right there too - that is what the product spec asks for
-        if (rules.sneakHides && facts.targetSneaking) return PairVerdict(ViewState.HIDDEN)
+        if (rules.sneakHides && facts.targetSneaking) return PairVerdict.HIDDEN
 
         val blocked = facts.losBlocked ?: return pendingFallback(previous)
         return if (!blocked) {
-            PairVerdict(ViewState.VISIBLE)
+            PairVerdict.VISIBLE
         } else if (rules.disguiseEnabled) {
             // stay on the same mob for as long as the pair stays disguised,
             // re-rolling every refresh would flicker models on the client
@@ -102,13 +110,13 @@ class PairVisibilityDecider(private val rules: EspRules) {
             }
             PairVerdict(ViewState.DISGUISED, disguise)
         } else {
-            PairVerdict(ViewState.HIDDEN)
+            PairVerdict.HIDDEN
         }
     }
 
     /** no line-of-sight answer yet: keep whatever was applied, else fail closed */
     private fun pendingFallback(previous: PairVerdict?): PairVerdict =
-        previous ?: PairVerdict(ViewState.HIDDEN)
+        previous ?: PairVerdict.HIDDEN
 
     private fun pickMob(rng: Random): String {
         val mobs = rules.mobs
@@ -117,3 +125,4 @@ class PairVisibilityDecider(private val rules: EspRules) {
         return mobs[rng.nextInt(mobs.size)]
     }
 }
+

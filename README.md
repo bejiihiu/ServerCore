@@ -108,6 +108,7 @@ A detailed, step-by-step walkthrough with real configuration examples lives in [
 | [Authentication](docs/authentication.md) | Passwordless login flow |
 | [Security](docs/security.md) | Threat model, tokens, command protection |
 | [Dependency audit](docs/dependency-audit.md) | Vulnerability, license and supply-chain status of every dependency |
+| [Performance](docs/performance.md) | Hot-path benchmarks, how to run them, and what the numbers mean at scale |
 | [UI design system](docs/ui-design-system.md) | In-game theme tokens, typography, layout rules |
 | [FAQ](docs/faq.md) | Common questions |
 | [Russian docs](docs/ru/README.md) | Russian translations of the first-run, installation, configuration and FAQ pages |

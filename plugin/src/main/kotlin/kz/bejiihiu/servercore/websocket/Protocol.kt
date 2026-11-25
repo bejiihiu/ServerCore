@@ -9,6 +9,7 @@ import kotlinx.serialization.json.put
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
+import java.util.HexFormat
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
@@ -160,6 +161,14 @@ class EnvelopeCodec(private val secret: String) {
     }
     private val random = SecureRandom()
 
+    // a mac is not thread-safe and init() with a fresh key spec is not free,
+    // so every ws/test thread keeps one initialised instance warm
+    private val mac = ThreadLocal.withInitial {
+        Mac.getInstance(HMAC_ALGORITHM).apply {
+            init(SecretKeySpec(secret.toByteArray(Charsets.UTF_8), HMAC_ALGORITHM))
+        }
+    }
+
     /** unique message ids matching the backend's ^[A-Za-z0-9_-]{8,64}$ pattern */
     fun newMessageId(): String {
         val bytes = ByteArray(12)
@@ -167,29 +176,16 @@ class EnvelopeCodec(private val secret: String) {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
     }
 
-    fun sign(envelope: Envelope): String {
-        val meta = buildJsonObject {
-            put("id", envelope.id)
-            put("type", envelope.type.wire)
-            put("timestamp", envelope.timestamp)
-            envelope.correlationId?.let { put("correlationId", it) }
-            put("payload", payloadAsJson(envelope.payload))
-        }
-        return hmac(canonicalize(meta))
-    }
+    fun sign(envelope: Envelope): String = hmac(canonicalize(metaOf(envelope)))
 
     fun encode(envelope: Envelope): String {
-        val meta = buildJsonObject {
-            put("id", envelope.id)
-            put("type", envelope.type.wire)
-            put("timestamp", envelope.timestamp)
-            envelope.correlationId?.let { put("correlationId", it) }
-            put("payload", payloadAsJson(envelope.payload))
-        }
-        // signed envelope = meta + hmac, serialized canonically (same key order)
+        val meta = metaOf(envelope)
+        // signed envelope = meta + hmac, serialized canonically (the same key
+        // order). meta is built and canonicalised once and both the signature
+        // and the final frame are derived from it
         val signed = buildJsonObject {
             meta.forEach { (key, value) -> put(key, value) }
-            put("hmac", sign(envelope))
+            put("hmac", hmac(canonicalize(meta)))
         }
         return canonicalize(signed)
     }
@@ -219,9 +215,26 @@ class EnvelopeCodec(private val secret: String) {
         return canonicalize(signed)
     }
 
+    /** id/type/timestamp/correlation/payload, the part the hmac covers */
+    private fun metaOf(envelope: Envelope): JsonObject = buildJsonObject {
+        put("id", envelope.id)
+        put("type", envelope.type.wire)
+        put("timestamp", envelope.timestamp)
+        envelope.correlationId?.let { put("correlationId", it) }
+        put("payload", payloadAsJson(envelope.payload))
+    }
+
     /** parses and hmac-verifies an inbound frame; throws ProtocolException on any mismatch */
     fun decode(raw: String, now: Long, maxSkewMs: Long, maxPacketBytes: Int): DecodedMessage {
-        if (raw.toByteArray(Charsets.UTF_8).size > maxPacketBytes) {
+        // utf-8 never spends more than 3 bytes on one char (a surrogate pair is
+        // 4 bytes for 2 chars), so these bounds decide most frames without
+        // copying the whole string; only the ambiguous band pays for the copy
+        if (raw.length > maxPacketBytes) {
+            throw ProtocolException("packet exceeds size limit")
+        }
+        if (raw.length.toLong() * MAX_UTF8_BYTES_PER_CHAR > maxPacketBytes &&
+            raw.toByteArray(Charsets.UTF_8).size > maxPacketBytes
+        ) {
             throw ProtocolException("packet exceeds size limit")
         }
         val root = json.parseToJsonElement(raw) as? JsonObject
@@ -441,37 +454,69 @@ class EnvelopeCodec(private val secret: String) {
             ?: throw ProtocolException("payload field $key missing or not a boolean")
 
     /** hmac-sha256 hex over the canonical string, matching the backend byte for byte */
-    private fun hmac(canonical: String): String {
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(secret.toByteArray(Charsets.UTF_8), "HmacSHA256"))
-        return mac.doFinal(canonical.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
-    }
+    private fun hmac(canonical: String): String =
+        HEX.formatHex(mac.get().doFinal(canonical.toByteArray(Charsets.UTF_8)))
 
     companion object {
+        private const val HMAC_ALGORITHM = "HmacSHA256"
+
+        /** lowercase hex, exactly what the backend's toString('hex') emits */
+        private val HEX = HexFormat.of()
+
+        /** one utf-8 byte budget per char is the common case; 3 is the ceiling */
+        private const val MAX_UTF8_BYTES_PER_CHAR = 3
+
+        private val KEY_ORDER: Comparator<Map.Entry<String, JsonElement>> = compareBy { it.key }
+
         /**
          * canonical json: object keys sorted recursively, compact separators.
-         * mirrors the backend's canonicalize() exactly.
+         * mirrors the backend's canonicalize() exactly. appends straight into
+         * one builder: the nested joinToString version minted a string per
+         * key/value pair on every frame
          */
-        fun canonicalize(element: JsonElement): String = when (element) {
-            is JsonPrimitive -> primitiveToString(element)
-            is kotlinx.serialization.json.JsonArray ->
-                element.joinToString(",", "[", "]") { canonicalize(it) }
-            is JsonObject ->
-                element.entries
-                    .sortedWith(compareBy { it.key })
-                    .joinToString(",", "{", "}") { (key, value) ->
-                        "${jsonEscape(key)}:${canonicalize(value)}"
-                    }
+        fun canonicalize(element: JsonElement): String {
+            val sb = StringBuilder(64)
+            appendCanonical(element, sb)
+            return sb.toString()
         }
 
-        private fun primitiveToString(element: JsonPrimitive): String = when {
-            element.isString -> jsonEscape(element.content)
-            else -> element.content // numbers/booleans/null keep their literal form
+        private fun appendCanonical(element: JsonElement, sb: StringBuilder) {
+            when (element) {
+                is JsonPrimitive -> appendPrimitive(element, sb)
+                is kotlinx.serialization.json.JsonArray -> {
+                    sb.append('[')
+                    for (index in element.indices) {
+                        if (index > 0) sb.append(',')
+                        appendCanonical(element[index], sb)
+                    }
+                    sb.append(']')
+                }
+                is JsonObject -> {
+                    sb.append('{')
+                    var first = true
+                    for ((key, value) in element.entries.sortedWith(KEY_ORDER)) {
+                        if (!first) sb.append(',')
+                        first = false
+                        appendJsonEscaped(key, sb)
+                        sb.append(':')
+                        appendCanonical(value, sb)
+                    }
+                    sb.append('}')
+                }
+            }
+        }
+
+        private fun appendPrimitive(element: JsonPrimitive, sb: StringBuilder) {
+            if (element.isString) {
+                appendJsonEscaped(element.content, sb)
+            } else {
+                // numbers/booleans/null keep their literal form
+                sb.append(element.content)
+            }
         }
 
         /** json string escaping identical to JSON.stringify for our content */
-        private fun jsonEscape(value: String): String {
-            val sb = StringBuilder(value.length + 2)
+        private fun appendJsonEscaped(value: String, sb: StringBuilder) {
             sb.append('"')
             for (ch in value) {
                 when (ch) {
@@ -491,7 +536,6 @@ class EnvelopeCodec(private val secret: String) {
                 }
             }
             sb.append('"')
-            return sb.toString()
         }
     }
 }

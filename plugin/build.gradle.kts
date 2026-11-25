@@ -15,6 +15,19 @@ repositories {
     maven("https://repo.helpch.at/releases/") // placeholderapi
 }
 
+// microbenchmarks for the packet/esp/sync/bars/ws hot paths. they compile
+// against the plugin sources but never ship in the jar and never run as part
+// of build. run them with `./gradlew :plugin:benchmark`
+sourceSets {
+    create("benchmark") {
+        compileClasspath += sourceSets["main"].output + configurations["compileClasspath"]
+        runtimeClasspath += sourceSets["main"].output + configurations["runtimeClasspath"]
+    }
+}
+
+configurations["benchmarkImplementation"].extendsFrom(configurations["implementation"])
+configurations["benchmarkRuntimeOnly"].extendsFrom(configurations["runtimeOnly"])
+
 dependencies {
     compileOnly(libs.folia.api)
 
@@ -45,6 +58,11 @@ dependencies {
     testImplementation(libs.flectonepulse.api)
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)
+
+    // the benchmark runner boots the same pure layers without a server; folia
+    // api brings adventure + snakeyaml the locale and presentation benches need
+    "benchmarkImplementation"(libs.folia.api)
+    "benchmarkImplementation"(libs.kotlinx.serialization.json)
 }
 
 kotlin {
@@ -74,6 +92,12 @@ tasks {
         testLogging {
             events("failed", "passed")
         }
+    }
+
+    // a benchmark that no longer compiles is a stale doc; keep it building
+    // without ever running it as part of check
+    check {
+        dependsOn(named("compileBenchmarkKotlin"))
     }
 
     withType<RunServer> {
@@ -107,4 +131,18 @@ tasks {
         relocate("kotlinx", "kz.bejiihiu.servercore.libs.kotlinx")
         mergeServiceFiles()
     }
+}
+
+// `./gradlew :plugin:benchmark` runs the deterministic hot-path suite. it is a
+// plain javaexec on purpose (no jmh fork/annotation processor): warmup plus a
+// fixed wall-clock measurement window, one process, results printed as markdown
+tasks.register<JavaExec>("benchmark") {
+    group = "verification"
+    description = "Runs the hot-path microbenchmarks (no server needed)"
+    dependsOn(tasks.named("classes"))
+    mainClass = "kz.bejiihiu.servercore.bench.BenchmarkMainKt"
+    classpath = sourceSets["benchmark"].runtimeClasspath
+    jvmArgs("-Xms1g", "-Xmx1g", "-XX:+AlwaysPreTouch")
+    // let the suite pick a narrower set: -Pbench.filter=grid
+    systemProperty("bench.filter", providers.gradleProperty("bench.filter").getOrElse(""))
 }
