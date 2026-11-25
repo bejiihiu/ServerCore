@@ -18,10 +18,12 @@ const manifestPath = path.join(import.meta.dir, "../../protocol/messages.json")
 
 interface ManifestField {
   name: string
-  type: "uuid" | "objectId" | "string" | "integer" | "number" | "boolean" | "enum" | "object"
+  type: "uuid" | "objectId" | "string" | "integer" | "number" | "boolean" | "enum" | "object" | "array"
   required: boolean
   values?: string[]
   fields?: ManifestField[]
+  /** array fields: the shape every element has to match */
+  items?: { type: "object"; fields: ManifestField[] }
 }
 
 interface ManifestMessage {
@@ -78,6 +80,8 @@ interface SchemaKind {
   kind: ManifestField["type"] | "other"
   values?: string[]
   shape?: Record<string, ZodNode>
+  /** element schema for arrays */
+  element?: ZodNode
 }
 
 function kindOf(schema: ZodNode): SchemaKind {
@@ -96,6 +100,8 @@ function kindOf(schema: ZodNode): SchemaKind {
       return { kind: "enum", values: Object.keys(def.entries ?? {}) }
     case "object":
       return { kind: "object", shape: schema.shape ?? {} }
+    case "array":
+      return { kind: "array", element: def.element as ZodNode }
     default:
       return { kind: "other" }
   }
@@ -131,6 +137,18 @@ function assertFields(where: string, shape: Record<string, ZodNode>, fields: Man
     } else if (field.type === "enum") {
       expect(info.kind, `${label}: manifest says enum, zod says ${info.kind}`).toBe("enum")
       expect([...(info.values ?? [])].sort(), `${label}: enum values drifted`).toEqual([...(field.values ?? [])].sort())
+    } else if (field.type === "array") {
+      expect(info.kind, `${label}: manifest says array, zod says ${info.kind}`).toBe("array")
+      expect(field.items, `${label}: array field without an item shape`).toBeDefined()
+      const element = info.element
+      expect(element, `${label}: array has no element schema`).toBeDefined()
+      if (element) {
+        const elementInfo = kindOf(element)
+        expect(elementInfo.kind, `${label}: array elements are ${elementInfo.kind}, the manifest says object`).toBe(
+          "object",
+        )
+        assertFields(`${label}[]`, elementInfo.shape ?? {}, field.items?.fields ?? [])
+      }
     } else {
       expect(info.kind, `${label}: manifest says object, zod says ${info.kind}`).toBe("object")
       expect(field.fields, `${label}: object field without a nested field list`).toBeDefined()
@@ -158,6 +176,15 @@ function assertExample(where: string, fields: ManifestField[], example: Record<s
         example[field.name] as Record<string, unknown>,
       )
     }
+    if (field.type === "array" && Object.hasOwn(example, field.name)) {
+      const list = example[field.name]
+      expect(Array.isArray(list), `${where}.${field.name}: example is not an array`).toBe(true)
+      // the fixture exercises the element shape with its first sample
+      const first = Array.isArray(list) ? list[0] : undefined
+      if (first !== undefined) {
+        assertExample(`${where}.${field.name}[]`, field.items?.fields ?? [], first as Record<string, unknown>)
+      }
+    }
   }
 }
 
@@ -169,7 +196,17 @@ describe("manifest structure", () => {
   })
 
   test("entries use the documented vocabulary", () => {
-    const fieldTypes = new Set(["uuid", "objectId", "string", "integer", "number", "boolean", "enum", "object"])
+    const fieldTypes = new Set([
+      "uuid",
+      "objectId",
+      "string",
+      "integer",
+      "number",
+      "boolean",
+      "enum",
+      "object",
+      "array",
+    ])
     for (const message of manifest.messages) {
       expect(["plugin_to_backend", "backend_to_plugin", "both"], `${message.type}: bad direction`).toContain(
         message.direction,
@@ -187,6 +224,11 @@ describe("manifest structure", () => {
             expect((field.values ?? []).length, `${where}.${field.name}: enum without values`).toBeGreaterThan(0)
           }
           if (field.type === "object") walk(field.fields ?? [], `${where}.${field.name}`)
+          if (field.type === "array") {
+            expect(field.items, `${where}.${field.name}: array without items`).toBeDefined()
+            expect(field.items?.type, `${where}.${field.name}: array items must be objects`).toBe("object")
+            walk(field.items?.fields ?? [], `${where}.${field.name}[]`)
+          }
         }
       }
       walk(message.fields, message.type)

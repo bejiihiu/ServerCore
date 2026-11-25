@@ -44,6 +44,8 @@ enum class MessageType(val wire: String) {
     APPLICATION_EXPIRED("APPLICATION_EXPIRED"),
     LOCALE_PUSH("LOCALE_PUSH"),
     LOCALE_ACK("LOCALE_ACK"),
+    /** backend-pushed aggregate of the whole network, feeds /netbar */
+    NETWORK_SNAPSHOT("NETWORK_SNAPSHOT"),
     /** catch-all for wire types this build has never heard of */
     UNKNOWN("UNKNOWN");
 
@@ -385,6 +387,7 @@ class EnvelopeCodec(private val secret: String) {
             MessageType.APPLICATION_EXPIRED,
             MessageType.LOCALE_PUSH,
             MessageType.LOCALE_ACK,
+            MessageType.NETWORK_SNAPSHOT,
             MessageType.UNKNOWN,
             -> Payload.Raw(type.wire, obj)
         }

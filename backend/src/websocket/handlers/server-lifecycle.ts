@@ -78,6 +78,12 @@ export type LifecycleHooks = {
    * state — the canonical locale push — hang off this instead of polling
    */
   onServerRegistered?: (serverId: string, connection: ServerConnection) => void
+  /**
+   * fires after every SERVER_HEARTBEAT has refreshed the directory. the
+   * network view rides this: one aggregate push per heartbeat cycle instead of
+   * a timer of its own
+   */
+  onHeartbeat?: (serverId: string) => void
 }
 
 /** wires the lifecycle handlers that exist at skeleton stage: presence tracking */
@@ -136,6 +142,7 @@ export function registerLifecycleHandlers(
 
   registry.register("SERVER_HEARTBEAT", (envelope: Envelope<"SERVER_HEARTBEAT">, connection) => {
     mergeCounts(connection.serverId, envelope.payload)
+    hooks.onHeartbeat?.(connection.serverId)
   })
 
   registry.register("PLAYER_JOINED", (envelope: Envelope<"PLAYER_JOINED">, connection) => {

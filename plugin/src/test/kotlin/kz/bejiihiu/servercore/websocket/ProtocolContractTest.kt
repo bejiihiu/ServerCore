@@ -15,6 +15,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encoding.CompositeDecoder
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kz.bejiihiu.servercore.locale.LocaleAckPayload
@@ -29,6 +30,7 @@ import kz.bejiihiu.servercore.ws.AuthRequestPayload
 import kz.bejiihiu.servercore.ws.GuestEndedPayload
 import kz.bejiihiu.servercore.ws.GuestStartedPayload
 import kz.bejiihiu.servercore.ws.LinkTokenPayload
+import kz.bejiihiu.servercore.ws.NetworkSnapshotPayload
 import kz.bejiihiu.servercore.ws.PlayerJoinedPayload
 import kz.bejiihiu.servercore.ws.PlayerLeftPayload
 import kz.bejiihiu.servercore.ws.wsJson
@@ -202,6 +204,11 @@ class ProtocolContractTest {
                 val nested = value as? JsonObject ?: continue
                 assertRequired(nested, field.fields.orEmpty(), "$where.${field.name}")
             }
+            if (field.type == "array") {
+                // the fixture exercises the element shape with its first sample
+                val first = (value as? JsonArray)?.firstOrNull() as? JsonObject ?: continue
+                assertRequired(first, field.items?.fields.orEmpty(), "$where.${field.name}[]")
+            }
         }
     }
 
@@ -223,6 +230,7 @@ class ProtocolContractTest {
         "LINK_TOKEN" to LinkTokenPayload.serializer(),
         "LOCALE_PUSH" to LocalePushPayload.serializer(),
         "LOCALE_ACK" to LocaleAckPayload.serializer(),
+        "NETWORK_SNAPSHOT" to NetworkSnapshotPayload.serializer(),
     )
 
     private val codec = EnvelopeCodec(SECRET)
@@ -278,6 +286,14 @@ private data class ManifestField(
     val required: Boolean,
     val values: List<String>? = null,
     val fields: List<ManifestField>? = null,
+    /** array fields: the shape every element has to match */
+    val items: ManifestItems? = null,
+)
+
+@Serializable
+private data class ManifestItems(
+    val type: String,
+    val fields: List<ManifestField> = emptyList(),
 )
 
 private val ManifestJson = Json { ignoreUnknownKeys = true }

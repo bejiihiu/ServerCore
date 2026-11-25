@@ -5,8 +5,8 @@
     "codec and this manifest are one change; the contract tests fail the build when they drift.",
     "",
     "fields[] is the payload contract. type is one of: uuid, objectId, string, integer,",
-    "number, boolean, enum (with values[]), object (with fields[]). required=false means",
-    "the sender may omit the key.",
+    "number, boolean, enum (with values[]), object (with fields[]), array (with items).",
+    "required=false means the sender may omit the key.",
     "",
     "example is a complete, schema-valid payload: it must carry every required field and",
     "may carry any subset of the optional ones. The plugin test decodes it through the real",
@@ -447,6 +447,50 @@
         "maxPlayers": 60,
         "tps": 19.95,
         "activeSpecSessions": 1
+      }
+    },
+    {
+      "type": "NETWORK_SNAPSHOT",
+      "direction": "backend_to_plugin",
+      "status": "active",
+      "pluginTransport": "raw",
+      "pluginDto": "NetworkSnapshotPayload",
+      "summary": "aggregate of every known game server (load and heartbeat age), pushed right after a heartbeat refreshes the directory",
+      "fields": [
+        { "name": "generatedAt", "type": "integer", "required": true },
+        { "name": "playersOnline", "type": "integer", "required": true },
+        {
+          "name": "servers",
+          "type": "array",
+          "required": true,
+          "items": {
+            "type": "object",
+            "fields": [
+              { "name": "serverId", "type": "string", "required": true },
+              { "name": "onlinePlayers", "type": "integer", "required": true },
+              { "name": "maxPlayers", "type": "integer", "required": true },
+              { "name": "lastSeenAgeMs", "type": "integer", "required": true }
+            ]
+          }
+        }
+      ],
+      "example": {
+        "generatedAt": 1764000060000,
+        "playersOnline": 7,
+        "servers": [
+          {
+            "serverId": "game-1",
+            "onlinePlayers": 5,
+            "maxPlayers": 60,
+            "lastSeenAgeMs": 1200
+          },
+          {
+            "serverId": "game-2",
+            "onlinePlayers": 2,
+            "maxPlayers": 60,
+            "lastSeenAgeMs": 61000
+          }
+        ]
       }
     },
     {
