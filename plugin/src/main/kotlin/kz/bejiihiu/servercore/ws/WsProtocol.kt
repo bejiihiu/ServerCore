@@ -24,6 +24,7 @@ object MessageTypes {
     const val APPLICATION_EXPIRED = "APPLICATION_EXPIRED"
     const val ACCOUNT_DELETED = "ACCOUNT_DELETED"
     const val LINK_TOKEN = "LINK_TOKEN"
+    const val NETWORK_SNAPSHOT = "NETWORK_SNAPSHOT"
 }
 
 /** shared json setup: tolerate extra fields so backend additions never break us */
@@ -120,6 +121,29 @@ data class LinkTokenPayload(
     val username: String,
     val token: String,
     val expiresAt: Long,
+)
+
+/**
+ * network view: the backend's aggregate of every game server it has heard
+ * from. the plugin only renders it (the /netbar cache), so it carries exactly
+ * what that bar needs: the load and the age of each server's last frame.
+ */
+@Serializable
+data class NetworkSnapshotPayload(
+    /** epoch ms the backend built the aggregate at */
+    val generatedAt: Long,
+    /** players across every known server, stale ones counting their last report */
+    val playersOnline: Int,
+    val servers: List<NetworkServerSnapshot>,
+)
+
+@Serializable
+data class NetworkServerSnapshot(
+    val serverId: String,
+    val onlinePlayers: Int,
+    val maxPlayers: Int,
+    /** age of that server's last frame when the aggregate was built */
+    val lastSeenAgeMs: Long,
 )
 
 // guest payloads live here too because the wire format is the contract, not an

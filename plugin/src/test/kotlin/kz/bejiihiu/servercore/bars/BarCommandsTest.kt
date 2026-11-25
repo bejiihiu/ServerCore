@@ -18,6 +18,7 @@ class BarCommandsTest {
         assertEquals("msptbar", BarId.MSPT.commandName)
         assertEquals("playersbar", BarId.PLAYERS.commandName)
         assertEquals("worldbar", BarId.WORLD.commandName)
+        assertEquals("netbar", BarId.NET.commandName)
     }
 
     @Test
@@ -34,6 +35,8 @@ class BarCommandsTest {
         assertEquals("servercore.bars.players.other", BarId.PLAYERS.otherPermission)
         assertEquals("servercore.bars.world", BarId.WORLD.permission)
         assertEquals("servercore.bars.world.other", BarId.WORLD.otherPermission)
+        assertEquals("servercore.bars.net", BarId.NET.permission)
+        assertEquals("servercore.bars.net.other", BarId.NET.otherPermission)
     }
 
     @Test

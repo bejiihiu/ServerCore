@@ -3,11 +3,17 @@ package kz.bejiihiu.servercore.boot
 import kz.bejiihiu.servercore.bars.BarCommands
 import kz.bejiihiu.servercore.bars.BarMetric
 import kz.bejiihiu.servercore.bars.BarRenderer
+import kz.bejiihiu.servercore.bars.BarSnapshots
+import kz.bejiihiu.servercore.bars.BarValueSource
 import kz.bejiihiu.servercore.bars.BarsConfig
 import kz.bejiihiu.servercore.bars.BarsState
 import kz.bejiihiu.servercore.bars.BarsStore
 import kz.bejiihiu.servercore.bars.InfoBarService
+import kz.bejiihiu.servercore.bars.LocalNetView
 import kz.bejiihiu.servercore.bars.MsptMetric
+import kz.bejiihiu.servercore.bars.NetMetric
+import kz.bejiihiu.servercore.bars.NetSnapshotListener
+import kz.bejiihiu.servercore.bars.NetworkStateCache
 import kz.bejiihiu.servercore.bars.PlayersMetric
 import kz.bejiihiu.servercore.bars.RamMetric
 import kz.bejiihiu.servercore.bars.TpsMetric
@@ -20,22 +26,31 @@ import org.bukkit.event.player.PlayerQuitEvent
 
 /**
  * Server info bars: the per-player toggle store, the metric providers, the
- * renderer and the /rambar, /tpsbar, /msptbar, /playersbar and /worldbar
- * commands.
+ * renderer and the /rambar, /tpsbar, /msptbar, /playersbar, /worldbar and
+ * /netbar commands.
  *
  * Sits with the other player-facing surfaces (after the ui kit and the guest
- * stack, before the transport goes live): it needs the locale layer for its
- * templates and the player's entity scheduler for every frame, and nothing
- * here depends on the websocket link — the network bar is a later phase. A
- * broken bar therefore never delays the backend connection.
+ * stack): it needs the locale layer for its templates and the player's entity
+ * scheduler for every frame. The network bar is the one exception that reads
+ * the websocket hub, and only as a listener on the already-installed gateway
+ * — a broken bar therefore still never delays the backend connection.
  */
 class BarsInstaller(private val ctx: PluginContext) {
 
     private var service: InfoBarService? = null
 
+    /** last readings, for placeholderapi; null when the whole stack is off */
+    private var snapshots: BarSnapshots? = null
+
     fun install() {
         val config = BarsConfig.load(ctx.plugin.config, ctx.logger)
         if (!config.enabled) return
+
+        // the network view: fed by the backend's aggregate, rendered from a
+        // cached snapshot. listening needs the hub the guest installer built,
+        // not a live link — a frame that arrives later still lands here
+        val netCache = NetworkStateCache()
+        ctx.backendGateway.addListener(NetSnapshotListener(netCache))
 
         val metrics = buildList<BarMetric> {
             if (config.ram.enabled) add(RamMetric(config.ram.thresholds))
@@ -43,6 +58,15 @@ class BarsInstaller(private val ctx: PluginContext) {
             if (config.mspt.enabled) add(MsptMetric(config.mspt.thresholds, config.updateIntervalTicks))
             if (config.players.enabled) add(PlayersMetric())
             if (config.world.enabled) add(WorldMetric(ctx.locale, config.world.showWeather))
+            if (config.net.enabled) {
+                add(
+                    NetMetric(
+                        source = netCache,
+                        staleAfterMs = config.net.staleAfterMs,
+                        local = { LocalNetView(ctx.plugin.server.onlinePlayers.size) },
+                    ),
+                )
+            }
         }
         if (metrics.isEmpty()) {
             ctx.logger.info("bars: enabled but every bar is switched off")
@@ -50,6 +74,7 @@ class BarsInstaller(private val ctx: PluginContext) {
         }
 
         val store = BarsStore(ctx.dataFolder.toPath().resolve("bars.json"), ctx.io)
+        val readingSnapshots = BarSnapshots()
         val barService = InfoBarService(
             plugin = ctx.plugin,
             config = config,
@@ -57,9 +82,11 @@ class BarsInstaller(private val ctx: PluginContext) {
             store = store,
             metrics = metrics,
             renderer = BarRenderer(ctx.locale),
+            snapshots = readingSnapshots,
         )
         barService.start()
         service = barService
+        snapshots = readingSnapshots
 
         ctx.plugin.server.pluginManager.registerEvents(
             object : Listener {
@@ -80,7 +107,12 @@ class BarsInstaller(private val ctx: PluginContext) {
         )
     }
 
+    /** the placeholder source, when the bar stack is actually running */
+    fun placeholderValues(): BarValueSource? = snapshots
+
     fun stop() {
         service?.stop()
+        service = null
+        snapshots = null
     }
 }

@@ -252,6 +252,36 @@ Provided placeholders (read-only, fed by websocket events and player lifecycle):
 | `%servercore_telegram_linked%` | Whether the account is bound to a Telegram identity |
 | `%servercore_last_seen%` | Relative time of the last join/quit |
 | `%servercore_session_duration%` | Live session time of an online player |
+| `%servercore_bar_ram%` | Heap fill percent from the RAM bar's last sample |
+| `%servercore_bar_tps%` | TPS from the last bar sample: the asking player's region, else the server aggregate |
+| `%servercore_bar_mspt%` | Region tick time from the last bar sample |
+| `%servercore_bar_players%` | Online player count from the players bar |
+| `%servercore_bar_net%` | Answering/known servers from the network bar, e.g. `3/3` |
+
+Bar placeholders read the same snapshot layer the bars render from and answer with `placeholders.unknown-value` when nothing has been sampled yet. Details in [server info bars](bars.md#placeholderapi).
+
+### bars
+
+Live server health as a per-player toggle. Full reference (commands, Folia scope, placeholder examples) in [server info bars](bars.md).
+
+| Key | Default | Description |
+|---|---|---|
+| `bars.enabled` | `true` | Master switch: off = no rendering, no sampling, no `/bar` commands |
+| `bars.update-interval-ticks` | `20` | Refresh cadence in ticks (`20` = 1 s), clamped `1–200` |
+| `bars.display` | `bossbar` | Render surface: `bossbar` or `actionbar`; an unknown value falls back to `bossbar` |
+| `bars.ram.enabled` | `true` | `/rambar` on |
+| `bars.ram.good` / `bars.ram.medium` | `60` / `80` | Heap fill percent edges for healthy / critical |
+| `bars.tps.enabled` | `true` | `/tpsbar` on |
+| `bars.tps.good` / `bars.tps.medium` | `18.0` / `15.0` | TPS edges (higher is better) |
+| `bars.mspt.enabled` | `true` | `/msptbar` on |
+| `bars.mspt.good` / `bars.mspt.medium` | `40.0` / `50.0` | Region tick time edges in ms (lower is better) |
+| `bars.players.enabled` | `true` | `/playersbar` on |
+| `bars.world.enabled` | `true` | `/worldbar` on |
+| `bars.world.show-weather` | `true` | `false` hides the weather word, keeps world and clock |
+| `bars.net.enabled` | `true` | `/netbar` on (needs the backend link for the fleet view) |
+| `bars.net.stale-after-ms` | three heartbeat intervals | Heartbeat age that counts a server as offline, clamped `5000–600000` |
+
+Threshold pairs are put back in the right order with a log line when an admin swaps them; the config is never refused for a bad threshold.
 
 ### Validation and clamping
 
@@ -264,9 +294,9 @@ The config is validated once at boot. These problems abort the boot with a `conf
 
 Everything else degrades instead of failing the boot:
 
-- **Clamped** to a safe band: `anti-esp.max-distance` `8–128`, `check-interval-ticks` `1–200`, `cache.ttl-ticks` `1–2000`, `spec.hidden.trace-radius` `0.5–16`, `guest.resolve-timeout-milliseconds` `250–30000`, `session-limit` `1–100`, `reminder-interval-seconds` `10–3600`, `gamemode-sweep-seconds` `1–60`, `link-ttl-milliseconds` `5000–600000`, audit `retention-days`/`max-entries-per-session`/`queue-capacity` (below 1 / 1 / 16), `flectonepulse.punishment-cache-ttl-seconds` `1–3600`, `ops.restart.grace-seconds` `0–600`, `ops.update.check-interval-minutes` at least `1`
+- **Clamped** to a safe band: `anti-esp.max-distance` `8–128`, `check-interval-ticks` `1–200`, `cache.ttl-ticks` `1–2000`, `spec.hidden.trace-radius` `0.5–16`, `guest.resolve-timeout-milliseconds` `250–30000`, `session-limit` `1–100`, `reminder-interval-seconds` `10–3600`, `gamemode-sweep-seconds` `1–60`, `link-ttl-milliseconds` `5000–600000`, `bars.update-interval-ticks` `1–200`, `bars.net.stale-after-ms` `5000–600000`, audit `retention-days`/`max-entries-per-session`/`queue-capacity` (below 1 / 1 / 16), `flectonepulse.punishment-cache-ttl-seconds` `1–3600`, `ops.restart.grace-seconds` `0–600`, `ops.update.check-interval-minutes` at least `1`
 - **Dropped with a log line**: unknown `anti-esp.disguise.mobs` names, malformed `ops.restart.daily-times` entries, non-UUID keys in `guest.local-accounts` / `luckperms.fallback.groups` / `luckperms.fallback.permissions.players`, blank group names
-- **Fallen back**: an unknown `ops.restart.timezone` becomes `Europe/Moscow`; a `spec.permission.fallback-level` that is not one of `spec.permission.levels` becomes the lowest listed level; an empty `guest.command-whitelist` becomes `help, rules, link`; a missing `ops.restart.daily-times` becomes `["05:00"]` (an explicit `[]` still means no scheduled restart)
+- **Fallen back**: an unknown `ops.restart.timezone` becomes `Europe/Moscow`; a `spec.permission.fallback-level` that is not one of `spec.permission.levels` becomes the lowest listed level; an empty `guest.command-whitelist` becomes `help, rules, link`; a missing `ops.restart.daily-times` becomes `["05:00"]` (an explicit `[]` still means no scheduled restart); an unknown `bars.display` becomes `bossbar`; a missing `bars.net.stale-after-ms` becomes three heartbeat intervals
 - **Ignored without side effects**: every optional plugin section (`luckperms`, `placeholders`, `flectonepulse`) may be missing entirely; `anti-esp.enabled: false` parks both the visibility engine and the packet layer, and `spec.enabled: false` simply skips the `/spec` stack. The plugin still boots.
 
 ## Plugin commands
@@ -277,6 +307,7 @@ Everything else degrades instead of failing the boot:
 | `/spec <player>` | same | Start a hidden observation session on a player; tab completion suggests online names |
 | `/servercore groups <player>` | `servercore.admin` (console always allowed) | Debug output listing a player's groups from the active permission source |
 | `/servercore deop-all` | `servercore.admin` (console always allowed) | Remove operator status from every account holding it |
+| `/rambar`, `/tpsbar`, `/msptbar`, `/playersbar`, `/worldbar`, `/netbar` | `servercore.bars.<bar>` for yourself, `…​.other` to target others | Toggle a server info bar; see [server info bars](bars.md) |
 | `/link` | guests | Not a registered command — a guest typing `/link` gets the registration prompt in chat instead of "unknown command" |
 
 The Telegram bot's command set is separate and lives entirely in the backend: `/start`, `/status`, `/application`, `/myapplication`, `/cancel`, `/language`, `/help`, plus the admin-only `/stats` (restricted to `ADMIN_TELEGRAM_IDS`).

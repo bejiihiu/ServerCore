@@ -17,6 +17,7 @@ enum class BarId(
     MSPT("mspt", Permissions.BARS_MSPT, Permissions.BARS_MSPT_OTHER),
     PLAYERS("players", Permissions.BARS_PLAYERS, Permissions.BARS_PLAYERS_OTHER),
     WORLD("world", Permissions.BARS_WORLD, Permissions.BARS_WORLD_OTHER),
+    NET("net", Permissions.BARS_NET, Permissions.BARS_NET_OTHER),
     ;
 
     /** locale key of the bar title, e.g. bars.ram.title */

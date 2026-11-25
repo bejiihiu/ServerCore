@@ -47,6 +47,10 @@ export const MESSAGE_TYPES = [
   "SERVER_STATUS",
   "SERVER_HEARTBEAT",
 
+  // network view: the aggregate of every game server's last heartbeat, pushed
+  // back to the plugins so an in-game bar can show the whole network
+  "NETWORK_SNAPSHOT",
+
   // localization: the backend owns the canonical bundle and pushes the full
   // file on every fresh connection; the plugin answers with an ack
   "LOCALE_PUSH",
@@ -81,6 +85,7 @@ export const BACKEND_TO_PLUGIN_TYPES: readonly MessageType[] = [
   "ACCOUNT_DELETED",
   "LINK_TOKEN",
   "SESSION_CHECK",
+  "NETWORK_SNAPSHOT",
   "LOCALE_PUSH",
   "SERVER_READY",
   "ACK",
@@ -283,6 +288,31 @@ export const payloadSchemas = {
     maxPlayers: z.number().int().min(0),
     tps: z.number().min(0).max(1000).optional(),
     activeSpecSessions: z.number().int().min(0).max(4096).optional(),
+  }),
+
+  // network view: what the gateway knows about every game server at one
+  // instant. pushed to all of them right after a heartbeat refreshes the
+  // directory, so the plugin never has to poll for it
+  NETWORK_SNAPSHOT: z.object({
+    // epoch millis the aggregate was built at
+    generatedAt: z.number().int().min(0),
+    // players across every known server; a stale server contributes its last
+    // reported count, which is why its row also carries the age
+    playersOnline: z.number().int().min(0),
+    // one row per server the gateway has heard from. capped so a runaway
+    // fleet cannot turn one frame into a burst. no per-server tps on purpose:
+    // folia has no server-wide tick, and the aggregate must not invent one
+    servers: z
+      .array(
+        z.object({
+          serverId,
+          onlinePlayers: z.number().int().min(0),
+          maxPlayers: z.number().int().min(0),
+          // age of that server's last frame at generatedAt
+          lastSeenAgeMs: z.number().int().min(0),
+        }),
+      )
+      .max(64),
   }),
 
   LOCALE_PUSH: z.object({

@@ -50,4 +50,10 @@ object Permissions {
 
     /** toggle the world clock info bar for other players */
     const val BARS_WORLD_OTHER = "servercore.bars.world.other"
+
+    /** toggle the network view bar on yourself (admins/moderators) */
+    const val BARS_NET = "servercore.bars.net"
+
+    /** toggle the network view bar for other players */
+    const val BARS_NET_OTHER = "servercore.bars.net.other"
 }

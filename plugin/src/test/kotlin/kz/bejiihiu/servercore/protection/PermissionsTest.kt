@@ -22,5 +22,7 @@ class PermissionsTest {
         assertEquals("servercore.bars.players.other", Permissions.BARS_PLAYERS_OTHER)
         assertEquals("servercore.bars.world", Permissions.BARS_WORLD)
         assertEquals("servercore.bars.world.other", Permissions.BARS_WORLD_OTHER)
+        assertEquals("servercore.bars.net", Permissions.BARS_NET)
+        assertEquals("servercore.bars.net.other", Permissions.BARS_NET_OTHER)
     }
 }

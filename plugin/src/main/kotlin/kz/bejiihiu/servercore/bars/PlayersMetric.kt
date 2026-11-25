@@ -1,6 +1,8 @@
 package kz.bejiihiu.servercore.bars
 
+import org.bukkit.Server
 import org.bukkit.entity.Player
+import org.bukkit.plugin.Plugin
 
 /**
  * online players vs the slot limit.
@@ -17,8 +19,24 @@ class PlayersMetric : BarMetric {
 
     override val bar: BarId = BarId.PLAYERS
 
+    @Volatile
+    private var server: Server? = null
+
+    override fun start(plugin: Plugin, periodTicks: Long) {
+        // the ambient sampler runs on the global region scheduler and has no
+        // player to ask, so the server reference is kept here
+        server = plugin.server
+    }
+
+    override fun stop() {
+        server = null
+    }
+
     override fun read(player: Player): BarReading =
-        readingOf(player.server.onlinePlayers.size, player.server.maxPlayers)
+        readGlobal() ?: readingOf(player.server.onlinePlayers.size, player.server.maxPlayers)
+
+    override fun readGlobal(): BarReading? =
+        server?.let { readingOf(it.onlinePlayers.size, it.maxPlayers) }
 
     /** pure half, so the copy and the math are testable without a server */
     internal fun readingOf(online: Int, max: Int): BarReading {

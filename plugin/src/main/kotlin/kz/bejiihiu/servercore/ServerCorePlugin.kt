@@ -155,7 +155,7 @@ class ServerCorePlugin : JavaPlugin() {
 
         gateway.start()
 
-        val papi = PapiInstaller(ctx, guest)
+        val papi = PapiInstaller(ctx, guest, bars)
         papi.install()
         this.papi = papi
 

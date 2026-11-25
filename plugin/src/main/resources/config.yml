@@ -116,9 +116,10 @@ anti-esp:
     ttl-ticks: 40
 
 # server info bars: live server health as a per-player toggle. purpur-style
-# commands (/rambar, /tpsbar, /msptbar, /playersbar, /worldbar), but the toggle
-# is remembered across relogs and the tps/mspt bars show the player's own
-# region, not an invented server-wide number.
+# commands (/rambar, /tpsbar, /msptbar, /playersbar, /worldbar, /netbar), but
+# the toggle is remembered across relogs and the tps/mspt bars show the
+# player's own region, not an invented server-wide number. /netbar is the
+# network view: every game server the backend knows, with heartbeat age
 bars:
   # master switch. off = nothing renders and no bar command is registered
   enabled: true
@@ -151,6 +152,17 @@ bars:
     # true = world, clock and weather; false hides the weather word and keeps
     # the world name plus the clock
     show-weather: true
+  net:
+    # network view (/netbar): how many servers in the network answer, how many
+    # players they hold, and how many went quiet. fed by the backend's
+    # aggregate of every game server's heartbeat; without a backend link the
+    # bar falls back to this server alone
+    enabled: true
+    # heartbeat age after which a server counts as offline, milliseconds.
+    # defaults to three heartbeat intervals (see backend.heartbeat-interval-
+    # seconds); anything below one interval makes servers flicker offline, so
+    # the loader warns and clamps into 5000..600000
+    stale-after-ms: 45000
 
 spec:
   enabled: true

@@ -134,10 +134,10 @@ placeholders:
 countdown:
   tick: "<secondary>time is running out</secondary>"
 
-# server info bars: /rambar, /tpsbar, /msptbar, /playersbar and /worldbar. the
-# bar title is the live line (health coloring comes from the bossbar fill or
-# the leading mark), the rest is toggle feedback. numbers are formatted by the
-# plugin, units live here
+# server info bars: /rambar, /tpsbar, /msptbar, /playersbar, /worldbar and
+# /netbar. the bar title is the live line (health coloring comes from the
+# bossbar fill or the leading mark), the rest is toggle feedback. numbers are
+# formatted by the plugin, units live here
 bars:
   ram:
     title: "<primary>RAM</primary> <secondary>{used} GB / {max} GB</secondary> <muted>({pct}%)</muted>"
@@ -153,6 +153,9 @@ bars:
     weather-clear: "clear"
     weather-rain: "rain"
     weather-thunder: "thunder"
+  net:
+    title: "<primary>Network</primary> <secondary>{servers} servers</secondary> <muted>· {players} online</muted>"
+    title-stale: "<primary>Network</primary> <secondary>{servers} servers</secondary> <muted>· {players} online</muted> <danger>· {stale} offline</danger>"
   toggled-on: "<secondary>{bar}</secondary> <ok>on</ok> <muted>· {player}</muted>"
   toggled-off: "<secondary>{bar}</secondary> <danger>off</danger> <muted>· {player}</muted>"
   no-permission-other: "<danger>no permission to toggle bars for other players</danger>"

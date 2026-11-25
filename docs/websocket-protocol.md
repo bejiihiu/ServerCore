@@ -39,6 +39,7 @@ Canonical json has no representation for values that would make one signature co
 |---|---|---|
 | `SERVER_STATUS` | plugin → backend | Registration and status pushes; carries `onlinePlayers`/`maxPlayers`, optional `tps`, `version`, and the ops lifecycle `state` — `STARTING`, `RUNNING`, `RESTARTING`, `STOPPING`, `OFFLINE`, `UPDATE_READY`. Optional `activeSpecSessions` comes from the plugin's own spec registry and surfaces to admins in `/stats`; optional `telegramSuppressed` tells the backend that FlectonePulse's own Telegram module is announcing right now, so the bot stays quiet for this event |
 | `SERVER_HEARTBEAT` | plugin → backend | Periodic liveness and metrics snapshot; carries optional `activeSpecSessions`. Heartbeats are deliberately ACK-expected — the ack is the plugin's read-side liveness signal |
+| `NETWORK_SNAPSHOT` | backend → plugin | Aggregate of every game server the gateway knows: total players plus one row per server with its load and heartbeat age at generation. Pushed to all servers right after a heartbeat refreshes the directory (at most one push per second), so the in-game network bar never polls. See [server info bars](bars.md#the-network-bar) |
 | `SERVER_READY` | backend → plugin | Registration acknowledgement carrying the expected heartbeat cadence (`heartbeatIntervalMs`, `heartbeatTimeoutMs`). Defined in the protocol but **not emitted yet** — today the ack of the registration `SERVER_STATUS` is the effective "you are registered" signal |
 
 ### Player presence
@@ -159,6 +160,7 @@ plugin                              backend
   | <--- LOCALE_PUSH ---------------- |  full canonical bundle (fresh socket only)
   | --- LOCALE_ACK -----------------> |  applied / rejected + reason
   | --- SERVER_HEARTBEAT (periodic) ->|  acked by the backend
+  | <--- NETWORK_SNAPSHOT ----------- |  aggregate of every known server (throttled to 1/s)
 ```
 
 The handshake has no in-band hello: the query-string signature is the whole authentication, and a `SERVER_HELLO` frame arriving after the upgrade is refused as a downgrade attempt. `SERVER_READY` exists in the protocol but is not emitted yet; the ack of the registration `SERVER_STATUS` is the effective registration signal.
@@ -169,6 +171,7 @@ Until the connection passes the pre-upgrade handshake, the backend never even cr
 
 - The plugin sends `SERVER_HEARTBEAT` on a fixed cadence (default 15 s) and expects an ack for each one.
 - The backend tracks last-seen per connection and flags stale servers.
+- Each heartbeat also refreshes the network directory; the resulting `NETWORK_SNAPSHOT` aggregate goes back to every connected game server, so the in-game network bar shows the whole fleet without polling. Pushes are throttled to one per second, which collapses a fleet that heartbeats in the same second.
 - The plugin runs the mirror check: no inbound frame for `backend.liveness-timeout-milliseconds` on a "connected" socket is treated as a half-open link and forces a reconnect.
 
 ## Reconnect semantics

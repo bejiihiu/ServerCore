@@ -32,6 +32,7 @@ import { applicationDecisionMessageType, type PluginPushPort } from "./services/
 import { MongoStatsCounts } from "./services/stats-counts.js"
 import { OfflineWatcher } from "./services/offline-watcher.js"
 import { SessionCounters, StatsService } from "./services/runtime-stats.js"
+import { NetworkSnapshotBroadcaster } from "./services/network-snapshot.js"
 import { VotingScheduler } from "./services/voting-scheduler.js"
 import { RetentionService } from "./modules/retention/retention-service.js"
 import {
@@ -239,6 +240,11 @@ async function main(): Promise<void> {
     await authService.handlePlayerJoined(event, Date.now())
   }
 
+  // network view: a heartbeat just refreshed the directory, so the aggregate
+  // goes out to every game server. no timer, no polling, one extra frame per
+  // heartbeat window at most
+  const networkSnapshots = new NetworkSnapshotBroadcaster(gateway, directory, logger)
+
   // every websocket handler registers exactly once, here. this runs in the
   // same synchronous block as createGateway above, so the gateway cannot
   // dispatch a single frame before all registrations are done
@@ -254,6 +260,9 @@ async function main(): Promise<void> {
         // the full canonical bundle. the ack comes back through LOCALE_ACK
         const correlationId = locales.pushTo(connection)
         logger.debug({ serverId, revision: locales.current.revision, correlationId }, "locale push sent")
+      },
+      onHeartbeat: (serverId) => {
+        networkSnapshots.onHeartbeat(serverId)
       },
       onStateChange: (serverId, state, previous, options) => {
         // crash/status events flow to telegram: all events, dm + admin copy.

@@ -1,6 +1,8 @@
 package kz.bejiihiu.servercore.bars
 
+import org.bukkit.Server
 import org.bukkit.entity.Player
+import org.bukkit.plugin.Plugin
 
 /**
  * the tps of the region the player is standing in — the folia-native reading.
@@ -15,6 +17,20 @@ class TpsMetric(private val thresholds: HealthThresholds) : BarMetric {
 
     override val bar: BarId = BarId.TPS
 
+    @Volatile
+    private var server: Server? = null
+
+    override fun start(plugin: Plugin, periodTicks: Long) {
+        // the ambient sampler has no player and therefore no region; it still
+        // publishes the server-wide aggregate so placeholderapi never shows a
+        // dash just because nobody has the bar toggled
+        server = plugin.server
+    }
+
+    override fun stop() {
+        server = null
+    }
+
     override fun read(player: Player): BarReading {
         val location = player.location
         // getRegionTPS returns null when no region owns the spot (unloaded or
@@ -27,6 +43,16 @@ class TpsMetric(private val thresholds: HealthThresholds) : BarMetric {
             chunkX = location.blockX shr CHUNK_SHIFT,
             chunkZ = location.blockZ shr CHUNK_SHIFT,
         )
+    }
+
+    /**
+     * server-wide aggregate only: folia has no global region tps to read by
+     * location, and paper's array is exactly the aggregate this bar already
+     * shows as the comparison line
+     */
+    override fun readGlobal(): BarReading? {
+        val globalTps = server?.tps?.getOrNull(GLOBAL_WINDOW) ?: return null
+        return readingOf(regionTps = null, globalTps = globalTps, chunkX = 0, chunkZ = 0)
     }
 
     /** pure half: null region, nan and zero readings all fall back or go unknown */

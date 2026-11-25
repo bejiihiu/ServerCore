@@ -1,7 +1,9 @@
 package kz.bejiihiu.servercore.placeholderapi
 
-import kz.bejiihiu.servercore.util.I18n
 import java.util.UUID
+import kz.bejiihiu.servercore.bars.BarId
+import kz.bejiihiu.servercore.bars.BarValueSource
+import kz.bejiihiu.servercore.util.I18n
 
 /**
  * text source for placeholder output. production wires this to the plugin's
@@ -33,6 +35,8 @@ class PlaceholderResolver(
     private val provider: ServerStateSnapshotProvider,
     private val config: PlaceholderConfig,
     private val strings: PlaceholderText,
+    /** last bar readings; null when the info bar stack is switched off */
+    private val bars: BarValueSource? = null,
 ) {
 
     /** memoized renders, keyed by "uuid|params" — placeholders can be hit hard */
@@ -75,9 +79,23 @@ class PlaceholderResolver(
             "telegram_linked" -> flag(snapshot?.telegramLinked, snapshot, now)
             "last_seen" -> lastSeen(snapshot, now)
             "session_duration" -> sessionDuration(snapshot, now)
+            // bar values are not player facts: they come from the last rendered
+            // reading, never from a metric read on this thread
+            "bar_ram" -> barValue(BarId.RAM, uuid)
+            "bar_tps" -> barValue(BarId.TPS, uuid)
+            "bar_mspt" -> barValue(BarId.MSPT, uuid)
+            "bar_players" -> barValue(BarId.PLAYERS, uuid)
+            "bar_net" -> barValue(BarId.NET, uuid)
             else -> null // unreachable, key is pre-filtered
         } ?: config.unknownValue
     }
+
+    /**
+     * one already-rendered bar value. tps/mspt answer with the player's own
+     * region when they had that bar on lately, otherwise with the last sample
+     * this server took.
+     */
+    private fun barValue(bar: BarId, uuid: UUID?): String? = bars?.value(bar, uuid)
 
     /** account/authorization state, human-readable, backend-stamped facts may go stale */
     private fun status(snapshot: PlayerStateSnapshot?, now: Long): String? {
@@ -183,6 +201,11 @@ class PlaceholderResolver(
             "telegram_linked",
             "last_seen",
             "session_duration",
+            "bar_ram",
+            "bar_tps",
+            "bar_mspt",
+            "bar_players",
+            "bar_net",
         )
 
         const val MINUTE_MS = 60_000L

@@ -30,6 +30,16 @@ data class WorldBarConfig(
     val showWeather: Boolean,
 )
 
+data class NetBarConfig(
+    val enabled: Boolean,
+    /**
+     * heartbeat age after which a server counts as offline, milliseconds.
+     * must stay above the heartbeat cadence or every server flickers stale;
+     * the loader derives the default from the configured interval
+     */
+    val staleAfterMs: Long,
+)
+
 /**
  * the bars section. defaults are deliberately the shipped values: an admin
  * deleting a key gets the same behaviour the commented file describes.
@@ -43,6 +53,7 @@ data class BarsConfig(
     val mspt: MsptBarConfig,
     val players: PlayersBarConfig,
     val world: WorldBarConfig,
+    val net: NetBarConfig,
 ) {
     /** true only when the master switch and the bar's own switch are both on */
     fun isEnabled(bar: BarId): Boolean = enabled && when (bar) {
@@ -51,6 +62,7 @@ data class BarsConfig(
         BarId.MSPT -> mspt.enabled
         BarId.PLAYERS -> players.enabled
         BarId.WORLD -> world.enabled
+        BarId.NET -> net.enabled
     }
 
     fun enabledBars(): List<BarId> = BarId.entries.filter(::isEnabled)
@@ -64,6 +76,15 @@ data class BarsConfig(
         const val DEFAULT_TPS_MEDIUM = 15.0
         const val DEFAULT_MSPT_GOOD = 40.0
         const val DEFAULT_MSPT_MEDIUM = 50.0
+
+        /** fallback heartbeat cadence when the backend section is missing */
+        const val DEFAULT_HEARTBEAT_SECONDS = 15L
+
+        /** a server is stale after this many missed heartbeats */
+        const val STALE_HEARTBEATS = 3L
+
+        const val MIN_STALE_AFTER_MS = 5_000L
+        const val MAX_STALE_AFTER_MS = 600_000L
 
         fun load(file: FileConfiguration, logger: Logger): BarsConfig {
             val section = file.getConfigurationSection("bars")
@@ -96,6 +117,20 @@ data class BarsConfig(
             val msptOrdered = if (msptGood <= msptMedium) msptGood to msptMedium else msptMedium to msptGood
             if (msptGood > msptMedium) logger.warning("bars.mspt: good is above medium, swapping the thresholds")
 
+            // a stale window shorter than the heartbeat leaves every server
+            // flashing offline between frames; the default is three cadences
+            val heartbeatSeconds = (file.getLong("backend.heartbeat-interval-seconds", DEFAULT_HEARTBEAT_SECONDS))
+                .coerceAtLeast(1L)
+            val defaultStale = heartbeatSeconds * 1000L * STALE_HEARTBEATS
+            val rawStale = section?.getLong("net.stale-after-ms", defaultStale) ?: defaultStale
+            val staleAfter = rawStale.coerceIn(MIN_STALE_AFTER_MS, MAX_STALE_AFTER_MS)
+            if (rawStale < heartbeatSeconds * 1000L) {
+                logger.warning(
+                    "bars.net: stale-after-ms (${rawStale}ms) is below the heartbeat interval " +
+                        "(${heartbeatSeconds}s), servers will flicker offline",
+                )
+            }
+
             return BarsConfig(
                 enabled = bool("enabled", true),
                 updateIntervalTicks = interval,
@@ -116,6 +151,10 @@ data class BarsConfig(
                 world = WorldBarConfig(
                     enabled = bool("world.enabled", true),
                     showWeather = bool("world.show-weather", true),
+                ),
+                net = NetBarConfig(
+                    enabled = bool("net.enabled", true),
+                    staleAfterMs = staleAfter,
                 ),
             )
         }
