@@ -5,6 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import kz.bejiihiu.servercore.bars.BarsConfig
 import kz.bejiihiu.servercore.esp.EspConfig
 import kz.bejiihiu.servercore.guest.GuestConfig
 import kz.bejiihiu.servercore.integration.flectonepulse.FlectonePulseConfig
@@ -184,6 +185,7 @@ class ConfigLoaderTest {
         assertEquals(PlaceholderConfig.load(empty), PlaceholderConfig.load(shipped))
         assertEquals(FlectonePulseConfig.load(empty, logger), FlectonePulseConfig.load(shipped, logger))
         assertEquals(OpsConfig.load(empty, logger), OpsConfig.load(shipped, logger))
+        assertEquals(BarsConfig.load(empty, logger), BarsConfig.load(shipped, logger))
     }
 
     private fun shippedText(): String = checkNotNull(javaClass.getResourceAsStream("/config.yml")) {
@@ -242,6 +244,15 @@ class ConfigLoaderTest {
             "anti-esp.disguise.enabled",
             "anti-esp.disguise.mobs",
             "anti-esp.cache.ttl-ticks",
+            "bars.enabled",
+            "bars.update-interval-ticks",
+            "bars.display",
+            "bars.ram.enabled",
+            "bars.ram.good",
+            "bars.ram.medium",
+            "bars.tps.enabled",
+            "bars.tps.good",
+            "bars.tps.medium",
             "spec.enabled",
             "spec.live-inventory",
             "spec.live-inventory-push-milliseconds",

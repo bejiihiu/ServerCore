@@ -115,6 +115,29 @@ anti-esp:
   cache:
     ttl-ticks: 40
 
+# server info bars: live server health as a per-player toggle. purpur-style
+# commands (/rambar, /tpsbar), but the toggle is remembered across relogs and
+# the tps bar shows the player's own region, not an invented server-wide tps.
+bars:
+  # master switch. off = nothing renders and no bar command is registered
+  enabled: true
+  # how often an open bar refreshes, game ticks (20 = once a second).
+  # the ram sample is taken off-thread on this cadence; tps is read at refresh
+  # time on the player's own region thread
+  update-interval-ticks: 20
+  # where a bar renders: bossbar (progress bar over the hotbar) or actionbar
+  display: bossbar
+  ram:
+    enabled: true
+    # heap fill percent: at or below good = healthy, above medium = critical
+    good: 60
+    medium: 80
+  tps:
+    enabled: true
+    # region tps: at or above good = healthy, below medium = critical
+    good: 18.0
+    medium: 15.0
+
 spec:
   enabled: true
   live-inventory: true

@@ -79,6 +79,15 @@ class MessagesResourcesTest {
             "placeholders.application.voting",
             "placeholders.last-seen.minutes",
             "countdown.tick",
+            "bars.ram.title",
+            "bars.tps.title",
+            "bars.toggled-on",
+            "bars.toggled-off",
+            "bars.no-permission-other",
+            "bars.player-not-found",
+            "bars.players-only",
+            "bars.all-empty",
+            "bars.all-target",
         )
         for (key in required) {
             if (key !in ru) fail("locales/ru.yml is missing key: $key")
