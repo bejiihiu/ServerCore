@@ -6,27 +6,45 @@ const TOKEN_CHARSET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01234
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
 
 /**
+ * nesting ceiling for canonical json. real envelopes are 3-4 levels deep, so
+ * anything past this is hostile by definition. without it a payload nested
+ * 50k deep (100kb, well under the packet cap) walked the stack until the
+ * RangeError escaped the frame handler.
+ */
+const MAX_CANONICAL_DEPTH = 64
+
+/**
  * deterministic json serialization with sorted keys.
  * both sides must hash the exact same byte string, so key order has to be
  * normalized regardless of how the peer serialized its object. accepts
  * unknown because the input is always JSON-shaped by construction; anything
  * undefined is dropped (top-level undefined hashes as null).
+ *
+ * throws on values that have no unambiguous canonical form: non-finite
+ * numbers (json.parse turns 1e400 into Infinity, which would otherwise hash
+ * as null — two different payloads, one signature) and absurd nesting.
  */
-export function canonicalize(value: unknown): string {
+export function canonicalize(value: unknown, depth = 0): string {
+  if (depth > MAX_CANONICAL_DEPTH) {
+    throw new RangeError(`canonical json nesting exceeds ${MAX_CANONICAL_DEPTH}`)
+  }
   if (value === undefined) return "null"
+  if (typeof value === "number" && !Number.isFinite(value)) {
+    throw new TypeError("canonical json cannot carry non-finite numbers")
+  }
   if (value === null || typeof value !== "object") {
     return JSON.stringify(value) ?? "null"
   }
 
   if (Array.isArray(value)) {
-    return `[${value.map((item) => canonicalize(item)).join(",")}]`
+    return `[${value.map((item) => canonicalize(item, depth + 1)).join(",")}]`
   }
 
   const entries = Object.entries(value as Record<string, unknown>)
     .filter(([, v]) => v !== undefined)
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
 
-  const body = entries.map(([key, v]) => `${JSON.stringify(key)}:${canonicalize(v)}`).join(",")
+  const body = entries.map(([key, v]) => `${JSON.stringify(key)}:${canonicalize(v, depth + 1)}`).join(",")
   return `{${body}}`
 }
 

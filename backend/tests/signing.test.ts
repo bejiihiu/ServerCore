@@ -45,6 +45,18 @@ describe("canonicalize", () => {
   test("handles nested arrays of objects", () => {
     expect(canonicalize([{ b: 1, a: 2 }])).toBe('[{"a":2,"b":1}]')
   })
+
+  test("refuses non-finite numbers instead of hashing them as null", () => {
+    // json.parse turns 1e400 into Infinity; hashing that as null would let two
+    // different payloads share one signature
+    expect(() => canonicalize({ v: Infinity })).toThrow(TypeError)
+    expect(() => canonicalize({ v: NaN })).toThrow(TypeError)
+  })
+
+  test("refuses absurd nesting instead of blowing the stack", () => {
+    const deep = JSON.parse("[".repeat(5_000) + "1" + "]".repeat(5_000)) as unknown
+    expect(() => canonicalize(deep)).toThrow(RangeError)
+  })
 })
 
 describe("signing", () => {

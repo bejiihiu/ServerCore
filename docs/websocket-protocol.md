@@ -29,6 +29,8 @@ Every message, in both directions, shares one envelope:
 
 The `hmac` is computed over the **canonical json** of the envelope without the hmac field: object keys sorted recursively at every level, compact separators, exactly what both implementations hash. `correlationId` links a response to the request that caused it — session-check results answer specific probes.
 
+Canonical json has no representation for values that would make one signature cover two different payloads: non-finite numbers (a raw `1e400` literal parses to `Infinity`, which hashes the same as `null`) and absurd nesting depth are refused, and a frame carrying them is rejected as malformed instead of signed or verified.
+
 ## Message types
 
 ### Lifecycle and status

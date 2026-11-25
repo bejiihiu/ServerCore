@@ -108,16 +108,24 @@ export function verifyWireMessage(
     return { ok: false, failure: { reason: "STALE_TIMESTAMP" } }
   }
 
-  const expected = hmacSha256Hex(
-    secret,
-    signingInput({
-      id: metaResult.data.id,
-      type: metaResult.data.type,
-      timestamp: metaResult.data.timestamp,
-      correlationId: metaResult.data.correlationId,
-      payload: record["payload"],
-    }),
-  )
+  let expected: string
+  try {
+    expected = hmacSha256Hex(
+      secret,
+      signingInput({
+        id: metaResult.data.id,
+        type: metaResult.data.type,
+        timestamp: metaResult.data.timestamp,
+        correlationId: metaResult.data.correlationId,
+        payload: record["payload"],
+      }),
+    )
+  } catch {
+    // canonicalization refuses payloads with no unambiguous form (non-finite
+    // numbers, absurd nesting). they cannot be verified, so treat them as
+    // malformed instead of letting the throw escape the socket handler.
+    return { ok: false, failure: { reason: "BAD_PAYLOAD", detail: "payload is not canonical-json safe" } }
+  }
   if (!safeEqualHex(expected, hmac)) {
     return { ok: false, failure: { reason: "BAD_HMAC" } }
   }

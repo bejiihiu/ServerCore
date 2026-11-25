@@ -213,21 +213,22 @@ export class ServerConnection {
       return
     }
 
-    const wire = signEnvelope(
-      {
-        id: newMessageId(),
-        type,
-        timestamp: Date.now(),
-        ...(correlationId !== undefined ? { correlationId } : {}),
-        payload,
-      },
-      this.options.secret,
-    )
-
+    // signing can throw on a payload that has no canonical form (non-finite
+    // numbers); a bad outbound payload must not escape into the frame handler
     try {
+      const wire = signEnvelope(
+        {
+          id: newMessageId(),
+          type,
+          timestamp: Date.now(),
+          ...(correlationId !== undefined ? { correlationId } : {}),
+          payload,
+        },
+        this.options.secret,
+      )
       this.socket.sendText(JSON.stringify(wire))
     } catch (error: unknown) {
-      this.logger.warn({ err: error, serverId: this.serverId }, "socket send failed")
+      this.logger.warn({ err: error, serverId: this.serverId, type }, "outbound frame dropped")
     }
   }
 
