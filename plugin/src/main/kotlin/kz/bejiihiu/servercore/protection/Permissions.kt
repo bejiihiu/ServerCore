@@ -20,4 +20,16 @@ object Permissions {
 
     /** manage account bindings (link/unlink/delete) */
     const val ACCOUNT_MANAGE = "servercore.account.manage"
+
+    /** toggle the ram info bar on yourself */
+    const val BARS_RAM = "servercore.bars.ram"
+
+    /** toggle the ram info bar for other players */
+    const val BARS_RAM_OTHER = "servercore.bars.ram.other"
+
+    /** toggle the region tps info bar on yourself */
+    const val BARS_TPS = "servercore.bars.tps"
+
+    /** toggle the region tps info bar for other players */
+    const val BARS_TPS_OTHER = "servercore.bars.tps.other"
 }

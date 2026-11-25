@@ -133,3 +133,19 @@ placeholders:
 
 countdown:
   tick: "<secondary>time is running out</secondary>"
+
+# server info bars: /rambar and /tpsbar. the bar title is the live line
+# (health coloring comes from the bossbar fill or the leading mark), the rest
+# is toggle feedback. numbers are formatted by the plugin, units live here
+bars:
+  ram:
+    title: "<primary>RAM</primary> <secondary>{used} GB / {max} GB</secondary> <muted>({pct}%)</muted>"
+  tps:
+    title: "<primary>TPS</primary> <secondary>{tps}</secondary> <muted>· region {region}</muted> <muted>· server {global}</muted>"
+  toggled-on: "<secondary>{bar}</secondary> <ok>on</ok> <muted>· {player}</muted>"
+  toggled-off: "<secondary>{bar}</secondary> <danger>off</danger> <muted>· {player}</muted>"
+  no-permission-other: "<danger>no permission to toggle bars for other players</danger>"
+  player-not-found: "<danger>{player} is offline</danger>"
+  players-only: "<muted>this form of the command is for players only</muted>"
+  all-empty: "<muted>nobody is online right now</muted>"
+  all-target: "everyone online"

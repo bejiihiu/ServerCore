@@ -2,6 +2,7 @@ package kz.bejiihiu.servercore
 
 import java.io.File
 import kz.bejiihiu.servercore.boot.AdminCommandInstaller
+import kz.bejiihiu.servercore.boot.BarsInstaller
 import kz.bejiihiu.servercore.boot.ConfigInstaller
 import kz.bejiihiu.servercore.boot.EspInstaller
 import kz.bejiihiu.servercore.boot.FlectonePulseInstaller
@@ -50,6 +51,7 @@ class ServerCorePlugin : JavaPlugin() {
     private var spec: SpecInstaller? = null
     private var esp: EspInstaller? = null
     private var papi: PapiInstaller? = null
+    private var bars: BarsInstaller? = null
 
     override fun onLoad() {
         // packetevents is a server-installed plugin we attach to, not one we
@@ -144,6 +146,13 @@ class ServerCorePlugin : JavaPlugin() {
         val ui = UiInstaller(ctx)
         ui.install()
 
+        // info bars are another player-facing surface: the locale layer and the
+        // player schedulers are all they need, so they come up with the ui and
+        // before the transport — a bar defect must never delay the ws link
+        val bars = BarsInstaller(ctx)
+        bars.install()
+        this.bars = bars
+
         gateway.start()
 
         val papi = PapiInstaller(ctx, guest)
@@ -165,6 +174,10 @@ class ServerCorePlugin : JavaPlugin() {
         // unwind while the packet events pipeline is still attached, and the io
         // pool outlives every store that flushes through it
         papi?.stop()
+        // bars first among the surfaces: cancel the refresh tasks, clear the
+        // bossbars while players are still connected, and flush the toggle
+        // store while the io pool is still up
+        bars?.stop()
         sync?.stop()
         spec?.stop()
         observer?.stop()

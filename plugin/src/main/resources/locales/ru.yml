@@ -135,3 +135,19 @@ placeholders:
 
 countdown:
   tick: "<secondary>время на исходе</secondary>"
+
+# server info bars: /rambar and /tpsbar. the bar title is the live line
+# (health coloring comes from the bossbar fill or the leading mark), the rest
+# is toggle feedback. numbers are formatted by the plugin, units live here
+bars:
+  ram:
+    title: "<primary>RAM</primary> <secondary>{used} ГБ / {max} ГБ</secondary> <muted>({pct}%)</muted>"
+  tps:
+    title: "<primary>TPS</primary> <secondary>{tps}</secondary> <muted>· регион {region}</muted> <muted>· сервер {global}</muted>"
+  toggled-on: "<secondary>{bar}</secondary> <ok>включён</ok> <muted>· {player}</muted>"
+  toggled-off: "<secondary>{bar}</secondary> <danger>выключен</danger> <muted>· {player}</muted>"
+  no-permission-other: "<danger>нет прав включать бары другим игрокам</danger>"
+  player-not-found: "<danger>{player} не в сети</danger>"
+  players-only: "<muted>эта форма команды только для игроков</muted>"
+  all-empty: "<muted>сейчас нет игроков в сети</muted>"
+  all-target: "все в сети"

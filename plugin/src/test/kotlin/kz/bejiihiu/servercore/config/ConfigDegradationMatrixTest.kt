@@ -1,6 +1,7 @@
 package kz.bejiihiu.servercore.config
 
 import java.util.logging.Logger
+import kz.bejiihiu.servercore.bars.BarsConfig
 import kz.bejiihiu.servercore.esp.EspConfig
 import kz.bejiihiu.servercore.guest.GuestConfig
 import kz.bejiihiu.servercore.integration.flectonepulse.FlectonePulseConfig
@@ -37,6 +38,7 @@ class ConfigDegradationMatrixTest {
     private data class Booted(
         val plugin: PluginConfig,
         val esp: EspConfig,
+        val bars: BarsConfig,
         val guest: GuestConfig,
         val packet: PacketConfig,
         val protection: ProtectionConfig,
@@ -56,6 +58,7 @@ class ConfigDegradationMatrixTest {
         return Booted(
             plugin = ConfigLoader.load(config, logger),
             esp = EspConfig.load(config, logger),
+            bars = BarsConfig.load(config, logger),
             guest = GuestConfig.load(config, logger),
             packet = PacketConfig.load(config),
             protection = ProtectionConfig.load(config, logger),
@@ -76,6 +79,7 @@ class ConfigDegradationMatrixTest {
 
         assertTrue(booted.esp.enabled)
         assertTrue(booted.packet.enabled)
+        assertTrue(booted.bars.enabled)
         assertTrue(booted.guest.enabled)
         assertTrue(booted.protection.enabled)
         assertTrue(booted.spec.enabled)
@@ -180,6 +184,8 @@ class ConfigDegradationMatrixTest {
               enabled: false
             anti-esp:
               enabled: false
+            bars:
+              enabled: false
             spec:
               enabled: false
             protection:
@@ -203,6 +209,7 @@ class ConfigDegradationMatrixTest {
         assertFalse(booted.guest.enabled)
         assertFalse(booted.esp.enabled)
         assertFalse(booted.packet.enabled)
+        assertFalse(booted.bars.enabled)
         assertFalse(booted.spec.enabled)
         assertFalse(booted.viewer.enabled)
         assertFalse(booted.protection.enabled)
