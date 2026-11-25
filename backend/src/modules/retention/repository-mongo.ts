@@ -61,7 +61,10 @@ export class MongoSessionPurge implements SessionPurgePort {
 
     let deleted = 0
     for (const group of stale) {
-      const staleIds = group.staleIds.filter((id) => id !== group.keepId)
+      // object ids deserialize as distinct objects even when the values match,
+      // comparing references here used to delete the newest session too
+      const staleIds = group.staleIds.filter((id) => String(id) !== String(group.keepId))
+      if (staleIds.length === 0) continue
       const result = await PlayerSessionModel.deleteMany({ _id: { $in: staleIds } })
       deleted += result.deletedCount ?? 0
     }
