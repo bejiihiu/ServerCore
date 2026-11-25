@@ -36,9 +36,24 @@ with an admin user instead.
 ## tests
 
 ```sh
-bun test        # unit tests, no mongo needed
+bun test        # unit tests + mongo integration suites
 bun run typecheck
 ```
+
+most suites are hermetic. the `tests/mongo-*.test.ts` files exercise the
+repository layer against a real mongod, because unique/partial/ttl indexes and
+atomic updates cannot be proven with fakes. by default they start a throwaway
+`mongod` through `mongodb-memory-server` (downloaded once, cached by the
+library). to reuse an existing server instead — or when the download is
+blocked — point the suites at one:
+
+```sh
+MONGODB_TEST_URI=mongodb://127.0.0.1:27017 bun test
+```
+
+each suite uses its own database (`servercore_test_*`), dropped before and after
+the run. when no mongod can be reached the suites report themselves as skipped
+and the rest of the run stays green.
 
 ## layout
 

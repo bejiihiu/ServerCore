@@ -32,6 +32,10 @@ const groupInviteSchema = new Schema<GroupInvite>(
     url: { type: String, required: true },
     status: { type: String, enum: GROUP_INVITE_STATUSES, required: true },
     usedAt: { type: Date, default: null },
+    // when telegram minted the link. without it the retention sweep can't tell
+    // an old revoked/used invite from a fresh one, and strictQuery silently
+    // drops the field from the purge filters
+    issuedAt: { type: Date, required: true },
     expiresAt: { type: Date, required: true },
   },
   { timestamps: { createdAt: true, updatedAt: false } },
