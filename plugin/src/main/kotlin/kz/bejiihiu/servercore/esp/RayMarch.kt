@@ -58,7 +58,7 @@ object RayMarch {
         var tMaxZ = if (uz == 0.0) Double.POSITIVE_INFINITY
         else (if (uz > 0) bz + 1.0 - start.z else start.z - bz) * tDeltaZ
 
-        val out = ArrayList<VoxelPos>()
+        val out = ArrayList<VoxelPos>(estimateVoxels(bx, by, bz, endX, endY, endZ))
         while (bx != endX || by != endY || bz != endZ) {
             when {
                 tMaxX <= tMaxY && tMaxX <= tMaxZ -> {
@@ -80,9 +80,20 @@ object RayMarch {
         // the end voxel is the target's own head block, it must never count as
         // cover against the target itself (a head under leaves would otherwise
         // disguise someone standing two blocks away)
-        if (out.isNotEmpty() && out.last() == VoxelPos(endX, endY, endZ)) {
-            out.removeAt(out.size - 1)
+        if (out.isNotEmpty()) {
+            val last = out[out.size - 1]
+            if (last.x == endX && last.y == endY && last.z == endZ) out.removeAt(out.size - 1)
         }
         return out
+    }
+
+    /**
+     * the traversal visits at most manhattan(voxel delta) + 1 voxels, so one
+     * right-sized list never has to grow. capped at the hard limit so a bogus
+     * far-away endpoint can't ask for a huge array.
+     */
+    private fun estimateVoxels(bx: Int, by: Int, bz: Int, endX: Int, endY: Int, endZ: Int): Int {
+        val manhattan = abs(endX - bx) + abs(endY - by) + abs(endZ - bz)
+        return minOf(manhattan, MAX_VOXELS - 1) + 1
     }
 }
