@@ -79,7 +79,11 @@ class DurableOutbox(
 
     /** async on the io executor, failures are logged not thrown */
     private fun persistAsync() {
-        io.execute { persistNow() }
+        val task = Runnable { persistNow() }
+        // same story as the json file itself: a rejected task (io pool already
+        // shut down during disable) falls back to an inline write, a park must
+        // never throw at the caller that is unwinding a player quit
+        runCatching { io.execute(task) }.onFailure { task.run() }
     }
 
     /** blocking flush for shutdown, so the last park is never lost */
