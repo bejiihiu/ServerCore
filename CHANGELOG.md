@@ -87,6 +87,13 @@ current, unreleased state of the codebase.
   filtering for denied commands.
 - `/servercore groups <player>` and `/servercore deop-all` administrative commands.
 
+#### Operator diagnostics
+
+- `/servercore diag [--json]` self-check: one row per module with the state the plugin actually
+  resolved (enabled, disabled by config, dependency absent, failed), the evidence behind it, an
+  overall `OK` / `WARN` / `FAIL` verdict and the three most useful next steps. The card view is built in
+  a single pass and the JSON form is a stable contract with finding codes, so a script can act on it.
+
 #### Ops
 
 - Self-update from GitHub releases: polls `build-*` tags, verifies `SHA256SUMS`, swaps the jar and can
@@ -104,6 +111,9 @@ current, unreleased state of the codebase.
 - Backup and restore tooling (`deploy/backup/`): a verified MongoDB dump plus the plugin's durable
   state files in one archive, with retention, dry runs, a checksum-verified restore and a disaster
   runbook.
+- Configuration presets (`examples/`): a small-server and a large-server plugin config plus development
+  and production backend environments, each covered by tests that load it through the real config
+  readers, so a preset cannot drift into an unknown, missing or mistyped key.
 
 #### Integrations
 
@@ -162,26 +172,42 @@ current, unreleased state of the codebase.
 
 - Multi-module Gradle build for the plugin and a Bun/TypeScript backend, with CI for both sides and a
   tag-based release pipeline producing the plugin jar, backend bundle and checksums.
+- Reproducible plugin jar: entry order and timestamps are pinned, the manifest carries a fixed
+  identity, multi-release descriptors are dropped rather than falsely advertised, and two duplicate
+  jar entries fail the build instead of shipping an undefined winner.
 - Backend test suite covering protocol and envelope validation, authentication, admission and voting
   math, account lifecycle and deletion, retention, WebSocket wiring and resilience, i18n and bot
   screens.
+- Real-MongoDB repository tests (partial unique indexes, an atomic auth claim, compound vote
+  uniqueness, TTL and retention) and failure-mode tests that boot and run the backend with MongoDB
+  absent or dying mid-request.
+- Property-based fuzz suite for the wire protocol: payload totality, HMAC checks, timestamp windows,
+  canonical JSON and every zod schema from the manifest, plus replay and dedupe.
 - Cross-language protocol contract: one manifest (`protocol/messages.json`) describing every wire
   type, its direction and payload fields, checked against the zod schemas and the plugin codec/DTOs by
   tests on both sides, so schema drift fails the build instead of production.
-- Plugin tests for guest logic, protocol compatibility, permissions and packet-state behaviour.
+- Plugin tests for guest logic, protocol compatibility, permissions and packet-state behaviour, plus
+  chaos suites for ack handling, outbox corruption, the reconnect ladder, dedupe across clock jumps,
+  the guest lifecycle and fail-closed packet state.
 - Hot-path benchmark harness (`./gradlew :plugin:benchmark`) covering the view-state store, the
   spatial grid, the ray march, the visibility decider, the packet resync executor, the WebSocket codec
   and bar rendering, with the measurements and the rejected experiments written down in
   `docs/performance.md`.
 - Documentation set: architecture, installation, a first-run walkthrough, configuration, WebSocket
   protocol, admission, authentication, security, FAQ, server info bars, the in-game UI design system,
-  the performance guide and the backup and restore runbook.
-- Russian documentation: a translated README and a `docs/ru/` set covering installation, first run,
-  configuration and FAQ, linked from the English pages.
+  the performance guide, the backup and restore runbook, the release checklist, the dependency audit,
+  the extension guide and server configuration presets.
+- Russian documentation: a full `docs/ru/` mirror of every page above and a translated README, linked
+  both ways.
 - Release verification: `deploy/verify-release.sh` downloads a published release and checks the
   checksums the way the updater parses them, the jar's version/`folia-supported`/`packetevents` and
   shaded kotlin classes, and the backend bundle's shape, printing a PASS/FAIL table; the maintainer
   procedure is in `docs/release-checklist.md`.
+- Dependency upkeep and CI hardening: Dependabot raises weekly grouped PRs for bun, Gradle and GitHub
+  Actions (majors one per dependency, nothing auto-merged), CODEOWNERS routes the reviews, the Bun
+  version is pinned so a toolchain release cannot change what CI measures, the `deploy/` scripts are
+  shellchecked as a blocking job, and the release workflow has a `workflow_dispatch` dry run that
+  builds and verifies every artifact without publishing.
 
 ### Changed
 
@@ -229,6 +255,14 @@ current, unreleased state of the codebase.
 - Backend: MongoDB readiness checks always false at boot (missing indexes, null stats), process
   surviving a startup `uncaughtException`, immortal outbox frames and ack races in the client,
   scheduler reentrancy, unbounded maps, config flag handling.
+- Backend wire parsing is total: a deeply nested body can no longer raise out of the parser and take
+  the whole process down with an unhandled shutdown, and a non-finite number (`1e400`) can no longer
+  make two different payloads produce one signature.
+- Plugin: a correlated `ERROR` frame from the backend was ignored, so a rejected request stayed
+  pending until timeout; the request and its retries now fail with the backend's error instead.
+- Fresh-id retries replay idempotently: spec audit rows get deterministic ids and upsert, the local
+  journal dedupes by session and event, and duplicate join, account-deleted or probe deliveries no
+  longer apply twice.
 - Deletion completeness: invites now revoked, recovery notifications sent, draft and conversation
   state TTLs applied.
 - `APPLICATION_EXPIRED` delivered as its own frame type instead of being folded into rejection.
