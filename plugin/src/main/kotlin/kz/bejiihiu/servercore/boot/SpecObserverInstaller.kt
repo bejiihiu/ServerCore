@@ -3,6 +3,8 @@ package kz.bejiihiu.servercore.boot
 import com.github.retrooper.packetevents.event.PacketListenerCommon
 import kz.bejiihiu.servercore.spectator.ObserverPairRegistry
 import kz.bejiihiu.servercore.spectator.ObserverHider
+import kz.bejiihiu.servercore.spectator.PacketObserverWire
+import kz.bejiihiu.servercore.spectator.RegistryObserverRows
 import kz.bejiihiu.servercore.spectator.SpecObserverConfig
 import kz.bejiihiu.servercore.spectator.SpecResyncListener
 import kz.bejiihiu.servercore.spectator.SpecTraceListener
@@ -38,7 +40,11 @@ class SpecObserverInstaller(
         val observerSessions = ObserverPairRegistry()
         sessions = observerSessions
         val traceFilter = TraceFilter(observerConfig.traceRadius, observerConfig.suppressActionBar)
-        val hider = ObserverHider(plugin, packets, observerSessions, traceFilter, syncStates = sync.states)
+        val hider = ObserverHider(
+            observerSessions,
+            RegistryObserverRows(packets.registry, sync.states),
+            PacketObserverWire(plugin, packets),
+        )
         this.hider = hider
 
         val trace = SpecTraceListener(observerSessions, packets.registry, hider::poseOf, traceFilter)

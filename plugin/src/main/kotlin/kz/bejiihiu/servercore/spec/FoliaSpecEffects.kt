@@ -5,10 +5,7 @@ import java.util.concurrent.TimeUnit
 import java.util.logging.Logger
 import kz.bejiihiu.servercore.protection.AllowedGamemodeOverrideRegistry
 import org.bukkit.GameMode
-import org.bukkit.Location
-import org.bukkit.entity.Player
 import org.bukkit.event.player.PlayerTeleportEvent
-import org.bukkit.plugin.Plugin
 
 /**
  * the folia half of the session machine: every bukkit mutation of the admin
@@ -21,9 +18,12 @@ import org.bukkit.plugin.Plugin
  * views -> teleport home -> gamemode/flight/speeds back -> show to the target.
  * if a live restore is impossible (admin gone), the saved state lands in the
  * restore journal and is replayed on the next join.
+ *
+ * the world itself sits behind [SpecWorld]: this class owns the transition
+ * order and the journal contract, the port owns the player and the scheduler.
  */
 class FoliaSpecEffects(
-    private val plugin: Plugin,
+    private val world: SpecWorld,
     private val hiddenObserver: HiddenObserver,
     private val journal: SpecRestoreJournal,
     private val logger: Logger,
@@ -32,26 +32,22 @@ class FoliaSpecEffects(
 ) : SpecEffects {
 
     override fun beginObservation(adminId: UUID, target: ObservationTarget, session: SpecSession, onComplete: (Boolean) -> Unit) {
-        val admin = plugin.server.getPlayer(adminId)
-        val targetPlayer = plugin.server.getPlayer(target.uuid)
+        val admin = world.actor(adminId)
+        val targetPlayer = world.actor(target.uuid)
         if (admin == null || targetPlayer == null || !admin.isOnline || !targetPlayer.isOnline) {
             onComplete(false)
             return
         }
         // capture the target's position on the target's own thread first: a
         // cross-region location read is exactly what folia forbids
-        targetPlayer.scheduler.run(
-            plugin,
-            { targetTask ->
+        targetPlayer.schedule(
+            {
                 val destination = targetPlayer.location
-                targetTask.cancel()
-                admin.scheduler.run(
-                    plugin,
-                    { adminTask ->
+                admin.schedule(
+                    {
                         if (session.phase != SessionPhase.STARTING) {
-                            adminTask.cancel()
                             onComplete(false)
-                            return@run
+                            return@schedule
                         }
                         // saved state first, then mutate: the invariant is that
                         // a non-null savedState means something was already changed
@@ -64,16 +60,13 @@ class FoliaSpecEffects(
                             flySpeed = admin.flySpeed,
                         )
                         admin.gameMode = GameMode.SPECTATOR
-                        adminTask.cancel()
-                        admin.teleportAsync(destination, PlayerTeleportEvent.TeleportCause.SPECTATE)
+                        admin.teleport(destination, PlayerTeleportEvent.TeleportCause.SPECTATE)
                             .whenComplete { moved, error ->
                                 // the future completes on some region thread - hop back
                                 // onto the admin's scheduler before touching the player
-                                admin.scheduler.run(
-                                    plugin,
-                                    { attachTask ->
+                                admin.schedule(
+                                    {
                                         if (session.phase != SessionPhase.STARTING || moved != true || error != null) {
-                                            attachTask.cancel()
                                             // an exit may have interleaved with our teleport (phase already
                                             // ENDING), or the world refused the start: either way the admin
                                             // goes home with the saved mode back. endObservation may have
@@ -83,21 +76,19 @@ class FoliaSpecEffects(
                                             // strands the admin in spectator
                                             abortRestore(admin, session)
                                             onComplete(false)
-                                            return@run
+                                            return@schedule
                                         }
                                         if (!targetPlayer.isOnline) {
-                                            attachTask.cancel()
                                             abortRestore(admin, session)
                                             onComplete(false)
-                                            return@run
+                                            return@schedule
                                         }
-                                        admin.setSpectatorTarget(targetPlayer)
+                                        admin.spectate(targetPlayer)
                                         // hidden from the observed player specifically, never globally
-                                        hiddenObserver.apply(targetPlayer.uniqueId, admin.uniqueId, VisibilityState.HIDDEN)
+                                        hiddenObserver.apply(targetPlayer.id, admin.id, VisibilityState.HIDDEN)
                                         // the state is now mutated: journal it so a hard crash mid-session
                                         // still leaves the admin recoverable on their next join
-                                        session.savedState?.let { journal.put(it.toRecord(admin.uniqueId)) }
-                                        attachTask.cancel()
+                                        session.savedState?.let { journal.put(it.toRecord(admin.id)) }
                                         onComplete(true)
                                     },
                                     { onComplete(false) },
@@ -112,7 +103,7 @@ class FoliaSpecEffects(
     }
 
     override fun endObservation(session: SpecSession, reason: ExitReason) {
-        val admin = plugin.server.getPlayer(session.adminId)
+        val admin = world.actor(session.adminId)
         val saved = session.savedState
         if (admin == null || !admin.isOnline) {
             // nothing live to restore: the journal replays it on the next join
@@ -122,25 +113,21 @@ class FoliaSpecEffects(
         // hide cleanup works even for offline targets (no-op inside the observer)
         hiddenObserver.apply(session.targetId, session.adminId, VisibilityState.VISIBLE)
 
-        admin.scheduler.run(
-            plugin,
-            { task ->
-                task.cancel()
+        admin.schedule(
+            {
                 // a session ended while the start sequence was still in flight:
                 // skip straight to restore, never finish attaching the camera
                 session.closeables.forEach { closeable -> runCatching { closeable.close() } }
                 admin.closeInventory()
                 if (saved == null) {
                     // no state was ever mutated, nothing to restore
-                    return@run
+                    return@schedule
                 }
-                runCatching { admin.setSpectatorTarget(null) }
-                admin.teleportAsync(saved.location.clone(), PlayerTeleportEvent.TeleportCause.PLUGIN)
+                runCatching { admin.stopSpectating() }
+                admin.teleport(saved.location.clone(), PlayerTeleportEvent.TeleportCause.PLUGIN)
                     .whenComplete { _, _ ->
-                        admin.scheduler.run(
-                            plugin,
-                            { restoreTask ->
-                                restoreTask.cancel()
+                        admin.schedule(
+                            {
                                 restore(admin, saved)
                                 // live restore done, the journal entry has served its purpose
                                 journal.remove(session.adminId)
@@ -161,16 +148,12 @@ class FoliaSpecEffects(
      * target's position: send them home and put the saved mode back. the
      * coordinator has already torn the claim down, nobody else will.
      */
-    private fun abortRestore(admin: Player, session: SpecSession) {
+    private fun abortRestore(admin: SpecActor, session: SpecSession) {
         val saved = session.savedState ?: return
-        admin.teleportAsync(saved.location.clone(), PlayerTeleportEvent.TeleportCause.PLUGIN)
+        admin.teleport(saved.location.clone(), PlayerTeleportEvent.TeleportCause.PLUGIN)
             .whenComplete { _, _ ->
-                admin.scheduler.run(
-                    plugin,
-                    { task ->
-                        task.cancel()
-                        restore(admin, saved)
-                    },
+                admin.schedule(
+                    { restore(admin, saved) },
                     // admin gone mid-flight: the journal replays it on their next join
                     { journal.put(saved.toRecord(session.adminId)) },
                 )
@@ -178,13 +161,13 @@ class FoliaSpecEffects(
     }
 
     /** replay path for the restore journal: called on join with a fresh entity */
-    fun replayRestore(admin: Player, record: PendingRestore) {
-        val world = plugin.server.getWorld(record.world)
-        if (world == null) {
+    fun replayRestore(adminId: UUID, record: PendingRestore) {
+        val location = world.journalLocation(record)
+        if (location == null) {
             logger.warning("spec restore: world ${record.world} is not loaded, keeping the journal entry")
             return
         }
-        val location = Location(world, record.x, record.y, record.z, record.yaw, record.pitch)
+        val admin = world.actor(adminId) ?: return
         // the session's restore grant died with the session (short ttl), and
         // the guard cancels any non-survival mode change without a live one -
         // an admin rejoining after the ttl would otherwise stay stranded in
@@ -193,25 +176,21 @@ class FoliaSpecEffects(
         val mode = runCatching { GameMode.valueOf(record.gamemode) }.getOrNull()
         if (mode != null && mode != GameMode.SURVIVAL) {
             sanctions?.grant(
-                admin.uniqueId,
+                admin.id,
                 setOf(mode),
                 REPLAY_SOURCE,
                 ttlMillis = TimeUnit.SECONDS.toMillis(REPLAY_TTL_SECONDS),
             )
         }
-        admin.scheduler.run(
-            plugin,
-            { task ->
-                task.cancel()
-                admin.teleportAsync(location, PlayerTeleportEvent.TeleportCause.PLUGIN)
+        admin.schedule(
+            {
+                admin.teleport(location, PlayerTeleportEvent.TeleportCause.PLUGIN)
                     .whenComplete { _, _ ->
-                        admin.scheduler.run(
-                            plugin,
-                            { restoreTask ->
-                                restoreTask.cancel()
+                        admin.schedule(
+                            {
                                 restore(admin, record)
                                 if (mode != null && mode != GameMode.SURVIVAL) {
-                                    sanctions?.revoke(admin.uniqueId, REPLAY_SOURCE)
+                                    sanctions?.revoke(admin.id, REPLAY_SOURCE)
                                 }
                                 journal.remove(UUID.fromString(record.adminId))
                             },
@@ -223,7 +202,7 @@ class FoliaSpecEffects(
         )
     }
 
-    private fun restore(admin: Player, saved: SavedAdminState) {
+    private fun restore(admin: SpecActor, saved: SavedAdminState) {
         runCatching {
             admin.gameMode = saved.gamemode
             admin.allowFlight = saved.allowFlight
@@ -235,7 +214,7 @@ class FoliaSpecEffects(
         }
     }
 
-    private fun restore(admin: Player, record: PendingRestore) {
+    private fun restore(admin: SpecActor, record: PendingRestore) {
         runCatching {
             admin.gameMode = GameMode.valueOf(record.gamemode)
             admin.allowFlight = record.allowFlight

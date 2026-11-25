@@ -3,6 +3,7 @@ package kz.bejiihiu.servercore.boot
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents
 import kz.bejiihiu.servercore.spec.BukkitHiddenObserver
 import kz.bejiihiu.servercore.spec.FoliaSpecEffects
+import kz.bejiihiu.servercore.spec.FoliaSpecWorld
 import kz.bejiihiu.servercore.spec.GamemodeSanctionBridge
 import kz.bejiihiu.servercore.spec.InventoryViewerBridge
 import kz.bejiihiu.servercore.spec.InventoryViewerViews
@@ -70,7 +71,7 @@ class SpecInstaller(
         val journal = SpecRestoreJournal(ctx.dataFolder.toPath().resolve("spec-restore-journal.json"), ctx.io)
         journal.load()
         val effects = FoliaSpecEffects(
-            plugin,
+            FoliaSpecWorld(plugin),
             BukkitHiddenObserver(plugin),
             journal,
             ctx.logger,
