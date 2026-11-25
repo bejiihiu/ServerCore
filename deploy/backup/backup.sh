@@ -10,6 +10,8 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# source-path keeps the lint working from any cwd: the helper sits next to us
+# shellcheck source-path=SCRIPTDIR
 # shellcheck source=lib.sh
 . "$SCRIPT_DIR/lib.sh"
 
@@ -294,13 +296,20 @@ ENV_INCLUDED=no
 AUDIT_INCLUDED=no
 [ "$AUDIT_PRESENT" = 1 ] && [ "$SKIP_PLUGIN" = 0 ] && AUDIT_INCLUDED=yes
 
+# the manifest never carries credentials, whether or not mongo was dumped
+if [ "$SKIP_MONGO" = 1 ]; then
+  MONGO_URI_DISPLAY=skipped
+else
+  MONGO_URI_DISPLAY=$(redact_uri "$MONGODB_URI")
+fi
+
 {
   printf '# servercore backup manifest\n'
   printf 'format=%s\n' "$BACKUP_FORMAT"
   printf 'created_at_utc=%s\n' "$CREATED_AT"
   printf 'created_by=deploy/backup/backup.sh\n'
   printf 'host=%s\n' "$HOST"
-  printf 'mongo_uri=%s\n' "$([ "$SKIP_MONGO" = 1 ] && printf 'skipped' || redact_uri "$MONGODB_URI")"
+  printf 'mongo_uri=%s\n' "$MONGO_URI_DISPLAY"
   printf 'mongo_dump=%s\n' "$([ "$SKIP_MONGO" = 1 ] && printf 'skipped' || printf 'gzip-bson')"
   printf 'mongo_collections=%s\n' "$DUMP_COUNT"
   printf 'plugin_dir=%s\n' "$([ "$SKIP_PLUGIN" = 1 ] && printf 'skipped' || printf '%s' "$PLUGIN_DIR")"

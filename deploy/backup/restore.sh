@@ -7,6 +7,8 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# source-path keeps the lint working from any cwd: the helper sits next to us
+# shellcheck source-path=SCRIPTDIR
 # shellcheck source=lib.sh
 . "$SCRIPT_DIR/lib.sh"
 

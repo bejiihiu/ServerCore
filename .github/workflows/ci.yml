@@ -32,7 +32,9 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          # pinned to the version the project is developed and tested on, so a
+          # toolchain release cannot change what ci measures overnight
+          bun-version: "1.4.2"
 
       - name: install deps
         run: bun install --frozen-lockfile
@@ -45,3 +47,20 @@ jobs:
       - name: test
         run: bun test
         working-directory: backend
+
+  shellcheck:
+    name: shellcheck (deploy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: install shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends shellcheck
+          shellcheck --version
+
+      - name: lint deploy scripts
+        # -x follows the sourced lib.sh; the scripts are the operator surface
+        # for backup/restore, so a lint failure is a real failure here
+        run: shellcheck -x deploy/*.sh deploy/backup/*.sh
