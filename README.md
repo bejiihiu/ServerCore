@@ -103,6 +103,7 @@ A detailed, step-by-step walkthrough with real configuration examples lives in [
 | [Installation](docs/installation.md) | Full setup guide with real examples |
 | [First run](docs/first-run.md) | Short operator checklist: bring-up order, expected log lines, where state lives |
 | [Configuration](docs/configuration.md) | Every env var and config key |
+| [Backup and restore](docs/backup-restore.md) | What to back up and why, RPO/RTO, disaster runbook, Atlas M0 caveat |
 | [WebSocket protocol](docs/websocket-protocol.md) | Message envelope, types, auth, reconnect |
 | [Admission](docs/admission.md) | Linking, applications, voting, quorum, invites |
 | [Authentication](docs/authentication.md) | Passwordless login flow |

@@ -44,6 +44,8 @@ Notes:
 - Collections and indexes are created automatically on backend first start.
 - TTL indexes are used for transient data (auth requests and similar). Do not disable them.
 - Back up the database regularly — it is the single source of truth for accounts, votes and audit history.
+  On Atlas M0 there is no automated backup you can rely on; the scripts and the restore runbook are in
+  [backup-restore.md](backup-restore.md).
 
 ## 2. Telegram bot
 

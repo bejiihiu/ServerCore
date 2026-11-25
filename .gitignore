@@ -24,6 +24,9 @@ notes/
 notes.md
 IDEA.md
 
+# backup archives: mongo dumps, plugin state and maybe the backend env
+backups/
+
 # secrets and env, never in git
 .env
 .env.*
