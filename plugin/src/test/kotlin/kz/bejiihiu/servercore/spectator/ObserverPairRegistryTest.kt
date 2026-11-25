@@ -99,6 +99,35 @@ class ObserverPairRegistryTest {
     }
 
     @Test
+    fun `a token scopes unregister to the session that opened the pair`() {
+        val admin = UUID.randomUUID()
+        val target = UUID.randomUUID()
+
+        registry.register(admin, target, "session-1")
+        registry.unregister(admin, target, "session-2")
+        assertTrue(registry.isObserving(admin, target), "another session's teardown must not close it")
+
+        registry.unregister(admin, target, "session-1")
+        assertFalse(registry.isObserving(admin, target))
+    }
+
+    @Test
+    fun `owns tells a live token from a replaced session on the same target`() {
+        val admin = UUID.randomUUID()
+        val target = UUID.randomUUID()
+
+        registry.register(admin, target, "session-1")
+        assertTrue(registry.owns(admin, target, "session-1"))
+        assertFalse(registry.owns(admin, target, "session-2"))
+        assertTrue(registry.owns(admin, target, null), "no token means no session check")
+        assertFalse(registry.owns(admin, UUID.randomUUID(), "session-1"))
+
+        registry.register(admin, target, "session-2")
+        assertFalse(registry.owns(admin, target, "session-1"))
+        assertTrue(registry.owns(admin, target, "session-2"))
+    }
+
+    @Test
     fun `the registry satisfies the seam interface the packet layer expects`() {
         val source: SpecSessionSource = registry
         val admin = UUID.randomUUID()

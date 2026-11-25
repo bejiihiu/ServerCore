@@ -73,11 +73,13 @@ class ObserverHidingBridge(
 ) : SpecSessionListener {
 
     override fun onStarted(session: SpecSession) {
-        hider.begin(session.adminId, session.targetId)
+        hider.begin(session.adminId, session.targetId, session.sessionId)
     }
 
     override fun onEnded(session: SpecSession, reason: ExitReason) {
-        hider.end(session.adminId, session.targetId)
+        // the session id scopes the teardown: a late end from a replaced
+        // session must not close the pair that now owns this admin
+        hider.end(session.adminId, session.targetId, session.sessionId)
     }
 }
 
