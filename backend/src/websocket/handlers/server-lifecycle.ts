@@ -146,7 +146,10 @@ export function registerLifecycleHandlers(
   })
 
   registry.register("PLAYER_JOINED", (envelope: Envelope<"PLAYER_JOINED">, connection) => {
-    logger.info({ uuid: envelope.payload.minecraftUuid, username: envelope.payload.username }, "player joined")
+    logger.info(
+      { uuid: envelope.payload.minecraftUuid, username: envelope.payload.username, serverId: connection.serverId },
+      "player joined",
+    )
     hooks.onPlayerJoined?.(
       {
         minecraftUuid: envelope.payload.minecraftUuid,
@@ -161,6 +164,7 @@ export function registerLifecycleHandlers(
     logger.info(
       {
         uuid: envelope.payload.minecraftUuid,
+        username: envelope.payload.username,
         reason: envelope.payload.reason,
         serverId: connection.serverId,
       },

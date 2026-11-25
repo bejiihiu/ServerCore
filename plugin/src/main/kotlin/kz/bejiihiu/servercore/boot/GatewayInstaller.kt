@@ -69,12 +69,13 @@ class GatewayInstaller(
             }
 
             override fun onDisconnected() {
+                // the client already logged the failure with its reason
                 gatewayLink?.let { ctx.backendGateway.detach(it) }
-                ctx.logger.warning("backend gateway disconnected, reconnect scheduled")
             }
 
             override fun onLinkToken(payload: Payload.LinkToken) {
-                ctx.logger.info("link token issued for ${payload.username}")
+                // per-join, and the backend logs the real linking event
+                ctx.logger.fine("link token issued for ${payload.username}")
             }
 
             override fun onAccountDeleted(payload: Payload.AccountDeleted) {

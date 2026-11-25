@@ -78,7 +78,8 @@ export class OfflineWatcher {
     for (const server of this.directory.list()) {
       if (connected.has(server.serverId)) {
         if (this.alerted.delete(server.serverId)) {
-          this.logger.info({ serverId: server.serverId }, "server back online, alert re-armed")
+          // the all-clear itself is logged by OpsNotifier.serverBack
+          this.logger.debug({ serverId: server.serverId }, "crash alert re-armed")
           this.onReconnect?.(server.serverId)
         }
         continue

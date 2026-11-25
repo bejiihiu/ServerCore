@@ -210,7 +210,7 @@ export class AuthenticationService {
     this.openSessions.delete(minecraftUuid)
     const cancelled = await this.store.cancelPendingForPlayer(minecraftUuid, now)
     if (cancelled > 0) {
-      this.logger.info({ uuid: minecraftUuid, cancelled }, "pending auth requests cancelled on disconnect")
+      this.logger.debug({ uuid: minecraftUuid, cancelled }, "pending auth requests cancelled on disconnect")
     }
   }
 
@@ -549,6 +549,8 @@ export class AuthenticationService {
   ): Promise<void> {
     const sent = await this.push(serverId, type, payload, correlationId)
     if (sent) return
+    // no log here: the push port already reports the failure with its error,
+    // and this fires on every sweeper retry while the link is down
     this.outbox.set(`${serverId}|${type}|${correlationId}`, {
       serverId,
       type,
@@ -556,7 +558,6 @@ export class AuthenticationService {
       correlationId,
       queuedAt: now,
     })
-    this.logger.info({ serverId, type }, "game server link down, push queued for retry")
   }
 
   private async flushOutbox(now: number): Promise<void> {

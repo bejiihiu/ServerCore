@@ -31,9 +31,9 @@ export function registerChatMemberHandler(
       inviteLinkName: update.invite_link?.name ?? null,
     })
     if (!outcome.ok) {
-      // foreign chats and anomalies are audited inside the service; log the
-      // reason so misconfigurations surface in the backend logs too
-      deps.logger.info({ chatId: update.chat.id, reason: outcome.reason }, "group join not processed")
+      // foreign chats and anomalies are audited inside the service; the reason
+      // here is a diagnostic, not a milestone
+      deps.logger.debug({ chatId: update.chat.id, reason: outcome.reason }, "group join not processed")
     }
   })
 }

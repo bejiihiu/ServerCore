@@ -21,7 +21,7 @@ class OpLockdown(private val plugin: JavaPlugin, private val logger: Logger) {
         }
         for (op in ops) {
             logger.warning(
-                "op status detected on game account ${op.name ?: op.uniqueId} (${op.uniqueId}) — " +
+                "op status detected on game account ${op.name ?: op.uniqueId} (${op.uniqueId}) - " +
                     "run 'servercore deop-all' from console and grant rights through luckperms instead",
             )
         }

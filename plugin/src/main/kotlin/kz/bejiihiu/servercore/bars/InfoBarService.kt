@@ -36,6 +36,17 @@ class InfoBarService(
     private val dirty = AtomicBoolean(false)
     private val running = AtomicBoolean(false)
 
+    /** bars whose last render/sample threw: warn once, then drop to fine */
+    private val failingBars = ConcurrentHashMap.newKeySet<String>()
+
+    private fun reportFailure(key: String, description: String, failure: Throwable) {
+        if (failingBars.add(key)) {
+            plugin.logger.warning("$description: ${failure.message} (further failures of this bar stay at fine)")
+        } else {
+            plugin.logger.fine("$description: ${failure.message}")
+        }
+    }
+
     @Volatile
     private var ambientTask: ScheduledTask? = null
 
@@ -154,9 +165,11 @@ class InfoBarService(
             // the same reading feeds placeholderapi; player-scoped, because a
             // region tps belongs to where this player stands
             snapshots.publish(bar, reading, player.uniqueId)
+            failingBars.remove("${bar.key}:player")
         } catch (e: Exception) {
-            // one bad tick must not kill the whole bar loop
-            plugin.logger.warning("info bar ${bar.key} failed for ${player.name}: ${e.message}")
+            // one bad tick must not kill the whole bar loop, and it must not
+            // flood the log once per tick either
+            reportFailure("${bar.key}:player", "info bar ${bar.key} failed for ${player.name}", e)
         }
     }
 
@@ -180,7 +193,7 @@ class InfoBarService(
     private fun sampleAmbient() {
         for ((bar, metric) in metrics) {
             val reading = runCatching { metric.readGlobal() }
-                .onFailure { plugin.logger.warning("info bar ${bar.key} global sample failed: ${it.message}") }
+                .onFailure { reportFailure("${bar.key}:global", "info bar ${bar.key} global sample failed", it) }
                 .getOrNull() ?: continue
             snapshots.publish(bar, reading)
         }

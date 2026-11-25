@@ -102,7 +102,7 @@ class FlectonePulseBridge(
             state.set(State.INCOMPATIBLE)
             logger.severe(
                 "flectonepulse api artifact does not match the expected " +
-                    "${FlectonePulseApiCompat.TARGET_VERSION} surface (missing $missing) — " +
+                    "${FlectonePulseApiCompat.TARGET_VERSION} surface (missing $missing), " +
                     "integration disabled, align the server's flectonepulse with the api this plugin was built against",
             )
             return
@@ -131,7 +131,7 @@ class FlectonePulseBridge(
         if (fp == null || !ready) {
             if (attemptsLeft <= 0) {
                 logger.severe(
-                    "flectonepulse is installed but its api never became ready — " +
+                    "flectonepulse is installed but its api never became ready, " +
                         "moderation lookups stay off, check the flectonepulse log",
                 )
                 return
@@ -156,7 +156,7 @@ class FlectonePulseBridge(
                 telegramEnabled = telegramProbe(fp),
             )
         }.getOrElse { error ->
-            logger.severe("flectonepulse api services unavailable: ${error.message} — integration disabled")
+            logger.severe("flectonepulse api services unavailable: ${error.message}, integration disabled")
             return
         }
 
@@ -178,7 +178,7 @@ class FlectonePulseBridge(
      */
     private fun telegramProbe(fp: FlectonePulse): () -> Boolean? = {
         runCatching { fp.get(TelegramModule::class.java).config().enable() }
-            .onFailure { logger.fine("flectonepulse telegram probe failed: ${it.message}") }
+            .onFailure { logger.warning("flectonepulse telegram probe failed, assuming notifications are on: ${it.message}") }
             .getOrNull()
     }
 }
