@@ -14,6 +14,9 @@ enum class BarId(
 ) {
     RAM("ram", Permissions.BARS_RAM, Permissions.BARS_RAM_OTHER),
     TPS("tps", Permissions.BARS_TPS, Permissions.BARS_TPS_OTHER),
+    MSPT("mspt", Permissions.BARS_MSPT, Permissions.BARS_MSPT_OTHER),
+    PLAYERS("players", Permissions.BARS_PLAYERS, Permissions.BARS_PLAYERS_OTHER),
+    WORLD("world", Permissions.BARS_WORLD, Permissions.BARS_WORLD_OTHER),
     ;
 
     /** locale key of the bar title, e.g. bars.ram.title */

@@ -16,6 +16,20 @@ data class TpsBarConfig(
     val thresholds: HealthThresholds,
 )
 
+data class MsptBarConfig(
+    val enabled: Boolean,
+    /** region tick time at or below which the bar is healthy, milliseconds */
+    val thresholds: HealthThresholds,
+)
+
+data class PlayersBarConfig(val enabled: Boolean)
+
+data class WorldBarConfig(
+    val enabled: Boolean,
+    /** true = world, clock and weather; false = world and clock only */
+    val showWeather: Boolean,
+)
+
 /**
  * the bars section. defaults are deliberately the shipped values: an admin
  * deleting a key gets the same behaviour the commented file describes.
@@ -26,11 +40,17 @@ data class BarsConfig(
     val surface: BarSurface,
     val ram: RamBarConfig,
     val tps: TpsBarConfig,
+    val mspt: MsptBarConfig,
+    val players: PlayersBarConfig,
+    val world: WorldBarConfig,
 ) {
     /** true only when the master switch and the bar's own switch are both on */
     fun isEnabled(bar: BarId): Boolean = enabled && when (bar) {
         BarId.RAM -> ram.enabled
         BarId.TPS -> tps.enabled
+        BarId.MSPT -> mspt.enabled
+        BarId.PLAYERS -> players.enabled
+        BarId.WORLD -> world.enabled
     }
 
     fun enabledBars(): List<BarId> = BarId.entries.filter(::isEnabled)
@@ -42,6 +62,8 @@ data class BarsConfig(
         const val DEFAULT_RAM_MEDIUM = 80.0
         const val DEFAULT_TPS_GOOD = 18.0
         const val DEFAULT_TPS_MEDIUM = 15.0
+        const val DEFAULT_MSPT_GOOD = 40.0
+        const val DEFAULT_MSPT_MEDIUM = 50.0
 
         fun load(file: FileConfiguration, logger: Logger): BarsConfig {
             val section = file.getConfigurationSection("bars")
@@ -68,6 +90,12 @@ data class BarsConfig(
             val tpsOrdered = if (tpsGood >= tpsMedium) tpsGood to tpsMedium else tpsMedium to tpsGood
             if (tpsGood < tpsMedium) logger.warning("bars.tps: good is below medium, swapping the thresholds")
 
+            // mspt is a duration: good is the low end, medium the losing-ticks edge
+            val msptGood = raw("mspt.good", DEFAULT_MSPT_GOOD).coerceIn(0.0, 1_000.0)
+            val msptMedium = raw("mspt.medium", DEFAULT_MSPT_MEDIUM).coerceIn(0.0, 1_000.0)
+            val msptOrdered = if (msptGood <= msptMedium) msptGood to msptMedium else msptMedium to msptGood
+            if (msptGood > msptMedium) logger.warning("bars.mspt: good is above medium, swapping the thresholds")
+
             return BarsConfig(
                 enabled = bool("enabled", true),
                 updateIntervalTicks = interval,
@@ -79,6 +107,15 @@ data class BarsConfig(
                 tps = TpsBarConfig(
                     enabled = bool("tps.enabled", true),
                     thresholds = HealthThresholds(tpsOrdered.first, tpsOrdered.second, lowerIsBetter = false),
+                ),
+                mspt = MsptBarConfig(
+                    enabled = bool("mspt.enabled", true),
+                    thresholds = HealthThresholds(msptOrdered.first, msptOrdered.second, lowerIsBetter = true),
+                ),
+                players = PlayersBarConfig(enabled = bool("players.enabled", true)),
+                world = WorldBarConfig(
+                    enabled = bool("world.enabled", true),
+                    showWeather = bool("world.show-weather", true),
                 ),
             )
         }

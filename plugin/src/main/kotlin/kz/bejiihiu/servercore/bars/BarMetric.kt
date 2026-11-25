@@ -1,5 +1,6 @@
 package kz.bejiihiu.servercore.bars
 
+import java.util.UUID
 import org.bukkit.entity.Player
 import org.bukkit.plugin.Plugin
 
@@ -18,11 +19,15 @@ enum class BarHealth {
  * usable reading and the bar should render empty. [values] are plain strings
  * substituted into the locale template, so the template owns the copy and the
  * unit while the metric owns the number.
+ *
+ * [titleKey] lets a metric pick between two templates of the same bar (the
+ * world bar has a weather and a plain flavour); null means the bar's own title.
  */
 data class BarReading(
     val fraction: Double?,
     val health: BarHealth,
     val values: Map<String, String>,
+    val titleKey: String? = null,
 )
 
 /**
@@ -73,4 +78,11 @@ interface BarMetric {
     fun start(plugin: Plugin, periodTicks: Long) {}
 
     fun stop() {}
+
+    /**
+     * drops per-player state a metric keeps. called when a player quits, on the
+     * quit event's thread; metrics with a sampler cache (mspt) override it so a
+     * uuid never outlives the session.
+     */
+    fun forget(uuid: UUID) {}
 }

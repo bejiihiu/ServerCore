@@ -23,7 +23,12 @@ class BarsConfigTest {
         assertEquals(BarSurface.BOSSBAR, config.surface)
         assertEquals(HealthThresholds(60.0, 80.0, lowerIsBetter = true), config.ram.thresholds)
         assertEquals(HealthThresholds(18.0, 15.0, lowerIsBetter = false), config.tps.thresholds)
-        assertEquals(listOf(BarId.RAM, BarId.TPS), config.enabledBars())
+        assertEquals(HealthThresholds(40.0, 50.0, lowerIsBetter = true), config.mspt.thresholds)
+        assertTrue(config.world.showWeather)
+        assertEquals(
+            listOf(BarId.RAM, BarId.TPS, BarId.MSPT, BarId.PLAYERS, BarId.WORLD),
+            config.enabledBars(),
+        )
     }
 
     @Test
@@ -60,8 +65,12 @@ class BarsConfigTest {
     @Test
     fun `per bar switches and the master switch gate the command list`() {
         val onlyTps = load("bars:\n  ram:\n    enabled: false\n")
-        assertEquals(listOf(BarId.TPS), onlyTps.enabledBars())
         assertFalse(onlyTps.isEnabled(BarId.RAM))
+        assertTrue(onlyTps.isEnabled(BarId.TPS))
+        assertEquals(
+            listOf(BarId.TPS, BarId.MSPT, BarId.PLAYERS, BarId.WORLD),
+            onlyTps.enabledBars(),
+        )
 
         val masterOff = load("bars:\n  enabled: false\n")
         assertTrue(masterOff.enabledBars().isEmpty())
@@ -74,5 +83,33 @@ class BarsConfigTest {
 
         assertEquals(1.0, config.ram.thresholds.good)
         assertEquals(99.0, config.ram.thresholds.medium)
+    }
+
+    @Test
+    fun `mspt thresholds are clamped into the millisecond range and ordered`() {
+        val config = load("bars:\n  mspt:\n    good: 90\n    medium: 70\n")
+        assertEquals(HealthThresholds(70.0, 90.0, lowerIsBetter = true), config.mspt.thresholds)
+
+        val clamped = load("bars:\n  mspt:\n    good: -5\n    medium: 5000\n")
+        assertEquals(0.0, clamped.mspt.thresholds.good)
+        assertEquals(1_000.0, clamped.mspt.thresholds.medium)
+    }
+
+    @Test
+    fun `world weather is on by default and can be switched off without touching the bar`() {
+        assertTrue(load("").world.showWeather)
+
+        val plain = load("bars:\n  world:\n    show-weather: false\n")
+        assertFalse(plain.world.showWeather)
+        assertTrue(plain.world.enabled)
+    }
+
+    @Test
+    fun `players and world have their own switches`() {
+        val config = load("bars:\n  players:\n    enabled: false\n  world:\n    enabled: false\n")
+
+        assertFalse(config.isEnabled(BarId.PLAYERS))
+        assertFalse(config.isEnabled(BarId.WORLD))
+        assertTrue(config.isEnabled(BarId.MSPT))
     }
 }

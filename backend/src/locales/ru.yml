@@ -136,14 +136,25 @@ placeholders:
 countdown:
   tick: "<secondary>время на исходе</secondary>"
 
-# server info bars: /rambar and /tpsbar. the bar title is the live line
-# (health coloring comes from the bossbar fill or the leading mark), the rest
-# is toggle feedback. numbers are formatted by the plugin, units live here
+# server info bars: /rambar, /tpsbar, /msptbar, /playersbar and /worldbar. the
+# bar title is the live line (health coloring comes from the bossbar fill or
+# the leading mark), the rest is toggle feedback. numbers are formatted by the
+# plugin, units live here
 bars:
   ram:
     title: "<primary>RAM</primary> <secondary>{used} ГБ / {max} ГБ</secondary> <muted>({pct}%)</muted>"
   tps:
     title: "<primary>TPS</primary> <secondary>{tps}</secondary> <muted>· регион {region}</muted> <muted>· сервер {global}</muted>"
+  mspt:
+    title: "<primary>MSPT</primary> <secondary>{mspt} мс</secondary> <muted>· p95 {p95} мс</muted>"
+  players:
+    title: "<primary>Онлайн</primary> <secondary>{online}</secondary><muted>/{max}</muted> <muted>({pct}%)</muted>"
+  world:
+    title: "<primary>{world}</primary> <secondary>{time}</secondary> <muted>· {cycle}% · {weather}</muted>"
+    title-plain: "<primary>{world}</primary> <secondary>{time}</secondary>"
+    weather-clear: "ясно"
+    weather-rain: "дождь"
+    weather-thunder: "гроза"
   toggled-on: "<secondary>{bar}</secondary> <ok>включён</ok> <muted>· {player}</muted>"
   toggled-off: "<secondary>{bar}</secondary> <danger>выключен</danger> <muted>· {player}</muted>"
   no-permission-other: "<danger>нет прав включать бары другим игрокам</danger>"

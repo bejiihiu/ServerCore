@@ -34,6 +34,22 @@ class BarsStoreTest {
     }
 
     @Test
+    fun `every bar kind round-trips, including the phase two bars`() {
+        val bob = UUID.fromString("00000000-0000-0000-0000-000000000002")
+        val state = BarsState()
+        state.enable(alice, BarId.MSPT, BarSurface.BOSSBAR)
+        state.enable(alice, BarId.WORLD, BarSurface.ACTIONBAR)
+        state.enable(bob, BarId.PLAYERS, BarSurface.ACTIONBAR)
+        store().writeNow(state.snapshot())
+
+        val loaded = store().load()
+
+        assertEquals(BarId.MSPT, loaded[alice]?.get(BarSurface.BOSSBAR))
+        assertEquals(BarId.WORLD, loaded[alice]?.get(BarSurface.ACTIONBAR))
+        assertEquals(BarId.PLAYERS, loaded[bob]?.get(BarSurface.ACTIONBAR))
+    }
+
+    @Test
     fun `an absent file boots off with nobody subscribed`() {
         assertTrue(store().load().isEmpty())
     }
