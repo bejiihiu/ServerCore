@@ -177,6 +177,10 @@ current, unreleased state of the codebase.
   the performance guide and the backup and restore runbook.
 - Russian documentation: a translated README and a `docs/ru/` set covering installation, first run,
   configuration and FAQ, linked from the English pages.
+- Release verification: `deploy/verify-release.sh` downloads a published release and checks the
+  checksums the way the updater parses them, the jar's version/`folia-supported`/`packetevents` and
+  shaded kotlin classes, and the backend bundle's shape, printing a PASS/FAIL table; the maintainer
+  procedure is in `docs/release-checklist.md`.
 
 ### Changed
 

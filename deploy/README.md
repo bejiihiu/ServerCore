@@ -15,6 +15,7 @@ no semantic version; releases are tagged `build-<commitCount>-<shortSha>` and th
 | `backend.env.example` | production env, copied from the backend schema |
 | `systemd/servercore-backend.service` | hardened native service unit |
 | `pterodactyl-egg.json` | PTDL_v2 egg: Folia + PacketEvents + plugin, pre-wired to the backend |
+| `verify-release.sh` | checks a published release before anyone installs it: checksums, jar identity, backend bundle |
 
 Shared facts worth knowing before any path:
 

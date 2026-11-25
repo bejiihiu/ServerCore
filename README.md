@@ -115,6 +115,7 @@ A detailed, step-by-step walkthrough with real configuration examples lives in [
 | [UI design system](docs/ui-design-system.md) | In-game theme tokens, typography, layout rules |
 | [FAQ](docs/faq.md) | Common questions |
 | [Russian docs](docs/ru/README.md) | Russian translations of the first-run, installation, configuration and FAQ pages |
+| [Release checklist](docs/release-checklist.md) | Tag formula, what CI verifies, checking a published release, rollback |
 | [Changelog](CHANGELOG.md) | Unreleased change history and versioning scheme |
 
 ## License
