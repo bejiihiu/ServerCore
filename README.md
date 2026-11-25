@@ -105,6 +105,7 @@ A detailed, step-by-step walkthrough with real configuration examples lives in [
 | [Admission](docs/admission.md) | Linking, applications, voting, quorum, invites |
 | [Authentication](docs/authentication.md) | Passwordless login flow |
 | [Security](docs/security.md) | Threat model, tokens, command protection |
+| [Dependency audit](docs/dependency-audit.md) | Vulnerability, license and supply-chain status of every dependency |
 | [UI design system](docs/ui-design-system.md) | In-game theme tokens, typography, layout rules |
 | [FAQ](docs/faq.md) | Common questions |
 | [Changelog](CHANGELOG.md) | Unreleased change history and versioning scheme |
@@ -112,3 +113,6 @@ A detailed, step-by-step walkthrough with real configuration examples lives in [
 ## License
 
 [Proprietary](LICENSE) — copyright 2026 bejiihiu. All rights reserved.
+
+Third-party components keep their own licenses; the full list, split by what ships and what is
+provided by the server, is in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
