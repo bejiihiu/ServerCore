@@ -97,14 +97,30 @@ class SpecAuditTrail(
     private val retentionDays: Long = 30,
     private val maxEntriesPerSession: Int = 64,
     private val queueCapacity: Int = 1024,
+    private val maxTrackedSessions: Int = 4096,
 ) {
 
     private val json = Json { encodeDefaults = false }
     private val buffer = ArrayDeque<SpecAuditEntry>()
     private val drainLock = Any()
     private val perSessionCounts = ConcurrentHashMap<String, Int>()
+    private val dedupeLock = Any()
     private val droppedByFullBuffer = AtomicLong()
     private val droppedBySessionCap = AtomicLong()
+    private val droppedByDuplicate = AtomicLong()
+
+    /**
+     * session id -> events already journaled. one settled transition is one
+     * row, so a REPORT of the same (session, event) pair is a replay, not a
+     * second event: the session gets re-announced on a reconnect reconcile and
+     * a retried ws frame re-runs the reporting bridge. access-ordered and
+     * bounded — the coldest sessions fall out instead of growing a map entry
+     * per session ever observed.
+     */
+    private val recordedEvents = object : LinkedHashMap<String, MutableSet<String>>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, MutableSet<String>>): Boolean =
+            size > maxTrackedSessions
+    }
 
     @Volatile
     private var drainScheduled = false
@@ -115,11 +131,16 @@ class SpecAuditTrail(
     private var lastPrunedDay: String? = null
 
     /**
-     * enqueue one audit row. never blocks, never throws: a full buffer or an
-     * over-cap session drops the entry and bumps a counter instead.
+     * enqueue one audit row. never blocks, never throws: a replayed event, a
+     * full buffer or an over-cap session drops the entry and bumps a counter
+     * instead.
      */
     fun record(entry: SpecAuditEntry) {
         if (closed) return
+        if (isReplay(entry)) {
+            droppedByDuplicate.incrementAndGet()
+            return
+        }
         if (entry.sessionId != null) {
             val count = perSessionCounts.merge(entry.sessionId, 1, Int::plus)!!
             if (count > maxEntriesPerSession) {
@@ -148,6 +169,18 @@ class SpecAuditTrail(
     }
 
     /**
+     * true when this (session, event) pair was already journaled. entries with
+     * no session (a denial that never reached a target) can't be keyed, so
+     * they always pass.
+     */
+    private fun isReplay(entry: SpecAuditEntry): Boolean {
+        val sessionId = entry.sessionId ?: return false
+        synchronized(dedupeLock) {
+            return !recordedEvents.getOrPut(sessionId) { HashSet() }.add(entry.event)
+        }
+    }
+
+    /**
      * one session is one start plus at most one end, so the end entry is the
      * terminal one: the counter goes right there instead of keeping a map
      * entry per session for the process lifetime.
@@ -164,6 +197,9 @@ class SpecAuditTrail(
 
     /** total entries dropped because their session went over the cap */
     fun droppedForSessionCap(): Long = droppedBySessionCap.get()
+
+    /** total entries dropped because the same session already journaled the event */
+    fun droppedForDuplicate(): Long = droppedByDuplicate.get()
 
     /** blocking drain, for shutdown and tests */
     fun flushNow() {

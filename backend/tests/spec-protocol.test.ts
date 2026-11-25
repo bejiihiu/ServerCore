@@ -15,7 +15,9 @@ function fakeConnection(serverId: string): ServerConnection {
   return { serverId } as unknown as ServerConnection
 }
 
-/** records every AuditRecord the service pushes; the in-memory persistence seam */
+/** records every AuditRecord the service pushes; the in-memory persistence seam.
+ * mirrors the real sink: a record carrying a deterministic id is insert-only,
+ * so a replay of the same event never lands a second row */
 class RecordingSink {
   readonly records: AuditRecord[] = []
   failures = 0
@@ -25,6 +27,7 @@ class RecordingSink {
       this.failures -= 1
       throw new Error("sink down")
     }
+    if (record.id !== undefined && this.records.some((existing) => existing.id === record.id)) return
     this.records.push(structuredClone(record))
   }
 }
@@ -32,8 +35,9 @@ class RecordingSink {
 function envelope<T extends "SPEC_STARTED" | "SPEC_ENDED" | "SERVER_HEARTBEAT" | "SERVER_STATUS">(
   type: T,
   payload: Record<string, unknown>,
+  id = "msg_12345678",
 ) {
-  return { id: "msg_12345678", type, timestamp: Date.now(), payload } as never
+  return { id, type, timestamp: Date.now(), payload } as never
 }
 
 describe("spec payload schemas", () => {
@@ -134,6 +138,62 @@ describe("spec audit handlers", () => {
     expect(record.action).toBe("spec.ended")
     expect(record.relatedSessionId).toBe("spec-abc123")
     expect(record.details).toMatchObject({ kind: "spec", durationSec: 120, reason: "TARGET_DISCONNECTED" })
+  })
+
+  test("a replayed SPEC_STARTED for the same session writes one row", async () => {
+    const { sink, registry } = makeDeps()
+    const payload = { adminUuid: ADMIN, targetUuid: TARGET, sessionId: "spec-abc123" }
+
+    await registry.dispatch(envelope("SPEC_STARTED", payload), fakeConnection("game-1"))
+    // the plugin resends a frame the backend failed to handle under a fresh
+    // envelope id: the event identity is the session, not the frame
+    await registry.dispatch(envelope("SPEC_STARTED", payload, "msg_87654321"), fakeConnection("game-1"))
+
+    expect(sink.records).toHaveLength(1)
+    expect(sink.records[0]!.id).toBe("spec:spec-abc123:STARTED")
+  })
+
+  test("a replayed SPEC_ENDED for the same session writes one row and keeps the first reason", async () => {
+    const { sink, registry } = makeDeps()
+    await registry.dispatch(
+      envelope("SPEC_ENDED", { adminUuid: ADMIN, targetUuid: TARGET, sessionId: "spec-abc123", durationSec: 120, reason: "NORMAL" }),
+      fakeConnection("game-1"),
+    )
+    await registry.dispatch(
+      envelope("SPEC_ENDED", { adminUuid: ADMIN, targetUuid: TARGET, sessionId: "spec-abc123", durationSec: 120, reason: "FORCED" }),
+      fakeConnection("game-1"),
+    )
+
+    expect(sink.records).toHaveLength(1)
+    expect(sink.records[0]!.id).toBe("spec:spec-abc123:ENDED")
+    expect(sink.records[0]!.details).toMatchObject({ reason: "NORMAL" })
+  })
+
+  test("distinct sessions keep their own rows", async () => {
+    const { sink, registry } = makeDeps()
+    for (const sessionId of ["spec-1", "spec-2"]) {
+      await registry.dispatch(
+        envelope("SPEC_STARTED", { adminUuid: ADMIN, targetUuid: TARGET, sessionId }),
+        fakeConnection("game-1"),
+      )
+    }
+    await registry.dispatch(
+      envelope("SPEC_STARTED", { adminUuid: ADMIN, targetUuid: TARGET, sessionId: "spec-1" }),
+      fakeConnection("game-1"),
+    )
+
+    expect(sink.records.map((r) => r.id)).toEqual(["spec:spec-1:STARTED", "spec:spec-2:STARTED"])
+  })
+
+  test("a frame from a build without a session id stays a plain append", async () => {
+    const { sink, registry } = makeDeps()
+    await registry.dispatch(
+      envelope("SPEC_STARTED", { adminUuid: ADMIN, targetUuid: TARGET }),
+      fakeConnection("game-1"),
+    )
+
+    expect(sink.records).toHaveLength(1)
+    expect(sink.records[0]!.id).toBeUndefined()
   })
 
   test("a sink failure is swallowed: the connection never dies over bookkeeping", async () => {

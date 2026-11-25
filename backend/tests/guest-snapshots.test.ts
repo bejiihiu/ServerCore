@@ -91,6 +91,32 @@ describe("guest snapshot persistence", () => {
     expect(stored?.world).toBe("world")
   })
 
+  test("a redelivered GUEST_ENDED stays a no-op on the session and the snapshot", async () => {
+    const { service, store } = harness()
+
+    await service.handleGuestStarted({ minecraftUuid: UUID, sessionId: SESSION, snapshot: SNAPSHOT }, SERVER, 1_000)
+    await service.handleGuestEnded({ minecraftUuid: UUID, sessionId: SESSION, reason: "LOGOUT" })
+    // the plugin resends the durable frame under a fresh envelope id: the
+    // session is already closed and the snapshot already gone, so the replay
+    // must not create anything back
+    await service.handleGuestEnded({ minecraftUuid: UUID, sessionId: SESSION, reason: "LOGOUT" })
+
+    expect(await store.findOpenSession(UUID)).toBeNull()
+    expect(store.guestSnapshot(SESSION)).toBeNull()
+    expect(store.sessionCount).toBe(0)
+  })
+
+  test("a redelivered GUEST_ENDED AUTHENTICATED keeps the snapshot and the session", async () => {
+    const { service, store } = harness()
+
+    await service.handleGuestStarted({ minecraftUuid: UUID, sessionId: SESSION, snapshot: SNAPSHOT }, SERVER, 1_000)
+    await service.handleGuestEnded({ minecraftUuid: UUID, sessionId: SESSION, reason: "AUTHENTICATED" })
+    await service.handleGuestEnded({ minecraftUuid: UUID, sessionId: SESSION, reason: "AUTHENTICATED" })
+
+    expect(store.guestSnapshot(SESSION)).not.toBeNull()
+    expect((await store.findOpenSession(UUID))?.status).toBe("AUTHENTICATED")
+  })
+
   test("GUEST_ENDED without AUTHENTICATED purges the snapshot", async () => {
     const { service, store } = harness()
 

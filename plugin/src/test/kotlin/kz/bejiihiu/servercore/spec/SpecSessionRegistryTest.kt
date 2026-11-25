@@ -127,6 +127,32 @@ class SpecSessionRegistryTest {
     }
 
     @Test
+    fun `a re-announced session writes one audit row per event`() {
+        val sender = RecordingSender()
+        val trail = trailFor { 100_000L }
+        val registry = newRegistry(sender, audit = trail)
+        val s = session()
+
+        registry.started(s)
+        // reconnect reconcile re-announces what is live, and a retried report
+        // can repeat the end: the wire stays at-least-once (the backend
+        // dedupes by event), the local journal must not grow twins
+        registry.started(s)
+        registry.ended(s, ExitReason.COMMAND)
+        registry.ended(s, ExitReason.COMMAND)
+        trail.flushNow()
+
+        assertEquals(2, sender.started.size, "every announcement still goes out")
+        val file = Files.list(dir).use { stream ->
+            stream.map { p -> p.fileName.toString() }.toList().single()
+        }
+        val lines = Files.readAllLines(dir.resolve(file)).filter { it.isNotBlank() }
+        val events = lines.map { Json.parseToJsonElement(it).jsonObject["event"]!!.jsonPrimitive.content }
+        assertEquals(listOf(SpecAuditEvents.START, SpecAuditEvents.END), events)
+        assertEquals(2, trail.droppedForDuplicate())
+    }
+
+    @Test
     fun `denials land in the trail only, never on the wire`() {
         val sender = RecordingSender()
         val trail = trailFor { 100_000L }

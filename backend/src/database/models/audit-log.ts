@@ -7,6 +7,11 @@ export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number]
 /**
  * append-only audit trail. entries are never updated or deleted — that's the
  * point of an audit log.
+ *
+ * spec rows are the exception to "one doc per write": they carry a
+ * deterministic string _id (`spec:<sessionId>:STARTED`) so a replayed event
+ * upserts onto its own row instead of appending a twin. everything else keeps
+ * the default ObjectId.
  */
 export interface AuditLog {
   actorType: AuditActorType

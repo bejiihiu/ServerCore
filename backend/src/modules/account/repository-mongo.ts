@@ -9,6 +9,19 @@ const DUPLICATE_KEY_CODE = 11000
 
 type WithMaybeCode = { code?: number }
 
+/**
+ * the one driver call the deterministic-id audit write needs. mongoose would
+ * cast a string _id against the schema's ObjectId and throw, so the upsert
+ * goes straight to the collection with an explicit shape instead.
+ */
+type DeterministicIdWriter = {
+  updateOne(
+    filter: { _id: string },
+    update: { $setOnInsert: Record<string, unknown> },
+    options: { upsert: true },
+  ): Promise<unknown>
+}
+
 /** maps a mongoose duplicate-key error onto the storage-neutral one */
 function mapDuplicate(err: unknown, field: string): unknown {
   if (typeof err === "object" && err !== null && (err as WithMaybeCode).code === DUPLICATE_KEY_CODE) {
@@ -179,7 +192,7 @@ export class MongoAuthRequestRepository implements AuthRequestRepository {
 
 export class MongoAuditRepository implements AuditRepository {
   async append(record: AuditRecord): Promise<void> {
-    await AuditLogModel.create({
+    const doc = {
       actorType: record.actorType,
       actorId: record.actorId,
       action: record.action,
@@ -188,6 +201,22 @@ export class MongoAuditRepository implements AuditRepository {
       details: record.details,
       serverId: record.serverId,
       relatedSessionId: record.relatedSessionId,
-    })
+    }
+    if (record.id === undefined) {
+      await AuditLogModel.create(doc)
+      return
+    }
+    // deterministic _id + $setOnInsert: replaying the same event lands on the
+    // row it already wrote instead of appending a twin. the id is a readable
+    // string, outside the schema's ObjectId type, so the write goes through
+    // the raw collection — the model would refuse to cast it.
+    const rows = AuditLogModel.collection as unknown as DeterministicIdWriter
+    await rows.updateOne(
+      { _id: record.id },
+      // the event time, not the retry time: a redelivered frame keeps the
+      // stamp of the moment the thing actually happened
+      { $setOnInsert: { ...doc, createdAt: record.createdAt } },
+      { upsert: true },
+    )
   }
 }

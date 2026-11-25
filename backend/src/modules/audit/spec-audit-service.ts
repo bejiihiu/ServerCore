@@ -8,6 +8,10 @@ import type { AuditRecord } from "../account/repository.js"
  *
  * the entry carries uuids and usernames only, nothing else about the
  * players — an audit log must not become a second source of personal data.
+ *
+ * rows stay append-only, but each (session, event) pair is written at most
+ * once: a handler retried by the plugin under a fresh envelope id must not
+ * leave a duplicate trail. see [specAuditId].
  */
 export type SpecAuditAction = "spec.started" | "spec.ended"
 
@@ -25,6 +29,18 @@ export type SpecAuditEntry = {
   /** serverId of the connection the event arrived through */
   serverId: string
   occurredAt: Date
+}
+
+/**
+ * deterministic audit row identity per (session, event). the plugin resends a
+ * frame the backend failed to process under a fresh envelope id, so the same
+ * observation start (or end) reaches this service twice; the id makes the
+ * second write land on the row the first one created instead of appending a
+ * twin. without a session id there is nothing to key on — plain append.
+ */
+export function specAuditId(action: SpecAuditAction, sessionId: string | undefined): string | undefined {
+  if (sessionId === undefined) return undefined
+  return `spec:${sessionId}:${action === "spec.started" ? "STARTED" : "ENDED"}`
 }
 
 /** port over the audit_logs collection; mongo implements it, tests fake it */
@@ -45,9 +61,14 @@ export class SpecAuditService {
   }
 
   /** one audit row per event; a sink failure is logged, never propagated —
-   * the websocket handler must not blow up the connection over bookkeeping */
+   * the websocket handler must not blow up the connection over bookkeeping.
+   * a replayed event (fresh envelope id, same session) hits the deterministic
+   * id and keeps the row its first delivery created: the row is append-only,
+   * the first record of an end wins over a later retry carrying a reason. */
   async record(entry: SpecAuditEntry): Promise<void> {
+    const id = specAuditId(entry.action, entry.sessionId)
     const record: AuditRecord = {
+      ...(id !== undefined ? { id } : {}),
       actorType: "ADMIN",
       actorId: entry.adminUuid,
       action: entry.action,
