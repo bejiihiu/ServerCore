@@ -1,17 +1,28 @@
-# verified against upstream registries on 2026-11-24
+# every version below was checked against its upstream registry on 2026-11-25
+# (maven-metadata.xml or plugins.gradle.org). the comment above each block names
+# the repository it resolves from and the channel it is on: "stable" here means
+# the newest release that is not a snapshot/eap, nothing more.
 [versions]
-# kotlin 2.5.0 stable is planned for dec 2026 — bump when it lands
+# kotlinlang stable channel, maven central. 2.5.0 is planned for dec 2026
 kotlin = "2.4.21"
+# papermc maven-public: "-stable" is part of the version string, not a label we
+# add. 26.3 is the minecraft line and has to match the server we run
 folia-api = "26.3.build.27-stable"
 minecraft = "26.3"
 
+# gradle plugin portal, stable channel
 shadow = "9.6.1"
-run-task = "3.1.0"
-foojay-resolver = "1.0.0"
+run-paper = "3.1.0"
 
+# maven central, stable channel
 kotlinx-coroutines = "1.11.0"
 kotlinx-serialization = "1.13.0"
+# junit 6.x line — jupiter and the platform launcher must move together
 junit = "6.1.3"
+
+# api-only artifacts the server already ships; compileOnly, never bundled.
+# packetevents comes from codemc maven-releases, placeholderapi from
+# repo.helpch.at/releases, the other two from maven central
 packetevents = "2.14.0"
 luckperms = "5.5"
 placeholderapi = "2.12.3"
@@ -29,6 +40,8 @@ luckperms-api = { module = "net.luckperms:api", version.ref = "luckperms" }
 placeholderapi = { module = "me.clip:placeholderapi", version.ref = "placeholderapi" }
 flectonepulse-api = { module = "net.flectone.pulse:api", version.ref = "flectonepulse" }
 
+# the test framework tracks the kotlin version, so it shares that ref
+kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit" }
 
@@ -36,4 +49,4 @@ junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
-run-paper = { id = "xyz.jpenilla.run-paper", version.ref = "run-task" }
+run-paper = { id = "xyz.jpenilla.run-paper", version.ref = "run-paper" }

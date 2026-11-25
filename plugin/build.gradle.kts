@@ -1,4 +1,5 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import org.gradle.api.tasks.bundling.AbstractArchiveTask
 import xyz.jpenilla.runpaper.task.RunServer
 
 plugins {
@@ -49,7 +50,7 @@ dependencies {
     implementation(libs.kotlin.stdlib)
 
     // cross-implementation protocol tests (test source set only)
-    testImplementation(kotlin("test"))
+    testImplementation(libs.kotlin.test)
 
     // tests need the adventure + snakeyaml transitives on the classpath;
     // pure-logic tests also touch bukkit enums (GameMode), the api jar is enough
@@ -69,7 +70,8 @@ kotlin {
     jvmToolchain(25)
 }
 
-// run-paper 3.1.0: registers a runFolia task that boots a folia jar instead of paper
+// run-paper registers a runFolia task that boots a folia jar instead of paper,
+// pinned through the catalog so the wrapper and the plugin move together
 runPaper {
     folia.registerTask()
 }
@@ -121,15 +123,47 @@ tasks {
     named<ShadowJar>("shadowJar") {
         archiveClassifier = ""
 
-        // kotlin module metadata files collide across stdlib variants; let the
-        // transformer see all of them instead of silently dropping duplicates
+        // INCLUDE, not EXCLUDE: the KotlinModuleMetadataTransformer has to see
+        // every kotlin_module file (they collide across stdlib variants) or it
+        // silently drops one, and shadow warns about exactly that. nothing in
+        // today's dependency set actually collides, and the flag below turns a
+        // future collision into a failed build instead of a zip with two entries
+        // for the same path and an undefined winner
         duplicatesStrategy = DuplicatesStrategy.INCLUDE
+        failOnDuplicateEntries.set(true)
+
+        // the bundled jars are multi-release (module-info under META-INF/versions),
+        // but those descriptors are useless to a bukkit plugin: the server never
+        // loads us as a named module. shadow drops the versioned entries, and this
+        // switch keeps it from also advertising Multi-Release in the manifest —
+        // otherwise the jar claims versioned classes it does not carry
+        addMultiReleaseAttribute.set(false)
+        exclude("META-INF/versions/**", "module-info.class")
 
         // folia loads all plugins in one classloader space; relocate the stdlib
         // so we can't clash with any other kotlin plugin on the server
         relocate("kotlin", "kz.bejiihiu.servercore.libs.kotlin")
         relocate("kotlinx", "kz.bejiihiu.servercore.libs.kotlinx")
         mergeServiceFiles()
+
+        manifest {
+            attributes(
+                "Implementation-Title" to "ServerCore",
+                "Implementation-Version" to project.version.toString(),
+                "Implementation-Vendor" to "bejiihiu",
+                "Implementation-Vendor-Id" to project.group.toString(),
+            )
+        }
+    }
+
+    // same inputs -> same bytes, so a rebuild can be checked against the
+    // published SHA256SUMS entry instead of eyeballed against another jar.
+    // gradle 9 already archives reproducibly by default; pinning it here keeps
+    // a future default flip or a -Dorg.gradle.archives.* override from quietly
+    // making release hashes machine-dependent
+    withType<AbstractArchiveTask>().configureEach {
+        isPreserveFileTimestamps = false
+        isReproducibleFileOrder = true
     }
 }
 
