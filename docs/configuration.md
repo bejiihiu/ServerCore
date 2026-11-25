@@ -1,5 +1,7 @@
 # Configuration
 
+**Languages:** English | [Русский](ru/configuration.md)
+
 ServerCore is configured in two places: the backend's environment file and the plugin's `config.yml`. This page documents every option.
 
 ## Backend — environment variables
