@@ -4,11 +4,12 @@ import type { BotContext } from "../../src/bot/context.js"
 /**
  * a scripted stand-in for grammY's conversation handle.
  *
- * it reproduces the three things our flows rely on: `external` (the replay-safe
+ * it reproduces the four things our flows rely on: `external` (the replay-safe
  * escape hatch - on a resumed conversation its result comes from the log and
- * the side effect does not run again), `waitForCallbackQuery` (an update that
- * does not match the awaited buttons fires `otherwise` and the wait continues,
- * exactly like the plugin), and the plugin's own acknowledge step.
+ * the side effect does not run again), `wait` / `waitForCallbackQuery` (an
+ * update that does not match the awaited buttons fires `otherwise` and the
+ * wait continues, exactly like the plugin), `now` (the replay-safe clock a
+ * wait timeout is measured against) and the plugin's own acknowledge step.
  *
  * running out of scripted updates models an abandoned conversation: the real
  * bot would keep the handler parked until restart, the harness throws so the
@@ -17,9 +18,11 @@ import type { BotContext } from "../../src/bot/context.js"
 
 export type ConversationStep =
   /** a callback query carrying this data */
-  | { kind: "callback"; data: string }
+  | { kind: "callback"; data: string; advanceMs?: number }
+  /** a plain text message */
+  | { kind: "text"; text: string; advanceMs?: number }
   /** any update that is not the awaited button: `otherwise` fires, the wait repeats */
-  | { kind: "other" }
+  | { kind: "other"; advanceMs?: number }
 
 export type SentScreen = { text: string; other?: Record<string, unknown> }
 
@@ -36,6 +39,8 @@ export type HarnessOptions = {
   steps: ConversationStep[]
   /** replay log of a previous run's external results: served instead of re-running them */
   replayExternals?: unknown[]
+  /** wall clock the harness starts at, ms (step `advanceMs` moves it forward) */
+  startMs?: number
 }
 
 export type ConversationHarness = {
@@ -77,27 +82,62 @@ export function scriptedConversation(options: HarnessOptions): ConversationHarne
   let externalRuns = 0
   let stepIndex = 0
   let externalIndex = 0
+  let clockMs = options.startMs ?? 1_760_000_000_000
 
   const reply = replyTarget(sent)
   // outside the conversation only the raw fields the flows read exist
   const outer = {
     from: { id: telegramId, username },
     ...reply,
+    async answerCallbackQuery() {
+      // the builder's entry ctx carries the update that opened the flow, which
+      // is a command in every flow we have: nothing to acknowledge there
+    },
   } as unknown as BotContext
 
-  const conversation = {
-    async external<T>(fn: (ctx: BotContext) => T | Promise<T>): Promise<T> {
-      if (options.replayExternals !== undefined) {
-        if (externalIndex >= options.replayExternals.length) {
-          throw new Error(`replay log exhausted at external #${externalIndex}`)
-        }
-        return options.replayExternals[externalIndex++] as T
+  /** the ctx a step hands back: an update plus the time it took to arrive */
+  function delivered(step: ConversationStep): BotContext {
+    clockMs += step.advanceMs ?? 0
+    const update = {
+      from: { id: telegramId, username },
+      ...reply,
+      async answerCallbackQuery() {
+        if (step.kind === "callback") answered.push(step.data)
+      },
+    }
+    if (step.kind === "callback") return { ...update, callbackQuery: { data: step.data } } as unknown as BotContext
+    if (step.kind === "text") return { ...update, message: { text: step.text } } as unknown as BotContext
+    return { ...update, message: {} } as unknown as BotContext
+  }
+
+  /** the replay-safe escape hatch: logged values are served on a resumed run */
+  async function runExternal<T>(fn: (ctx: BotContext) => T | Promise<T>): Promise<T> {
+    if (options.replayExternals !== undefined) {
+      if (externalIndex >= options.replayExternals.length) {
+        throw new Error(`replay log exhausted at external #${externalIndex}`)
       }
-      const value = await fn(outer)
-      // the real plugin persists the value as json, so only plain data survives
-      externalLog.push(value === undefined ? null : JSON.parse(JSON.stringify(value)))
-      externalRuns++
-      return value
+      return options.replayExternals[externalIndex++] as T
+    }
+    const value = await fn(outer)
+    // the real plugin persists the value as json, so only plain data survives
+    externalLog.push(value === undefined ? null : JSON.parse(JSON.stringify(value)))
+    externalRuns++
+    return value
+  }
+
+  const conversation = {
+    external: runExternal,
+
+    /** replay-safe wall clock: the plugin logs it like any other external */
+    async now(): Promise<number> {
+      return runExternal(() => clockMs)
+    },
+
+    async wait(): Promise<BotContext> {
+      const index = stepIndex++
+      const step = options.steps[index]
+      if (step === undefined) throw new ConversationAbandoned(index)
+      return delivered(step)
     },
 
     async waitForCallbackQuery(
@@ -110,8 +150,8 @@ export function scriptedConversation(options: HarnessOptions): ConversationHarne
         const index = stepIndex++
         const step = options.steps[index]
         if (step === undefined) throw new ConversationAbandoned(index)
-        if (step.kind === "other" || !matchesTrigger(step.data, triggers)) {
-          await waitOptions?.otherwise?.(outer)
+        if (step.kind !== "callback" || !matchesTrigger(step.data, triggers)) {
+          await waitOptions?.otherwise?.(delivered(step))
           continue
         }
         const data = step.data

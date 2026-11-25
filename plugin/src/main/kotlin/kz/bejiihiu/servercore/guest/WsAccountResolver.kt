@@ -55,6 +55,15 @@ class WsAccountResolver(
     override fun pendingLink(uuid: UUID): GuestLink? =
         pendingLinks[uuid]?.takeIf { it.fresh(config.linkTtlMs) }
 
+    /**
+     * a quit drops the link that belonged to the session that just ended. the
+     * backend mints a fresh one on the next join, so the map cannot grow one
+     * stale entry per player over a long uptime.
+     */
+    override fun forget(uuid: UUID) {
+        pendingLinks.remove(uuid)
+    }
+
     override fun resolve(uuid: UUID, username: String): CompletableFuture<AccountStatus> {
         // one auth request per uuid: a duplicate login rides the in-flight
         // check instead of making the backend hand out a second deep link

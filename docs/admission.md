@@ -42,6 +42,7 @@ Guarantees:
 
 - The linked UUID is attached automatically — the player cannot misattribute the application.
 - Repeated submissions are rate-limited; a duplicate cannot overwrite a pending one.
+- **An unanswered step closes the form after `APPLY_IDLE_TIMEOUT_MINUTES` (30 by default).** The saved answers stay in the draft, so `/application` resumes the questionnaire at the same question instead of swallowing the user's next message.
 - The applicant can review the submitted form afterwards.
 - **One application per UUID per 3 months.** The cooldown is anchored to `lastApplicationAt` and survives application deletion — deleting an old form does not reset the clock.
 - On rejection the applicant receives the result in the bot.

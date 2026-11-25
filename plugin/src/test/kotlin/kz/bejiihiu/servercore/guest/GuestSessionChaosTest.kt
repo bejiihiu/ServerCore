@@ -136,6 +136,87 @@ class GuestSessionChaosTest {
         fun drain() = uuids.forEach { quit(it) }
     }
 
+    /**
+     * the duplicate-login path exactly as the service runs it: the second
+     * client joins like any other, the verdict goes through [JoinPolicy], and
+     * only `KeepExisting` executes the takeover. the counters below are what a
+     * regression to an early rebind shortcut would trip over.
+     */
+    private inner class DuplicateLogin {
+        val uuid: UUID = UUID.randomUUID()
+        val registry = GuestSessionRegistry()
+        val counter = GuestSessionCounter(dir.resolve("dup-counts.json"), Runnable::run).also { it.load() }
+        var burns = 0
+        var rebinds = 0
+        var kicks = 0
+        private var ids = 0
+
+        fun join(status: AccountStatus) {
+            when (JoinPolicy.decide(
+                status = status,
+                sessionExists = registry.contains(uuid),
+                alreadyAuthorized = registry.isAuthorized(uuid),
+                sessionsUsed = counter.count(uuid),
+                sessionLimit = 3,
+                kickAfterLimit = true,
+                storedSnapshot = false,
+                guestEnabled = true,
+            )) {
+                is JoinAction.StartGuest -> registry.start(uuid, create = {
+                    burns++
+                    counter.increment(uuid)
+                    snapshot("session-${++ids}")
+                })
+                is JoinAction.KeepExisting -> rebinds++
+                is JoinAction.Ungate -> registry.remove(uuid)
+                is JoinAction.KickOverLimit, is JoinAction.KickDisabled, is JoinAction.KickDenied -> {
+                    registry.remove(uuid)
+                    kicks++
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `a guest's second client takes the same session over without a second burn`() {
+        val login = DuplicateLogin()
+        login.join(AccountStatus.GuestPendingLogin(null))
+        val first = login.registry.get(login.uuid)!!
+
+        login.join(AccountStatus.GuestPendingLogin("https://t.me/Bot?start=fresh"))
+
+        assertEquals(first.sessionId, login.registry.get(login.uuid)?.sessionId, "one session, not a second one")
+        assertEquals(1, login.burns, "a takeover is not a new session")
+        assertEquals(1, login.counter.count(login.uuid))
+        assertEquals(1, login.rebinds)
+        assertEquals(0, login.kicks)
+    }
+
+    @Test
+    fun `a denied account never rebinds the session already running`() {
+        val login = DuplicateLogin()
+        login.join(AccountStatus.GuestPendingLogin(null))
+        login.join(AccountStatus.Denied(DenyCode.BANNED))
+
+        assertEquals(0, login.rebinds, "a denied account must not inherit the live session")
+        assertEquals(1, login.kicks)
+        assertFalse(login.registry.contains(login.uuid), "the denied verdict tears the session down")
+        assertEquals(1, login.counter.count(login.uuid), "no second burn on the denied join")
+    }
+
+    @Test
+    fun `an authorized second client ungates instead of staying a guest`() {
+        val login = DuplicateLogin()
+        login.join(AccountStatus.GuestPendingLogin(null))
+        login.join(AccountStatus.Authorized)
+
+        assertFalse(login.registry.contains(login.uuid), "the session ends in the ungate, not in a takeover")
+        assertEquals(0, login.rebinds)
+        assertEquals(0, login.kicks)
+        assertEquals(1, login.burns)
+        assertTrue(login.registry.isAuthorized(login.uuid).not(), "no latch is invented by a resolver verdict")
+    }
+
     @Test
     fun `randomised join quit rebind approve streams keep one session and one burn per start`() {
         val uuids = (1..6).map { UUID.randomUUID() }

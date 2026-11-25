@@ -113,7 +113,11 @@ export function registerAdmissionFlows(
   // the application conversation rides the shared conversations plugin
   // installed in createBot (mongo-backed); only the registration happens here
   bot.use(createConversation(
-    createApplicationConversation({ applications, voting }),
+    createApplicationConversation({
+      applications,
+      voting,
+      idleTimeoutMs: config.applyIdleTimeoutMs,
+    }),
     { id: APPLICATION_CONVERSATION_ID },
   ))
 

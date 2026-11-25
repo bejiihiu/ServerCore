@@ -107,6 +107,16 @@ describe("config", () => {
   test("an empty AUTH_MESSAGE_EFFECT_ID means no effect", () => {
     expect(loadConfig(env({ AUTH_MESSAGE_EFFECT_ID: "" })).authMessageEffectId).toBeUndefined()
   })
+
+  test("the questionnaire idle window defaults to 30 minutes of silence", () => {
+    expect(loadConfig(env()).applyIdleTimeoutMs).toBe(30 * 60_000)
+    expect(loadConfig(env({ APPLY_IDLE_TIMEOUT_MINUTES: "5" })).applyIdleTimeoutMs).toBe(5 * 60_000)
+  })
+
+  test("rejects an idle window of zero or more than a day", () => {
+    expect(() => loadConfig(env({ APPLY_IDLE_TIMEOUT_MINUTES: "0" }))).toThrow(ConfigError)
+    expect(() => loadConfig(env({ APPLY_IDLE_TIMEOUT_MINUTES: "1441" }))).toThrow(ConfigError)
+  })
 })
 
 describe("config validation messages", () => {

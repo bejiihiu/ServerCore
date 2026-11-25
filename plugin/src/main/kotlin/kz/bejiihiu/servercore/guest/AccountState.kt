@@ -63,4 +63,7 @@ interface AccountStateResolver {
 /** source of personal deep links received from the backend, empty when offline */
 interface GuestLinkSource {
     fun pendingLink(uuid: UUID): GuestLink?
+
+    /** drops the remembered link for a uuid; called when the session it belongs to ends */
+    fun forget(uuid: UUID) = Unit
 }

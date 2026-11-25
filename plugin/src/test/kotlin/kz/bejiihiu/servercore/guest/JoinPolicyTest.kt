@@ -95,4 +95,32 @@ class JoinPolicyTest {
     fun `denied account kicks with its code`() {
         assertEquals(JoinAction.KickDenied(DenyCode.BANNED), decide(status = AccountStatus.Denied(DenyCode.BANNED)))
     }
+
+    @Test
+    fun `a second client of an authorized account ungates instead of staying restricted`() {
+        assertEquals(JoinAction.Ungate, decide(status = AccountStatus.Authorized, sessionExists = true))
+        // the approval latch outranks the session slot too
+        assertEquals(JoinAction.Ungate, decide(alreadyAuthorized = true, sessionExists = true))
+    }
+
+    @Test
+    fun `a guest's second client keeps the running session and never burns again`() {
+        assertEquals(JoinAction.KeepExisting, decide(sessionExists = true))
+        // the budget being spent cannot kick a client that is taking over a
+        // session already granted to the same uuid
+        assertEquals(
+            JoinAction.KeepExisting,
+            decide(sessionExists = true, sessionsUsed = 3, sessionLimit = 3, kickAfterLimit = true),
+        )
+        // turning guest mode off does not evict a session already in progress
+        assertEquals(JoinAction.KeepExisting, decide(sessionExists = true, guestEnabled = false))
+    }
+
+    @Test
+    fun `a denied account cannot take over a running session`() {
+        assertEquals(
+            JoinAction.KickDenied(DenyCode.BANNED),
+            decide(status = AccountStatus.Denied(DenyCode.BANNED), sessionExists = true),
+        )
+    }
 }

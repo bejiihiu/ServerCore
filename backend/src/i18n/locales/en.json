@@ -114,6 +114,8 @@
     "summaryAside": "Once submitted, the application goes to a vote in the closed group — the result arrives here.",
     "cancelledTitle": "Application cancelled",
     "cancelledBody": "Start over with /application.",
+    "idleTitle": "Application paused",
+    "idleBody": "No answer for a while, so the form closed. Your answers are saved — continue with /application.",
     "submittedTitle": "Application submitted",
     "submittedBody": "The members' vote runs in the closed group. The result will arrive here.",
     "noneTitle": "No applications yet",
