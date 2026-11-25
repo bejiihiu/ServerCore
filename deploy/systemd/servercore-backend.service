@@ -1,0 +1,82 @@
+[Unit]
+Description=ServerCore backend (Bun: fastify /health + plugin websocket gateway)
+Documentation=https://github.com/bejiihiu/ServerCore
+# the backend binds its own ports, so there is no socket to wait for; it does
+# need a working network stack and DNS for mongodb and the telegram api
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=servercore
+Group=servercore
+
+# unpacked backend bundle (package.json, bun.lock, src/) lives here:
+#   tar -xzf servercore-backend-<tag>.tar.gz -C /opt/servercore
+#   bun install --frozen-lockfile --production
+WorkingDirectory=/opt/servercore/backend
+
+# must match package.json "start": bun run src/app.ts (same as the Dockerfile).
+# run 'command -v bun' and put the real path here
+ExecStart=/usr/local/bin/bun run src/app.ts
+
+# PORT, WS_PORT, MONGODB_URI, BOT_TOKEN, SERVERCORE_SERVER_CREDENTIALS, ...
+# one KEY=value per line, no trailing comments, owned by root mode 0600
+EnvironmentFile=/etc/servercore/backend.env
+
+Restart=always
+RestartSec=5s
+# sigterm enters the graceful path: drain in-flight frames (WS_DRAIN_TIMEOUT_MS,
+# default 5s), stop the bot, close mongo. the backend exits by itself, so this
+# is only the outer fence for a hung shutdown
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+
+# the backend writes nothing outside this directory: state is in mongodb and
+# the locale bundle is read-only. HOME gives bun a private place for anything
+# it decides to cache
+StateDirectory=servercore
+Environment=HOME=/var/lib/servercore
+
+# --- hardening ---
+
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+
+# read-only root with exactly one writable path
+ReadWritePaths=/var/lib/servercore
+
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+# the runtime falls back to plain read/write and recvmsg/sendmsg when a filter
+# refuses the batched variants. if a future bun build dies at startup with an
+# EPERM in the journal, clear this line first instead of guessing
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# no capabilities at all: high ports only, no raw sockets
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# bun's javascriptcore jit needs writable+executable mappings, so this one
+# hardening knob must stay off (it would abort the runtime at startup)
+MemoryDenyWriteExecute=no
+
+UMask=0077
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

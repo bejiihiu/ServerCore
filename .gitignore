@@ -29,6 +29,8 @@ IDEA.md
 .env.*
 !.env.example
 backend/.env
+# the deploy kit's real env file, created from deploy/backend.env.example
+deploy/backend.env
 
 # backend (bun)
 backend/node_modules/

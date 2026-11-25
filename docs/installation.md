@@ -10,6 +10,9 @@ This guide walks through a full deployment: MongoDB, the backend, the Telegram b
 > backend from source and build the plugin jar locally; everything else below is identical.
 >
 > In a hurry? [First run](first-run.md) is the short operator checklist; this page is the full walkthrough.
+>
+> Want the plumbing already written? The [deployment kit](../deploy/README.md) ships a Docker Compose stack,
+> a hardened systemd unit and a Pterodactyl egg, each with numbered steps and verification checkpoints.
 
 ## Prerequisites
 

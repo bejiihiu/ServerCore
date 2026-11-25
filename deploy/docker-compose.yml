@@ -1,0 +1,103 @@
+# servercore backend, containerised.
+#
+# ports and startup mirror the code, not the docs:
+#   PORT   8080  fastify http plane, GET /health only
+#   WS_PORT 8081 native bun gateway, plugin path is exactly /ws
+#   command     bun run src/app.ts (same as backend/Dockerfile and package.json)
+#
+# quick start (from the repository root):
+#   cp deploy/backend.env.example deploy/backend.env   # fill MONGODB_URI, BOT_TOKEN, SERVERCORE_SERVER_CREDENTIALS
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#   curl -s http://127.0.0.1:8080/health
+#
+# tls for the gateway (set SERVERCORE_DOMAIN and ACME_EMAIL first):
+#   docker compose -f deploy/docker-compose.yml --profile proxy up -d
+#
+# the game servers then point backend.url at wss://<domain>/ws
+
+name: servercore
+
+services:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    image: servercore-backend:local
+    env_file:
+      - ./backend.env
+    restart: unless-stopped
+    networks:
+      - servercore
+    ports:
+      # health endpoint, operator/loopback only - the plugin never calls it
+      - "127.0.0.1:${SERVERCORE_HTTP_BIND:-8080}:8080"
+      # uncomment only when game servers connect straight to the gateway
+      # (no proxy profile below). with the proxy, 8081 stays private.
+      # - "8081:8081"
+    healthcheck:
+      # 503 means "mongo is down, stay degraded" - docker then reports the
+      # container unhealthy instead of swallowing it
+      test:
+        - CMD
+        - bun
+        - "-e"
+        - "fetch('http://127.0.0.1:' + (process.env.PORT || 8080) + '/health').then(r => process.exit(r.status === 200 ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    # sigterm starts the graceful path (drain up to WS_DRAIN_TIMEOUT_MS,
+    # default 5000ms), so give docker room beyond that
+    stop_grace_period: 30s
+    # the backend touches no files at runtime: state lives in mongodb, the
+    # locale bundle is read-only in the image
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  # opt-in reverse proxy: terminates wss on 443 and forwards /ws to the
+  # gateway. the plugin handshake carries server|ts|nonce|sig in the query
+  # string, so nothing here may rewrite the path or drop the query.
+  caddy:
+    image: caddy:2-alpine
+    profiles:
+      - proxy
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      SERVERCORE_DOMAIN: ${SERVERCORE_DOMAIN:-mc-api.example.com}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - servercore
+
+  # opt-in single-node mongodb for a first bring-up or a small host. a
+  # production install should point MONGODB_URI at a managed replica set
+  # (atlas) or a local replica set instead - one node is a single point of
+  # failure for the account/vote data.
+  mongo:
+    image: mongo:7
+    profiles:
+      - local-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - servercore
+
+networks:
+  servercore:
+
+volumes:
+  caddy_data:
+  caddy_config:
+  mongo_data:

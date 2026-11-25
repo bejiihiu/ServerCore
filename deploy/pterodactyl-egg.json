@@ -1,0 +1,136 @@
+{
+    "_comment": "ServerCore game server egg. Import through Admin > Nests > Import Egg (PTDL_v2).",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2026-11-25T07:24:53+00:00",
+    "name": "ServerCore (Folia)",
+    "author": "bejiihiu.xs",
+    "description": "Folia 26.3 server for the ServerCore network: downloads Folia from the PaperMC v3 API, PacketEvents 2.14.0 (hard dependency), and the ServerCore plugin from its GitHub release, then writes plugins/ServerCore/config.yml with the backend gateway link already filled in.\n\nAllocate port 25565 (the primary allocation is written into server.properties). Java 25 is mandatory: the plugin is compiled for a Java 25 toolchain and will not load on 21. Backend Gateway URL must be the public wss://host[:port]/ws endpoint - the gateway answers 404 on any other path, and the Server ID + Server Secret must match SERVERCORE_SERVER_CREDENTIALS on the backend.",
+    "features": [
+        "eula",
+        "java_version",
+        "pid_limit"
+    ],
+    "docker_images": {
+        "Java 25": "ghcr.io/pterodactyl/yolks:java_25"
+    },
+    "file_denylist": [],
+    "startup": "java -Xms128M -XX:MaxRAMPercentage=95.0 -Dterminal.jline=false -Dterminal.ansi=true -jar {{SERVER_JARFILE}} nogui",
+    "config": {
+        "files": "{\n    \"server.properties\": {\n        \"parser\": \"properties\",\n        \"find\": {\n            \"server-ip\": \"0.0.0.0\",\n            \"server-port\": \"{{server.build.default.port}}\",\n            \"query.port\": \"{{server.build.default.port}}\"\n        }\n    }\n}",
+        "startup": "{\n    \"done\": \")! For help, type \"\n}",
+        "logs": "{}",
+        "stop": "stop"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!/bin/ash\n# ServerCore game server install: Folia + PacketEvents + the ServerCore plugin,\n# pre-wired to the backend gateway from the egg variables.\n#\n# files land in /mnt/server:\n#   folia.jar                     the server (Server Jar File variable)\n#   plugins/PacketEvents-<v>.jar  hard plugin dependency\n#   plugins/ServerCore-<tag>.jar  the plugin, checked against the release's SHA256SUMS.txt\n#   plugins/ServerCore/config.yml only when absent, with the backend link filled in\n\nset -eu\n\nUA=\"Pterodactyl (https://pterodactyl.io) ServerCore egg\"\nFOLIA_API=\"https://fill.papermc.io/v3/projects/folia\"\n\n# sha256 of a file, empty when the install container has neither tool\nsha256_of() {\n    if command -v sha256sum >/dev/null 2>&1; then\n        sha256sum \"$1\" | awk '{print $1}'\n    elif command -v openssl >/dev/null 2>&1; then\n        openssl dgst -sha256 \"$1\" | awk '{print $NF}'\n    else\n        echo \"\"\n    fi\n}\n\nmkdir -p /mnt/server\ncd /mnt/server\nmkdir -p plugins\n\n# --- folia -------------------------------------------------------------------\n# the v2 papermc api is gone (410); v3 is the only working one.\n# /versions/<v> gives { builds: [28, 27, ...] }, /builds/<n> carries the url.\nVERSION=\"${FOLIA_VERSION:-26.3}\"\nBUILD=\"${FOLIA_BUILD:-latest}\"\n\necho \"resolving folia ${VERSION}\"\n\nif ! curl -fsSL -A \"${UA}\" -o /tmp/folia-version.json \"${FOLIA_API}/versions/${VERSION}\"; then\n    echo \"error: folia version ${VERSION} is not published (check Folia Version)\"\n    exit 1\nfi\n\nif [ \"${BUILD}\" = \"latest\" ]; then\n    BUILD=$(jq -r '.builds[0] // empty' /tmp/folia-version.json)\n    if [ -z \"${BUILD}\" ]; then\n        echo \"error: no builds for folia ${VERSION}\"\n        exit 1\n    fi\nelse\n    if ! jq -e --arg b \"${BUILD}\" '.builds | map(tostring) | index($b)' /tmp/folia-version.json >/dev/null; then\n        echo \"error: folia ${VERSION} has no build ${BUILD} (use latest or a build from the api)\"\n        exit 1\n    fi\nfi\n\nif ! curl -fsSL -A \"${UA}\" -o /tmp/folia-build.json \"${FOLIA_API}/versions/${VERSION}/builds/${BUILD}\"; then\n    echo \"error: could not read folia ${VERSION} build ${BUILD}\"\n    exit 1\nfi\n\nFOLIA_URL=$(jq -r '.downloads.\"server:default\".url // empty' /tmp/folia-build.json)\nFOLIA_SHA=$(jq -r '.downloads.\"server:default\".checksums.sha256 // empty' /tmp/folia-build.json)\nif [ -z \"${FOLIA_URL}\" ]; then\n    echo \"error: build ${BUILD} has no server download\"\n    exit 1\nfi\n\necho \"downloading folia ${VERSION} build ${BUILD}\"\nif [ -f \"${SERVER_JARFILE}\" ]; then\n    mv \"${SERVER_JARFILE}\" \"${SERVER_JARFILE}.old\"\nfi\ncurl -fsSL -A \"${UA}\" -o \"${SERVER_JARFILE}\" \"${FOLIA_URL}\"\n\nif [ -n \"${FOLIA_SHA}\" ]; then\n    ACTUAL=$(sha256_of \"${SERVER_JARFILE}\")\n    if [ -z \"${ACTUAL}\" ]; then\n        echo \"warn: no sha256sum/openssl in the install container, skipping the folia checksum\"\n    elif [ \"${ACTUAL}\" != \"${FOLIA_SHA}\" ]; then\n        echo \"error: ${SERVER_JARFILE} sha256 mismatch (expected ${FOLIA_SHA})\"\n        exit 1\n    fi\nfi\n\n# --- packetevents ------------------------------------------------------------\n# required: true in the plugin's metadata, so the build always installs it\nPE=\"${PE_VERSION:-2.14.0}\"\necho \"downloading packetevents ${PE}\"\ncurl -fsSL -A \"${UA}\" -o \"plugins/PacketEvents-${PE}.jar\" \\\n    \"https://github.com/retrooper/packetevents/releases/download/v${PE}/packetevents-spigot-${PE}.jar\"\n\n# --- servercore plugin -------------------------------------------------------\n# release tags are build-<commitCount>-<shortSha>, and the asset is\n# ServerCore-<tag>.jar. the plugin's own updater picks the same assets later.\nREPO=\"${PLUGIN_REPO:-bejiihiu/ServerCore}\"\nRELEASE=\"${PLUGIN_RELEASE:-latest}\"\nTAG=\"\"\n\ngh_get() {\n    if [ -n \"${GITHUB_TOKEN:-}\" ]; then\n        curl -fsSL -A \"${UA}\" -H \"Accept: application/vnd.github+json\" \\\n            -H \"Authorization: Bearer ${GITHUB_TOKEN}\" \"$@\"\n    else\n        curl -fsSL -A \"${UA}\" -H \"Accept: application/vnd.github+json\" \"$@\"\n    fi\n}\n\nif [ \"${RELEASE}\" = \"latest\" ]; then\n    RELEASE_URL=\"https://api.github.com/repos/${REPO}/releases/latest\"\nelse\n    RELEASE_URL=\"https://api.github.com/repos/${REPO}/releases/tags/${RELEASE}\"\nfi\n\nif ! gh_get -o /tmp/servercore-release.json \"${RELEASE_URL}\"; then\n    echo \"error: could not read release '${RELEASE}' from ${REPO}\"\n    echo \"       set GitHub Token if the anonymous api limit is exhausted\"\n    exit 1\nfi\n\nTAG=$(jq -r '.tag_name // empty' /tmp/servercore-release.json)\nASSET_NAME=$(jq -r '[.assets[].name | select(test(\"^ServerCore-build-[0-9]+-[0-9a-f]+\\\\.jar$\"))][0] // empty' /tmp/servercore-release.json)\nASSET_URL=$(jq -r --arg n \"${ASSET_NAME}\" '[.assets[] | select(.name == $n) | .browser_download_url][0] // empty' /tmp/servercore-release.json)\n\nif [ -z \"${TAG}\" ] || [ -z \"${ASSET_NAME}\" ] || [ -z \"${ASSET_URL}\" ]; then\n    echo \"error: release listing has no ServerCore-build-<count>-<sha>.jar asset\"\n    exit 1\nfi\n\necho \"downloading ${ASSET_NAME} (${TAG})\"\ngh_get -o \"plugins/${ASSET_NAME}\" \"${ASSET_URL}\"\n\n# same checksum file the in-plugin updater trusts\nif curl -fsSL -A \"${UA}\" -o /tmp/SHA256SUMS.txt \\\n    \"https://github.com/${REPO}/releases/download/${TAG}/SHA256SUMS.txt\"; then\n    EXPECTED=$(grep \"  ${ASSET_NAME}\\$\" /tmp/SHA256SUMS.txt | awk '{print $1}' || true)\n    ACTUAL=$(sha256_of \"plugins/${ASSET_NAME}\")\n    if [ -z \"${ACTUAL}\" ]; then\n        echo \"warn: no sha256sum/openssl in the install container, skipping the jar checksum\"\n    elif [ -z \"${EXPECTED}\" ] || [ \"${EXPECTED}\" != \"${ACTUAL}\" ]; then\n        echo \"error: ${ASSET_NAME} does not match SHA256SUMS.txt\"\n        exit 1\n    fi\nelse\n    echo \"warn: SHA256SUMS.txt not available, skipping the jar checksum\"\nfi\n\n# --- plugin config -----------------------------------------------------------\n# the plugin writes config.yml itself on first boot and then disables itself\n# because backend.url is empty. write the shipped config with the backend block\n# already filled in instead, so the first boot is a working boot. an existing\n# config.yml is never touched: panel edits survive a reinstall.\nCONFIG=plugins/ServerCore/config.yml\n\nif [ -f \"${CONFIG}\" ]; then\n    echo \"keeping the existing ${CONFIG}\"\nelse\n    mkdir -p plugins/ServerCore\n    BACKEND_URL=\"${BACKEND_URL:-}\"\n    SERVER_ID=\"${SERVER_ID:-}\"\n    BACKEND_SECRET=\"${BACKEND_SECRET:-}\"\n\n    if [ -z \"${BACKEND_URL}\" ] || [ -z \"${SERVER_ID}\" ] || [ -z \"${BACKEND_SECRET}\" ]; then\n        echo \"warn: Backend Gateway URL / Server ID / Server Secret not all set\"\n        echo \"      the plugin will generate its config.yml and disable itself on first boot\"\n    else\n        # shape checks: a stray quote or ampersand here would corrupt the yaml\n        # (or the sed), and the gateway rejects anything but the /ws path\n        echo \"${BACKEND_URL}\" | grep -Eq '^wss?://[A-Za-z0-9.-]+(:[0-9]+)?/ws$' \\\n            || { echo \"error: Backend Gateway URL must look like wss://host[:port]/ws\"; exit 1; }\n        echo \"${SERVER_ID}\" | grep -Eq '^[a-z0-9._-]{1,64}$' \\\n            || { echo \"error: Server ID must match [a-z0-9._-]+ (max 64)\"; exit 1; }\n        echo \"${BACKEND_SECRET}\" | grep -Eq '^[A-Za-z0-9._~+/=-]{32,256}$' \\\n            || { echo \"error: Server Secret must be 32+ chars of [A-Za-z0-9._~+/=-]\"; exit 1; }\n\n        curl -fsSL -A \"${UA}\" -o \"${CONFIG}\" \\\n            \"https://raw.githubusercontent.com/${REPO}/${TAG}/plugin/src/main/resources/config.yml\" \\\n            || { echo \"error: could not fetch the shipped config.yml for ${TAG}\"; exit 1; }\n\n        sed -i \"s|^  url: \\\"\\\"|  url: \\\"${BACKEND_URL}\\\"|\" \"${CONFIG}\"\n        sed -i \"s|^  server-id: \\\"game-1\\\"|  server-id: \\\"${SERVER_ID}\\\"|\" \"${CONFIG}\"\n        sed -i \"s|^  secret: \\\"\\\"|  secret: \\\"${BACKEND_SECRET}\\\"|\" \"${CONFIG}\"\n\n        grep -qx \"  url: \\\"${BACKEND_URL}\\\"\" \"${CONFIG}\" \\\n            || { echo \"error: backend url did not land in config.yml\"; exit 1; }\n        grep -qx \"  server-id: \\\"${SERVER_ID}\\\"\" \"${CONFIG}\" \\\n            || { echo \"error: backend server-id did not land in config.yml\"; exit 1; }\n        grep -qx \"  secret: \\\"${BACKEND_SECRET}\\\"\" \"${CONFIG}\" \\\n            || { echo \"error: backend secret did not land in config.yml\"; exit 1; }\n\n        echo \"wrote ${CONFIG} with the backend link\"\n    fi\nfi\n\necho \"install complete: folia ${VERSION} build ${BUILD}, packetevents ${PE}, plugin ${TAG}\"\n",
+            "container": "ghcr.io/pterodactyl/installers:alpine",
+            "entrypoint": "ash"
+        }
+    },
+    "variables": [
+        {
+            "name": "Server Jar File",
+            "description": "Name of the Folia jar in the server root. Leave as is unless you have a reason.",
+            "env_variable": "SERVER_JARFILE",
+            "default_value": "folia.jar",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|regex:/^([\\w\\d._-]+)(\\.jar)$/",
+            "field_type": "text"
+        },
+        {
+            "name": "Folia Version",
+            "description": "Minecraft version to install from the PaperMC v3 API. The plugin declares api-version 26.3, so 26.3 or newer is required. Reinstall the server to apply a change.",
+            "env_variable": "FOLIA_VERSION",
+            "default_value": "26.3",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:20",
+            "field_type": "text"
+        },
+        {
+            "name": "Folia Build",
+            "description": "Folia build number for that version, or latest for the newest stable build. The install fails if the build does not exist. Reinstall the server to apply a change.",
+            "env_variable": "FOLIA_BUILD",
+            "default_value": "latest",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:20",
+            "field_type": "text"
+        },
+        {
+            "name": "PacketEvents Version",
+            "description": "PacketEvents release to install (the plugin refuses to enable without it). The release tag carries a v prefix: 2.14.0 downloads v2.14.0.",
+            "env_variable": "PE_VERSION",
+            "default_value": "2.14.0",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:20",
+            "field_type": "text"
+        },
+        {
+            "name": "Plugin Repository",
+            "description": "owner/repo the plugin jar is released from. The asset must be named ServerCore-build-<count>-<sha>.jar.",
+            "env_variable": "PLUGIN_REPO",
+            "default_value": "bejiihiu/ServerCore",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:100",
+            "field_type": "text"
+        },
+        {
+            "name": "Plugin Release",
+            "description": "Release tag to install, for example build-194-dc8a896, or latest for the newest one. The jar is verified against the release's SHA256SUMS.txt.",
+            "env_variable": "PLUGIN_RELEASE",
+            "default_value": "latest",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:64",
+            "field_type": "text"
+        },
+        {
+            "name": "Backend Gateway URL",
+            "description": "Public websocket url of the backend gateway, ending in /ws, for example wss://mc-api.example.com/ws. The plugin connects outbound to it; the gateway answers 404 on every other path.",
+            "env_variable": "BACKEND_URL",
+            "default_value": "wss://mc-api.example.com/ws",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:200",
+            "field_type": "text"
+        },
+        {
+            "name": "Server ID",
+            "description": "Unique id of this game server, [a-z0-9._-], the key in the backend's SERVERCORE_SERVER_CREDENTIALS.",
+            "env_variable": "SERVER_ID",
+            "default_value": "game-1",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:64",
+            "field_type": "text"
+        },
+        {
+            "name": "Server Secret",
+            "description": "Per-server HMAC secret from SERVERCORE_SERVER_CREDENTIALS, at least 32 characters (openssl rand -hex 32). Generate a fresh one per server.",
+            "env_variable": "BACKEND_SECRET",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:256",
+            "field_type": "text"
+        },
+        {
+            "name": "GitHub Token",
+            "description": "Optional. Only lifts the anonymous GitHub API rate limit while installing; a fine-grained token with public repo read access is enough. Not needed for normal operation.",
+            "env_variable": "GITHUB_TOKEN",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "nullable|string|max:200",
+            "field_type": "text"
+        }
+    ]
+}

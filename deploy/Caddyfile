@@ -1,0 +1,29 @@
+# caddy front for the servercore gateway.
+#
+# only /ws is proxied: the gateway answers 404 on every other path, and the
+# handshake signature (server|ts|nonce|sig) travels in the query string, so
+# the proxy must keep both the path and the query intact. caddy upgrades
+# websockets itself - no extra directive needed - and flush_interval -1 keeps
+# frames from sitting in a buffer.
+{
+	email {$ACME_EMAIL}
+}
+
+{$SERVERCORE_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+
+	handle /ws* {
+		reverse_proxy backend:8081 {
+			flush_interval -1
+		}
+	}
+
+	# nothing else is public: /health stays on the loopback bind
+	handle {
+		respond "not found" 404
+	}
+}
